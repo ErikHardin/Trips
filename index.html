@@ -1042,30 +1042,46 @@ function renderNotesList(dayId, actKey) {
   if (notesUnsubscribe) notesUnsubscribe();
   notesUnsubscribe = window._onValue(window._ref(window._db, path), snap => {
     const notes = snap.val() || {};
-    const entries = Object.values(notes).sort((a,b)=>(a.ts||0)-(b.ts||0));
+    const entries = Object.entries(notes).sort((a,b)=>(a[1].ts||0)-(b[1].ts||0));
     if (entries.length === 0) {
       list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet — be the first to add one!</div>';
       return;
     }
-    list.innerHTML = entries.map(n => {
+    list.innerHTML = entries.map(([noteId, n]) => {
       const photos = n.photoUrls ? Object.values(n.photoUrls) : (n.photoUrl ? [n.photoUrl] : []);
       const count = photos.length;
       const gridClass = count===1?'count-1':count===2?'count-2':count===3?'count-3':'count-many';
       const photosHTML = count > 0 ? `
         <div class="note-photos-grid ${gridClass}">
-          ${photos.map(url=>`<img src="${url}" alt="Photo" onclick="openPhotoViewer('${url}')">`).join('')}
+          ${photos.map(url=>`<img src="${escHtml(url)}" alt="Photo" onclick="openPhotoViewer('${escHtml(url)}')">`).join('')}
         </div>` : '';
       return `
         <div class="note-card">
           ${photosHTML}
           <div class="note-card-body">
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
-            <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+              <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+              <button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button>
+            </div>
           </div>
         </div>`;
     }).join('');
   });
 }
+
+window.deleteNote = async function(noteId) {
+  if (!confirm('Delete this memory?')) return;
+  try {
+    if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
+    const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}/${noteId}`;
+    await window._remove(window._ref(window._db, notePath));
+    showToast('Memory deleted');
+  } catch(e) {
+    showToast('Error deleting — try again');
+    console.error('deleteNote error:', e);
+  }
+};
 
 window.saveNote = async function() {
   const text = document.getElementById('noteText').value.trim();
