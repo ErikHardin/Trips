@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hardin Trips</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cream: #faf8f4;
+  --warm-white: #fffdf9;
+  --sand: #ede5d8;
+  --sand-dark: #d9cebb;
+  --terracotta: #c06a3d;
+  --terracotta-light: #f5e8e0;
+  --gold: #b8943f;
+  --gold-light: #f7f0e0;
+  --sage: #6d9b72;
+  --sage-light: #e6f0e7;
+  --blue: #4a7fb5;
+  --blue-light: #e4eef8;
+  --ink: #2a2520;
+  --muted: #8a7e72;
+  --border: #e0d5c8;
+  --shadow-sm: 0 1px 4px rgba(42,37,32,0.07);
+  --shadow-md: 0 4px 16px rgba(42,37,32,0.10);
+  --shadow-lg: 0 8px 32px rgba(42,37,32,0.14);
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── SCREENS ── */
+.screen { position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: none; flex-direction: column; background: var(--cream); }
+.screen.active { display: flex; }
+
+/* ── HEADER ── */
+.app-header {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--warm-white);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px 12px;
+  display: flex; align-items: center; gap: 12px;
+}
+.back-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 22px; color: var(--terracotta); line-height: 1;
+  padding: 2px 6px 2px 0;
+}
+.header-titles { flex: 1; min-width: 0; }
+.header-eyebrow { font-size: 10px; font-weight: 500; letter-spacing: 2.5px; text-transform: uppercase; color: var(--terracotta); margin-bottom: 2px; }
+.header-main { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 400; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-main em { font-style: italic; color: var(--terracotta); }
+.header-action { background: none; border: none; cursor: pointer; font-size: 22px; padding: 4px; color: var(--muted); }
+
+/* ── SCROLL CONTENT ── */
+.scroll-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 40px; }
+
+/* ══════════════════════════════
+   HOME SCREEN
+══════════════════════════════ */
+.home-hero {
+  padding: 28px 20px 20px;
+  background: var(--warm-white);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+.home-logo { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 600; color: var(--ink); line-height: 1; }
+.home-logo em { font-style: italic; color: var(--terracotta); }
+.home-tagline { font-size: 12px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px; }
+
+.trips-section-label {
+  padding: 20px 16px 8px;
+  font-size: 10px; font-weight: 500; letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted);
+}
+
+.trip-card {
+  margin: 0 16px 12px;
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.trip-card:active { transform: scale(0.985); box-shadow: var(--shadow-sm); }
+.trip-card-cover {
+  height: 110px;
+  background: linear-gradient(135deg, var(--terracotta-light), var(--gold-light));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 44px;
+  position: relative;
+  overflow: hidden;
+}
+.trip-card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.trip-card-cover-emoji { position: relative; z-index: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); }
+.trip-card-body { padding: 14px 16px; }
+.trip-card-name { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 600; color: var(--ink); }
+.trip-card-meta { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+.trip-pill { font-size: 11px; color: var(--muted); background: var(--sand); padding: 3px 9px; border-radius: 20px; }
+.trip-pill.active-pill { background: var(--terracotta-light); color: var(--terracotta); font-weight: 500; }
+
+.add-trip-btn {
+  margin: 4px 16px 16px;
+  width: calc(100% - 32px);
+  padding: 14px;
+  background: var(--terracotta);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: var(--shadow-md);
+  transition: opacity 0.2s;
+}
+.add-trip-btn:active { opacity: 0.85; }
+
+.empty-state { text-align: center; padding: 60px 30px; color: var(--muted); }
+.empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state-text { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; color: var(--muted); }
+
+/* ══════════════════════════════
+   TRIP DETAIL SCREEN
+══════════════════════════════ */
+.trip-detail-hero {
+  padding: 20px 16px 16px;
+  background: var(--warm-white);
+  border-bottom: 1px solid var(--border);
+}
+.trip-detail-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 600; color: var(--ink); }
+.trip-detail-name em { font-style: italic; color: var(--terracotta); }
+.trip-detail-pills { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* Flight banner */
+.flight-banner {
+  margin: 16px 16px 0;
+  background: var(--gold-light);
+  border: 1px solid #dfc98a;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.flight-icon { font-size: 20px; margin-top: 1px; flex-shrink: 0; }
+.flight-label { font-size: 10px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); margin-bottom: 3px; }
+.flight-row { font-size: 12.5px; color: var(--ink); margin-bottom: 1px; }
+.flight-code { font-weight: 500; color: var(--gold); }
+
+/* Region headers */
+.region-header { padding: 22px 16px 8px; display: flex; align-items: center; gap: 10px; }
+.region-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.region-name-text { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-style: italic; color: var(--ink); }
+.region-nights { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+/* Day cards */
+.day-card {
+  margin: 0 16px 10px;
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.day-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+.day-card.open > .day-header { border-bottom-color: var(--border); }
+.day-num { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 600; color: var(--terracotta); min-width: 30px; text-align: center; line-height: 1; }
+.day-month { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); text-align: center; }
+.day-vdivider { width: 1px; height: 32px; background: var(--border); flex-shrink: 0; }
+.day-info { flex: 1; min-width: 0; }
+.day-name-text { font-size: 14px; font-weight: 500; }
+.day-city-text { font-size: 12px; color: var(--muted); }
+.day-chevron { font-size: 18px; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
+.day-card.open .day-chevron { transform: rotate(90deg); }
+.day-body { display: none; padding: 12px 14px 14px; }
+.day-card.open .day-body { display: block; animation: fadeSlide 0.2s ease; }
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Activities */
+.activity-list { display: flex; flex-direction: column; gap: 6px; }
+.activity-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px; border-radius: 10px;
+  background: var(--cream); cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.activity-item:active { background: var(--sand); }
+.activity-emoji { font-size: 15px; line-height: 1; margin-top: 1px; flex-shrink: 0; }
+.activity-text { font-size: 13px; color: var(--ink); line-height: 1.4; flex: 1; }
+.activity-time { font-size: 11px; color: var(--muted); white-space: nowrap; margin-top: 1px; }
+.activity-notes-indicator { position: absolute; top: 8px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--terracotta); }
+.activity-notes-count { font-size: 10px; color: var(--terracotta); margin-top: 3px; }
+
+.hotel-badge {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; padding: 9px 12px;
+  background: var(--sage-light);
+  border: 1px solid #b8d8bb;
+  border-radius: 10px;
+}
+.hotel-badge-text { font-size: 12.5px; color: var(--sage); font-weight: 500; }
+.michelin { display: inline-block; font-size: 10px; background: #fff2ec; color: var(--terracotta); border: 1px solid #f0c4ae; border-radius: 20px; padding: 1px 7px; font-weight: 500; margin-left: 5px; vertical-align: middle; }
+
+/* ══════════════════════════════
+   ACTIVITY NOTES SCREEN
+══════════════════════════════ */
+.notes-activity-title {
+  padding: 16px 16px 0;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px; font-weight: 600; font-style: italic;
+  color: var(--ink);
+}
+.notes-list { padding: 14px 16px 0; display: flex; flex-direction: column; gap: 12px; }
+.note-card {
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.note-card-photo { width: 100%; max-height: 220px; object-fit: cover; display: block; }
+.note-card-body { padding: 10px 12px 12px; }
+.note-card-text { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.note-card-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+.add-note-form {
+  margin: 16px;
+  background: var(--warm-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.add-note-label { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.note-textarea {
+  width: 100%; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px;
+  color: var(--ink); background: var(--cream); resize: none; outline: none;
+  min-height: 80px;
+}
+.note-textarea:focus { border-color: var(--terracotta); }
+.photo-upload-btn {
+  width: 100%; margin-top: 8px;
+  padding: 10px; background: var(--cream);
+  border: 1.5px dashed var(--sand-dark);
+  border-radius: 10px; cursor: pointer;
+  font-size: 13px; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.photo-preview-wrap { margin-top: 8px; position: relative; display: inline-block; }
+.photo-preview { max-width: 100%; max-height: 160px; border-radius: 10px; display: block; }
+.photo-remove { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.save-note-btn {
+  width: 100%; margin-top: 10px;
+  padding: 12px; background: var(--terracotta);
+  color: white; border: none; border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: opacity 0.2s;
+}
+.save-note-btn:active { opacity: 0.8; }
+.save-note-btn:disabled { opacity: 0.5; }
+
+/* ══════════════════════════════
+   ADMIN SCREEN
+══════════════════════════════ */
+.admin-section { padding: 20px 16px 0; }
+.admin-section-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; margin-bottom: 12px; color: var(--ink); }
+.admin-card {
+  background: var(--warm-white); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.form-label { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: block; }
+.form-input {
+  width: 100%; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px;
+  color: var(--ink); background: var(--cream); outline: none; margin-bottom: 10px;
+}
+.form-input:focus { border-color: var(--terracotta); }
+.form-textarea { min-height: 120px; resize: vertical; }
+.form-btn {
+  width: 100%; padding: 12px;
+  background: var(--terracotta); color: white;
+  border: none; border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: opacity 0.2s; margin-top: 4px;
+}
+.form-btn:active { opacity: 0.8; }
+.form-btn.secondary { background: var(--sand); color: var(--ink); }
+.form-btn:disabled { opacity: 0.5; }
+.csv-instructions {
+  font-size: 12px; color: var(--muted); line-height: 1.6;
+  background: var(--cream); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+}
+.csv-instructions code { background: var(--sand); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
+/* Region color picker */
+.region-picker { display: flex; gap: 8px; margin-bottom: 10px; }
+.region-swatch {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.15s;
+}
+.region-swatch.selected { border-color: var(--ink); }
+
+/* ══════════════════════════════
+   PIN SCREEN
+══════════════════════════════ */
+.pin-screen {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 100vh; padding: 40px 20px;
+  background: var(--cream);
+}
+.pin-logo { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.pin-logo em { color: var(--terracotta); font-style: italic; }
+.pin-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+.pin-dots { display: flex; gap: 14px; margin-bottom: 28px; }
+.pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--sand-dark); background: transparent; transition: background 0.15s; }
+.pin-dot.filled { background: var(--terracotta); border-color: var(--terracotta); }
+.pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 240px; }
+.pin-key {
+  padding: 16px; background: var(--warm-white); border: 1px solid var(--border);
+  border-radius: 14px; font-family: 'Cormorant Garamond', serif;
+  font-size: 24px; font-weight: 600; color: var(--ink); cursor: pointer;
+  text-align: center; box-shadow: var(--shadow-sm);
+  transition: background 0.1s, transform 0.1s;
+  -webkit-user-select: none; user-select: none;
+}
+.pin-key:active { background: var(--sand); transform: scale(0.94); }
+.pin-key.delete { font-size: 18px; color: var(--muted); }
+.pin-error { color: var(--terracotta); font-size: 13px; margin-top: 12px; min-height: 20px; }
+
+/* ══════════════════════════════
+   ADD TRIP MODAL
+══════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(42,37,32,0.5);
+  z-index: 200; display: none; align-items: flex-end;
+}
+.modal-overlay.open { display: flex; }
+.modal-sheet {
+  width: 100%; background: var(--cream);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px 40px;
+  max-height: 90vh; overflow-y: auto;
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-handle { width: 40px; height: 4px; background: var(--sand-dark); border-radius: 2px; margin: 0 auto 20px; }
+.modal-title { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 600; margin-bottom: 16px; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--ink); color: white; padding: 10px 20px;
+  border-radius: 20px; font-size: 13px; z-index: 300;
+  transition: transform 0.3s ease; white-space: nowrap;
+  box-shadow: var(--shadow-lg);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── LOADING ── */
+.loading-spinner {
+  display: inline-block; width: 20px; height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── OVERVIEW TAB ── */
+.tab-nav { display: flex; background: var(--warm-white); border-bottom: 1px solid var(--border); }
+.tab-btn {
+  flex: 1; padding: 11px; font-family: 'DM Sans', sans-serif; font-size: 13px;
+  color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent;
+  cursor: pointer; transition: all 0.2s;
+}
+.tab-btn.active { color: var(--terracotta); border-bottom-color: var(--terracotta); font-weight: 500; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; }
+.stat-card { background: var(--warm-white); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; text-align: center; box-shadow: var(--shadow-sm); }
+.stat-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 600; color: var(--terracotta); }
+.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+
+.hotel-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.hotel-row:last-child { border-bottom: none; }
+.hotel-color { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.hotel-row-name { font-size: 13.5px; font-weight: 500; }
+.hotel-row-dates { font-size: 12px; color: var(--muted); }
+.hotel-row-nights { margin-left: auto; font-size: 12px; background: var(--sand); padding: 3px 9px; border-radius: 20px; color: var(--muted); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<!-- ══ PIN SCREEN ══ -->
+<div id="screen-pin" class="screen active">
+  <div class="pin-screen">
+    <div class="pin-logo"><em>Hardin</em> Trips</div>
+    <div class="pin-subtitle">Admin Access</div>
+    <div class="pin-dots" id="pinDots">
+      <div class="pin-dot" id="d0"></div>
+      <div class="pin-dot" id="d1"></div>
+      <div class="pin-dot" id="d2"></div>
+      <div class="pin-dot" id="d3"></div>
+    </div>
+    <div class="pin-keypad">
+      <div class="pin-key" onclick="pinKey('1')">1</div>
+      <div class="pin-key" onclick="pinKey('2')">2</div>
+      <div class="pin-key" onclick="pinKey('3')">3</div>
+      <div class="pin-key" onclick="pinKey('4')">4</div>
+      <div class="pin-key" onclick="pinKey('5')">5</div>
+      <div class="pin-key" onclick="pinKey('6')">6</div>
+      <div class="pin-key" onclick="pinKey('7')">7</div>
+      <div class="pin-key" onclick="pinKey('8')">8</div>
+      <div class="pin-key" onclick="pinKey('9')">9</div>
+      <div class="pin-key" onclick="goHome()" style="font-size:13px;color:var(--muted);">Cancel</div>
+      <div class="pin-key" onclick="pinKey('0')">0</div>
+      <div class="pin-key delete" onclick="pinDelete()">⌫</div>
+    </div>
+    <div class="pin-error" id="pinError"></div>
+  </div>
+</div>
+
+<!-- ══ HOME SCREEN ══ -->
+<div id="screen-home" class="screen">
+  <div class="app-header">
+    <div class="header-titles">
+      <div class="header-eyebrow">Your Journeys</div>
+      <div class="header-main"><em>Hardin</em> Trips</div>
+    </div>
+    <button class="header-action" onclick="showPin()" title="Admin">⚙️</button>
+  </div>
+  <div class="scroll-content" id="homeContent">
+    <div class="home-hero">
+      <div class="home-logo"><em>Hardin</em> Trips</div>
+      <div class="home-tagline">Every journey, remembered</div>
+    </div>
+    <div class="trips-section-label">All Trips</div>
+    <div id="tripsList"></div>
+    <div id="homeEmpty" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">🌍</div>
+      <div class="empty-state-text">No trips yet — add your first!</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TRIP DETAIL SCREEN ══ -->
+<div id="screen-trip" class="screen">
+  <div class="app-header">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="header-titles">
+      <div class="header-eyebrow" id="tripDetailEyebrow">Trip</div>
+      <div class="header-main" id="tripDetailTitle">–</div>
+    </div>
+    <button class="header-action" id="tripAdminBtn" onclick="showTripAdmin()" style="display:none;">✏️</button>
+  </div>
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTripTab('itinerary',this)">Itinerary</button>
+    <button class="tab-btn" onclick="switchTripTab('overview',this)">Overview</button>
+  </div>
+  <div class="scroll-content">
+    <div id="tripItineraryPanel" class="tab-panel active"></div>
+    <div id="tripOverviewPanel" class="tab-panel"></div>
+  </div>
+</div>
+
+<!-- ══ NOTES SCREEN ══ -->
+<div id="screen-notes" class="screen">
+  <div class="app-header">
+    <button class="back-btn" id="notesBackBtn" onclick="goBackFromNotes()">‹</button>
+    <div class="header-titles">
+      <div class="header-eyebrow">Notes & Photos</div>
+      <div class="header-main" id="notesScreenTitle">Activity</div>
+    </div>
+  </div>
+  <div class="scroll-content">
+    <div class="notes-activity-title" id="notesActivityTitle"></div>
+    <div class="notes-list" id="notesList"></div>
+    <div class="add-note-form">
+      <div class="add-note-label">Add a Memory</div>
+      <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
+      <label class="photo-upload-btn" for="photoInput">📷 Add Photo</label>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(event)">
+      <div id="photoPreviewWrap" style="display:none;" class="photo-preview-wrap">
+        <img id="photoPreview" class="photo-preview" src="" alt="">
+        <button class="photo-remove" onclick="removePhoto()">×</button>
+      </div>
+      <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ADMIN SCREEN ══ -->
+<div id="screen-admin" class="screen">
+  <div class="app-header">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="header-titles">
+      <div class="header-eyebrow">Admin</div>
+      <div class="header-main">Manage Trips</div>
+    </div>
+  </div>
+  <div class="scroll-content">
+
+    <!-- ADD NEW TRIP -->
+    <div class="admin-section">
+      <div class="admin-section-title">Add New Trip</div>
+      <div class="admin-card">
+        <label class="form-label">Trip Name</label>
+        <input class="form-input" id="newTripName" placeholder="e.g. France Spring 2025">
+        <label class="form-label">Year</label>
+        <input class="form-input" id="newTripYear" type="number" placeholder="2026">
+        <label class="form-label">Dates</label>
+        <input class="form-input" id="newTripDates" placeholder="e.g. May 23 – Jun 7">
+        <label class="form-label">Cover Emoji</label>
+        <input class="form-input" id="newTripEmoji" placeholder="🇫🇷" maxlength="4">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="newTripStatus">
+          <option value="upcoming">Upcoming</option>
+          <option value="active">Active (in progress)</option>
+          <option value="past">Past</option>
+        </select>
+        <button class="form-btn" onclick="createTrip()">Create Trip</button>
+      </div>
+    </div>
+
+    <!-- IMPORT FROM CSV -->
+    <div class="admin-section">
+      <div class="admin-section-title">Import from Google Sheet</div>
+      <div class="admin-card">
+        <div class="csv-instructions">
+          Export your Google Sheet as <strong>CSV</strong>, then paste the contents below.<br><br>
+          Expected columns:<br>
+          <code>Date</code> · <code>Day</code> · <code>City</code> · <code>Hotel</code> · <code>Activities</code> · <code>Region</code> · <code>RegionColor</code>
+        </div>
+        <label class="form-label">Select Trip to Import Into</label>
+        <select class="form-input" id="importTripSelect"></select>
+        <label class="form-label">Paste CSV Data</label>
+        <textarea class="form-input form-textarea" id="csvData" placeholder="Date,Day,City,Hotel,Activities,Region,RegionColor&#10;24-May,Sunday,Lyon,Intercontinental Lyon Hotel Dieu,Land in afternoon|Wine at Octobre caviste|Dinner at Carmelo's,Lyon,#c06a3d"></textarea>
+        <button class="form-btn" onclick="importCSV()">Import Days</button>
+      </div>
+    </div>
+
+    <!-- LOAD FRANCE 2025 DEMO -->
+    <div class="admin-section">
+      <div class="admin-section-title">Load Demo Data</div>
+      <div class="admin-card">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Load the France 2025 trip from your Google Sheet as a starting point.</p>
+        <button class="form-btn secondary" onclick="loadDemoData()">Load France 2025 Demo</button>
+      </div>
+    </div>
+
+    <!-- DELETE TRIPS -->
+    <div class="admin-section" style="padding-bottom:20px;">
+      <div class="admin-section-title">Manage Existing Trips</div>
+      <div id="adminTripList"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ ADD TRIP MODAL ══ -->
+<div class="modal-overlay" id="addTripModal" onclick="closeModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">New Trip</div>
+    <label class="form-label">Trip Name</label>
+    <input class="form-input" id="modalTripName" placeholder="e.g. Italy 2027">
+    <label class="form-label">Year</label>
+    <input class="form-input" id="modalTripYear" type="number" placeholder="2027">
+    <label class="form-label">Dates</label>
+    <input class="form-input" id="modalTripDates" placeholder="e.g. June 1–14">
+    <label class="form-label">Cover Emoji</label>
+    <input class="form-input" id="modalTripEmoji" placeholder="🇮🇹" maxlength="4">
+    <button class="form-btn" onclick="createTripFromModal()">Create Trip</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeAddTripModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- ══ TOAST ══ -->
+<div class="toast" id="toast"></div>
+
+<!-- ══ FIREBASE ══ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getDatabase, ref, set, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAM2Bm8PgkCk6c6uAiySuclKLkIq06HMxQ",
+  authDomain: "hardin-trips.firebaseapp.com",
+  databaseURL: "https://hardin-trips-default-rtdb.firebaseio.com",
+  projectId: "hardin-trips",
+  storageBucket: "hardin-trips.firebasestorage.app",
+  messagingSenderId: "298565083065",
+  appId: "1:298565083065:web:c077a37768ced92a30e068",
+  measurementId: "G-FK3S5SRE0F"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const storage = getStorage(app);
+
+// ── Expose to window ──
+window._db = db;
+window._storage = storage;
+window._ref = ref;
+window._sRef = sRef;
+window._set = set;
+window._push = push;
+window._onValue = onValue;
+window._remove = remove;
+window._get = get;
+window._uploadBytes = uploadBytes;
+window._getDownloadURL = getDownloadURL;
+
+// ── Bootstrap ──
+window.addEventListener('load', () => { initApp(); });
+</script>
+
+<script>
+// ════════════════════════════════════════
+//  APP STATE
+// ════════════════════════════════════════
+const PIN = '1248';
+let pinEntry = '';
+let isAdmin = false;
+let allTrips = {};
+let currentTripId = null;
+let currentActivityKey = null;
+let currentDayKey = null;
+let selectedPhotoFile = null;
+let notesUnsubscribe = null;
+
+// ════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════
+function initApp() {
+  if (!window._db) { setTimeout(initApp, 200); return; }
+  // Load trips
+  window._onValue(window._ref(window._db, 'trips'), snap => {
+    allTrips = snap.val() || {};
+    renderHome();
+    populateImportSelect();
+    renderAdminTripList();
+  });
+  goHome();
+}
+
+// ════════════════════════════════════════
+//  NAVIGATION
+// ════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
+window.showPin = function() { pinEntry = ''; updatePinDots(); document.getElementById('pinError').textContent=''; showScreen('screen-pin'); };
+
+function goBackFromNotes() {
+  if (notesUnsubscribe) { notesUnsubscribe(); notesUnsubscribe = null; }
+  showScreen('screen-trip');
+}
+window.goBackFromNotes = goBackFromNotes;
+
+// ════════════════════════════════════════
+//  PIN
+// ════════════════════════════════════════
+window.pinKey = function(digit) {
+  if (pinEntry.length >= 4) return;
+  pinEntry += digit;
+  updatePinDots();
+  if (pinEntry.length === 4) {
+    setTimeout(() => {
+      if (pinEntry === PIN) {
+        isAdmin = true;
+        showScreen('screen-admin');
+        document.getElementById('tripAdminBtn').style.display = '';
+      } else {
+        document.getElementById('pinError').textContent = 'Incorrect PIN';
+        pinEntry = '';
+        updatePinDots();
+      }
+    }, 200);
+  }
+};
+window.pinDelete = function() { pinEntry = pinEntry.slice(0,-1); updatePinDots(); };
+function updatePinDots() {
+  for (let i=0;i<4;i++) {
+    document.getElementById('d'+i).classList.toggle('filled', i < pinEntry.length);
+  }
+}
+
+// ════════════════════════════════════════
+//  HOME
+// ════════════════════════════════════════
+function renderHome() {
+  const list = document.getElementById('tripsList');
+  const empty = document.getElementById('homeEmpty');
+  const keys = Object.keys(allTrips);
+
+  // Sort by year desc
+  keys.sort((a,b) => (allTrips[b].year||0) - (allTrips[a].year||0));
+
+  if (keys.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    // Show add button if admin
+    if (isAdmin) renderAddBtn(list);
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = '';
+
+  keys.forEach(k => {
+    const t = allTrips[k];
+    const card = document.createElement('div');
+    card.className = 'trip-card';
+    card.innerHTML = `
+      <div class="trip-card-cover">
+        <span class="trip-card-cover-emoji">${t.emoji||'✈️'}</span>
+      </div>
+      <div class="trip-card-body">
+        <div class="trip-card-name">${t.name||'Untitled Trip'}</div>
+        <div class="trip-card-meta">
+          <span class="trip-pill">${t.year||''}</span>
+          ${t.dates ? `<span class="trip-pill">${t.dates}</span>` : ''}
+          ${t.status==='active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : ''}
+          ${t.status==='upcoming' ? '<span class="trip-pill">⏳ Upcoming</span>' : ''}
+        </div>
+      </div>`;
+    card.onclick = () => openTrip(k);
+    list.appendChild(card);
+  });
+
+  if (isAdmin) {
+    const btn = document.createElement('button');
+    btn.className = 'add-trip-btn';
+    btn.innerHTML = '＋ Add New Trip';
+    btn.onclick = () => showScreen('screen-admin');
+    list.appendChild(btn);
+  }
+}
+
+// ════════════════════════════════════════
+//  TRIP DETAIL
+// ════════════════════════════════════════
+function openTrip(tripId) {
+  currentTripId = tripId;
+  const trip = allTrips[tripId];
+  document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
+  document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
+  document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
+
+  renderTripItinerary(trip);
+  renderTripOverview(trip);
+
+  // Switch to itinerary tab
+  switchTripTab('itinerary', document.querySelector('.tab-btn'));
+  showScreen('screen-trip');
+}
+window.showTripAdmin = function() { showScreen('screen-admin'); };
+
+function switchTripTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tripItineraryPanel').classList.toggle('active', name==='itinerary');
+  document.getElementById('tripOverviewPanel').classList.toggle('active', name==='overview');
+  if(btn) btn.classList.add('active');
+}
+window.switchTripTab = switchTripTab;
+
+function renderTripItinerary(trip) {
+  const panel = document.getElementById('tripItineraryPanel');
+  panel.innerHTML = '';
+
+  // Outbound flights
+  if (trip.flightOut) {
+    panel.innerHTML += `
+      <div class="flight-banner">
+        <div class="flight-icon">✈️</div>
+        <div>
+          <div class="flight-label">Outbound Flights · ${trip.flightOutDate||''}</div>
+          ${trip.flightOut.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  // Group days by region
+  const days = trip.days ? Object.entries(trip.days) : [];
+  days.sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0));
+
+  let currentRegion = null;
+  days.forEach(([dayId, day]) => {
+    if (day.region && day.region !== currentRegion) {
+      currentRegion = day.region;
+      panel.innerHTML += `
+        <div class="region-header">
+          <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
+          <div class="region-name-text">${day.region}</div>
+          <div class="region-nights">${day.regionDates||''}</div>
+        </div>`;
+    }
+
+    const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+    const activitiesHTML = acts.map((a,i) => {
+      const noteKey = typeof a === 'object' ? (a.key||i) : i;
+      return `
+        <div class="activity-item" onclick="openNotes('${dayId}','${noteKey}','${escHtml(typeof a==='object'?a.text:a)}')">
+          <div class="activity-emoji">${typeof a==='object'&&a.emoji ? a.emoji : getEmoji(typeof a==='object'?a.text:a)}</div>
+          <div style="flex:1;">
+            <div class="activity-text">${typeof a==='object'?a.text:a}${typeof a==='object'&&a.michelin?'<span class="michelin">★ Michelin</span>':''}</div>
+            ${typeof a==='object'&&a.time?`<div class="activity-time">${a.time}</div>`:''}
+          </div>
+        </div>`;
+    }).join('');
+
+    const cardId = 'dc-'+dayId;
+    panel.innerHTML += `
+      <div class="day-card" id="${cardId}">
+        <div class="day-header" onclick="toggleDay('${cardId}')">
+          <div>
+            <div class="day-num">${day.dateNum||'–'}</div>
+            <div class="day-month">${day.dateMonth||''}</div>
+          </div>
+          <div class="day-vdivider"></div>
+          <div class="day-info">
+            <div class="day-name-text">${day.dayName||''}</div>
+            <div class="day-city-text">${day.city||''}</div>
+          </div>
+          <div class="day-chevron">›</div>
+        </div>
+        <div class="day-body">
+          <div class="activity-list">${activitiesHTML}</div>
+          ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
+        </div>
+      </div>`;
+  });
+
+  // Return flights
+  if (trip.flightReturn) {
+    panel.innerHTML += `
+      <div class="flight-banner" style="margin:16px 16px 10px;">
+        <div class="flight-icon">🏠</div>
+        <div>
+          <div class="flight-label">Return Flights · ${trip.flightReturnDate||''}</div>
+          ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+}
+
+function renderTripOverview(trip) {
+  const panel = document.getElementById('tripOverviewPanel');
+  const days = trip.days ? Object.values(trip.days) : [];
+  const nights = days.length;
+  const hotels = [...new Set(days.map(d=>d.hotel).filter(Boolean))];
+  const tastings = days.reduce((n,d)=>{
+    const acts = d.activities ? (Array.isArray(d.activities)?d.activities:Object.values(d.activities)) : [];
+    return n + acts.filter(a=>(typeof a==='string'?a:a.text||'').toLowerCase().includes('tasting')).length;
+  },0);
+
+  panel.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-num">${nights}</div><div class="stat-label">Nights</div></div>
+      <div class="stat-card"><div class="stat-num">${hotels.length}</div><div class="stat-label">Hotels</div></div>
+      <div class="stat-card"><div class="stat-num">${tastings||'–'}</div><div class="stat-label">Tastings</div></div>
+      <div class="stat-card"><div class="stat-num">${trip.year||'–'}</div><div class="stat-label">Year</div></div>
+    </div>
+    <div style="padding:4px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Where you're staying</div>
+    <div>${hotels.map((h,i)=>`
+      <div class="hotel-row">
+        <div class="hotel-color" style="background:${['#c06a3d','#6d9b72','#4a7fb5','#8a6aad'][i%4]}"></div>
+        <div><div class="hotel-row-name">${h}</div></div>
+      </div>`).join('')}
+    </div>`;
+}
+
+window.toggleDay = function(id) {
+  document.getElementById(id).classList.toggle('open');
+};
+
+// ════════════════════════════════════════
+//  NOTES
+// ════════════════════════════════════════
+window.openNotes = function(dayId, actKey, actText) {
+  currentDayKey = dayId;
+  currentActivityKey = actKey;
+  document.getElementById('notesScreenTitle').textContent = actText.length>30 ? actText.slice(0,30)+'…' : actText;
+  document.getElementById('notesActivityTitle').textContent = actText;
+  document.getElementById('noteText').value = '';
+  removePhoto();
+  renderNotesList(dayId, actKey);
+  showScreen('screen-notes');
+};
+
+function renderNotesList(dayId, actKey) {
+  const list = document.getElementById('notesList');
+  list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;">Loading…</div>';
+
+  const path = `trips/${currentTripId}/days/${dayId}/notes/${actKey}`;
+  if (notesUnsubscribe) notesUnsubscribe();
+  notesUnsubscribe = window._onValue(window._ref(window._db, path), snap => {
+    const notes = snap.val() || {};
+    const entries = Object.values(notes).sort((a,b)=>(a.ts||0)-(b.ts||0));
+    if (entries.length === 0) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet — be the first to add one!</div>';
+      return;
+    }
+    list.innerHTML = entries.map(n => `
+      <div class="note-card">
+        ${n.photoUrl ? `<img class="note-card-photo" src="${n.photoUrl}" alt="Photo">` : ''}
+        <div class="note-card-body">
+          ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
+          <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+        </div>
+      </div>`).join('');
+  });
+}
+
+window.saveNote = async function() {
+  const text = document.getElementById('noteText').value.trim();
+  if (!text && !selectedPhotoFile) { showToast('Add a note or photo first'); return; }
+
+  const btn = document.getElementById('saveNoteBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loading-spinner"></div>';
+
+  try {
+    let photoUrl = null;
+    if (selectedPhotoFile) {
+      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${selectedPhotoFile.name}`;
+      const storageRef = window._sRef(window._storage, storePath);
+      const snap = await window._uploadBytes(storageRef, selectedPhotoFile);
+      photoUrl = await window._getDownloadURL(snap.ref);
+    }
+
+    const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}`;
+    const newRef = window._push(window._ref(window._db, notePath));
+    await window._set(newRef, { text, photoUrl, ts: Date.now() });
+
+    document.getElementById('noteText').value = '';
+    removePhoto();
+    showToast('Memory saved! 📸');
+  } catch(e) {
+    showToast('Error saving — try again');
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Save Memory';
+};
+
+window.handlePhotoSelect = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  selectedPhotoFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('photoPreview').src = ev.target.result;
+    document.getElementById('photoPreviewWrap').style.display = '';
+  };
+  reader.readAsDataURL(file);
+};
+
+window.removePhoto = function() {
+  selectedPhotoFile = null;
+  document.getElementById('photoPreviewWrap').style.display = 'none';
+  document.getElementById('photoInput').value = '';
+};
+
+// ════════════════════════════════════════
+//  ADMIN — CREATE TRIP
+// ════════════════════════════════════════
+window.createTrip = async function() {
+  const name = document.getElementById('newTripName').value.trim();
+  const year = document.getElementById('newTripYear').value.trim();
+  const dates = document.getElementById('newTripDates').value.trim();
+  const emoji = document.getElementById('newTripEmoji').value.trim() || '✈️';
+  const status = document.getElementById('newTripStatus').value;
+  if (!name) { showToast('Enter a trip name'); return; }
+
+  const newRef = window._push(window._ref(window._db, 'trips'));
+  await window._set(newRef, { name, year: parseInt(year)||new Date().getFullYear(), dates, emoji, status });
+  showToast('Trip created! 🎉');
+  ['newTripName','newTripYear','newTripDates','newTripEmoji'].forEach(id=>document.getElementById(id).value='');
+};
+
+// ════════════════════════════════════════
+//  ADMIN — IMPORT CSV
+// ════════════════════════════════════════
+window.importCSV = async function() {
+  const tripId = document.getElementById('importTripSelect').value;
+  const csv = document.getElementById('csvData').value.trim();
+  if (!tripId) { showToast('Select a trip first'); return; }
+  if (!csv) { showToast('Paste CSV data first'); return; }
+
+  const lines = csv.split('\n').filter(l=>l.trim());
+  const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
+  const rows = lines.slice(1);
+
+  let sortOrder = 0;
+  for (const row of rows) {
+    const cols = parseCSVRow(row);
+    const obj = {};
+    header.forEach((h,i) => obj[h] = (cols[i]||'').trim());
+
+    const dateStr = obj['date'] || obj['a'] || '';
+    const parts = dateStr.match(/(\d+)-?(\w+)/);
+    const dateNum = parts ? parts[1] : dateStr;
+    const dateMonth = parts ? parts[2] : '';
+
+    const activities = (obj['activities']||'').split('|').map(a=>a.trim()).filter(Boolean).map(text=>({text, emoji: getEmoji(text)}));
+
+    const dayData = {
+      dateNum, dateMonth,
+      date: dateStr,
+      dayName: obj['day']||obj['b']||'',
+      city: obj['city']||obj['c']||'',
+      hotel: obj['hotel']||obj['d']||'',
+      region: obj['region']||obj['f']||'',
+      regionColor: obj['regioncolor']||obj['g']||'#c06a3d',
+      activities,
+      sortOrder: sortOrder++
+    };
+
+    const dayRef = window._push(window._ref(window._db, `trips/${tripId}/days`));
+    await window._set(dayRef, dayData);
+  }
+  showToast(`Imported ${rows.length} days!`);
+  document.getElementById('csvData').value = '';
+};
+
+function parseCSVRow(row) {
+  const result = []; let cur = ''; let inQ = false;
+  for (let i=0;i<row.length;i++) {
+    if (row[i]==='"') { inQ=!inQ; }
+    else if (row[i]===',' && !inQ) { result.push(cur); cur=''; }
+    else { cur+=row[i]; }
+  }
+  result.push(cur);
+  return result;
+}
+
+// ════════════════════════════════════════
+//  DEMO DATA — FRANCE 2025
+// ════════════════════════════════════════
+window.loadDemoData = async function() {
+  // Create the trip
+  const tripRef = window._push(window._ref(window._db, 'trips'));
+  const tripId = tripRef.key;
+  await window._set(tripRef, {
+    name: 'France Spring 2026',
+    year: 2026,
+    dates: 'May 23 – Jun 7',
+    emoji: '🇫🇷',
+    status: 'upcoming',
+    flightOut: 'UA8087 DEN → YUL · 11:25am – 5:07pm\nUA8069 YUL → LYS · 10:30pm – 11:40am',
+    flightOutDate: 'May 23',
+    flightReturn: 'AF1435 BER → CDG · 9:50am – 11:40am\nAF58 CDG → DEN · 1:25pm – 3:40pm',
+    flightReturnDate: 'Jun 7'
+  });
+
+  const days = [
+    { dateNum:'24', dateMonth:'May', dayName:'Sunday', city:'🛬 Arrive Lyon', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', regionDates:'May 24–27', sortOrder:0,
+      activities:[{text:'Land in afternoon',emoji:'🛬'},{text:'Wine at Octobre caviste',emoji:'🍷'},{text:"Dinner at Carmelo's",emoji:'🍽️'}]},
+    { dateNum:'25', dateMonth:'May', dayName:'Monday', city:'Lyon', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', sortOrder:1,
+      activities:[{text:'Lyon Secret Food Tour',emoji:'🥐',time:'11:30am–3pm'}]},
+    { dateNum:'26', dateMonth:'May', dayName:'Tuesday', city:'Lyon · Beaujolais', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', sortOrder:2,
+      activities:[{text:'Private Full Day Beaujolais Wine Tour from Lyon w/Insiders',emoji:'🍇'},{text:'Dinner at Les Bouchon des Filles?',emoji:'🍽️'}]},
+    { dateNum:'27', dateMonth:'May', dayName:'Wednesday', city:'Lyon · Explore', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', sortOrder:3,
+      activities:[{text:'Explore Lyon',emoji:'🗺️'},{text:'Cocktail at Abstract',emoji:'🍸'},{text:'Dinner at Soma',emoji:'🍽️',time:'7:15pm'}]},
+    { dateNum:'28', dateMonth:'May', dayName:'Thursday', city:'🚗 Drive to Luberon', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', regionDates:'May 28–31', sortOrder:4,
+      activities:[{text:'Tasting at Domaine de Corps de Loup',emoji:'🍷',time:'10–11am'},{text:'Lunch at Le Vineum / tasting Paul Jaboulet Ainé',emoji:'🍽️',time:'12–2pm'},{text:'Walk to Chapelle Saint-Christophe',emoji:'⛪',time:'2–3pm'},{text:'Vieux Télégraphe — walk in if we want',emoji:'🏔️',time:'4:30–5:30pm'},{text:'Chateau Bois D\'Arlène – charcuterie and tasting',emoji:'🧀',time:'6pm'},{text:'Arrive to hotel ~8–8:30pm',emoji:'🏨'}]},
+    { dateNum:'29', dateMonth:'May', dayName:'Friday', city:'Luberon · Villages', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', sortOrder:5,
+      activities:[{text:'Oppede and Menerbes',emoji:'🏘️'},{text:'Explore Bonnieux – market day',emoji:'🛍️'},{text:'Lunch or Dinner at Brasserie Les Terrasses',emoji:'🍽️',time:'2:30 or 6:30pm'}]},
+    { dateNum:'30', dateMonth:'May', dayName:'Saturday', city:'Luberon · Villages', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', sortOrder:6,
+      activities:[{text:'Roussillon, Gordes, Goult, Lourmarin',emoji:'🏘️'}]},
+    { dateNum:'31', dateMonth:'May', dayName:'Sunday', city:'Luberon · E-bikes', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', sortOrder:7,
+      activities:[{text:'Rent e-bikes – Véloroute du Calavon',emoji:'🚲'}]},
+    { dateNum:'1', dateMonth:'Jun', dayName:'Monday', city:'🚗 Drive to Bandol', hotel:'Thalazur Bandol Ile Rousse Hotel', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', regionDates:'Jun 1–3', sortOrder:8,
+      activities:[{text:'Cassis and Calanques on the way to Bandol',emoji:'🏖️'},{text:'Dinner at Restaurant Les Oliviers (hotel restaurant)',emoji:'⭐',michelin:true}]},
+    { dateNum:'2', dateMonth:'Jun', dayName:'Tuesday', city:'Bandol · Wine Day', hotel:'Thalazur Bandol Ile Rousse Hotel', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', sortOrder:9,
+      activities:[{text:'Relax at hotel pool',emoji:'🏊'},{text:'Domaine Bastide Blanche',emoji:'🍷',time:'1:30pm (45 min)'},{text:'Domaine Tempier',emoji:'🍷',time:'2:30pm (90 min)'},{text:'Château Canadel',emoji:'🍷',time:'4:30pm (30 min)'},{text:'Domaines Bunan',emoji:'🍷',time:'5:30pm (30 min)'}]},
+    { dateNum:'3', dateMonth:'Jun', dayName:'Wednesday', city:'🚗 Drive to Cannes', hotel:'Hôtel Martinez', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', sortOrder:10,
+      activities:[{text:'Drive along Corniche des Maures',emoji:'🌊'},{text:'Lunch in St. Tropez',emoji:'🍽️'},{text:'Pool time at Hôtel Martinez',emoji:'🏊'}]},
+    { dateNum:'4', dateMonth:'Jun', dayName:'Thursday', city:'Cannes', hotel:'Hôtel Martinez', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', sortOrder:11,
+      activities:[{text:'Lunch at La Plage du Martinez (hotel)',emoji:'🍽️'},{text:'Dinner at Table 22 (Le Suquet)',emoji:'🍽️'},{text:'Cocktail at Martinez Bar (hotel)',emoji:'🍸'}]},
+    { dateNum:'5', dateMonth:'Jun', dayName:'Friday', city:'Berlin', hotel:'Me and All Hotel Berlin East Side', region:'Berlin', regionColor:'#8a6aad', regionDates:'Jun 5–6', sortOrder:12,
+      activities:[{text:'Explore Berlin',emoji:'🏛️'}]},
+    { dateNum:'6', dateMonth:'Jun', dayName:'Saturday', city:'Berlin', hotel:'Me and All Hotel Berlin East Side', region:'Berlin', regionColor:'#8a6aad', sortOrder:13,
+      activities:[{text:'Last day in Berlin',emoji:'🏙️'}]},
+  ];
+
+  for (const day of days) {
+    const dRef = window._push(window._ref(window._db, `trips/${tripId}/days`));
+    await window._set(dRef, day);
+  }
+  showToast('France 2026 loaded! 🇫🇷');
+};
+
+// ════════════════════════════════════════
+//  ADMIN — HELPERS
+// ════════════════════════════════════════
+function populateImportSelect() {
+  const sel = document.getElementById('importTripSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select trip —</option>' +
+    Object.entries(allTrips).map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
+}
+
+function renderAdminTripList() {
+  const list = document.getElementById('adminTripList');
+  if (!list) return;
+  const keys = Object.keys(allTrips);
+  if (!keys.length) { list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:0 0 12px;">No trips yet.</p>'; return; }
+  list.innerHTML = keys.map(k=>`
+    <div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;">
+      <span style="font-size:22px;">${allTrips[k].emoji||'✈️'}</span>
+      <div style="flex:1;">
+        <div style="font-size:14px;font-weight:500;">${allTrips[k].name||'Untitled'}</div>
+        <div style="font-size:12px;color:var(--muted);">${allTrips[k].year||''} · ${allTrips[k].dates||''}</div>
+      </div>
+      <button onclick="deleteTrip('${k}')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);">🗑️</button>
+    </div>`).join('');
+}
+
+window.deleteTrip = async function(tripId) {
+  if (!confirm('Delete this trip and all its data?')) return;
+  await window._remove(window._ref(window._db, `trips/${tripId}`));
+  showToast('Trip deleted');
+};
+
+// ════════════════════════════════════════
+//  UTILITIES
+// ════════════════════════════════════════
+function getEmoji(text) {
+  if (!text) return '📍';
+  const t = text.toLowerCase();
+  if (t.includes('wine')||t.includes('tasting')||t.includes('domaine')||t.includes('château')||t.includes('chateau')) return '🍷';
+  if (t.includes('dinner')||t.includes('lunch')||t.includes('brasserie')||t.includes('restaurant')||t.includes('table')) return '🍽️';
+  if (t.includes('food tour')||t.includes('bakery')||t.includes('croissant')) return '🥐';
+  if (t.includes('cocktail')||t.includes('bar')) return '🍸';
+  if (t.includes('pool')||t.includes('relax')) return '🏊';
+  if (t.includes('drive')||t.includes('car')) return '🚗';
+  if (t.includes('bike')||t.includes('vélo')) return '🚲';
+  if (t.includes('land')||t.includes('arrive')||t.includes('flight')) return '🛬';
+  if (t.includes('beach')||t.includes('calanques')||t.includes('cassis')) return '🏖️';
+  if (t.includes('chapel')||t.includes('church')||t.includes('saint')) return '⛪';
+  if (t.includes('market')) return '🛍️';
+  if (t.includes('village')||t.includes('explore')||t.includes('tour')) return '🗺️';
+  if (t.includes('hotel')||t.includes('arrive to hotel')) return '🏨';
+  return '📍';
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+window.closeModal = function(e) {
+  if (e.target.id==='addTripModal') closeAddTripModal();
+};
+window.closeAddTripModal = function() {
+  document.getElementById('addTripModal').classList.remove('open');
+};
+</script>
+</body>
+</html>
