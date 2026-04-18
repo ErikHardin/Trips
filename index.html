@@ -525,13 +525,13 @@ body {
       <div class="admin-section-title">Add New Trip</div>
       <div class="admin-card">
         <label class="form-label">Trip Name</label>
-        <input class="form-input" id="newTripName" placeholder="e.g. France Spring 2025">
+        <input class="form-input" id="newTripName" placeholder="e.g. Italy Spring 2027">
         <label class="form-label">Year</label>
-        <input class="form-input" id="newTripYear" type="number" placeholder="2026">
+        <input class="form-input" id="newTripYear" type="number" placeholder="2027">
         <label class="form-label">Dates</label>
         <input class="form-input" id="newTripDates" placeholder="e.g. May 23 – Jun 7">
         <label class="form-label">Cover Emoji</label>
-        <input class="form-input" id="newTripEmoji" placeholder="🇫🇷" maxlength="4">
+        <input class="form-input" id="newTripEmoji" placeholder="🇮🇹" maxlength="4">
         <label class="form-label">Status</label>
         <select class="form-input" id="newTripStatus">
           <option value="upcoming">Upcoming</option>
@@ -547,28 +547,40 @@ body {
       <div class="admin-section-title">Import from Google Sheet</div>
       <div class="admin-card">
         <div class="csv-instructions">
-          Export your Google Sheet as <strong>CSV</strong>, then paste the contents below.<br><br>
+          In Google Sheets: <strong>File → Download → CSV</strong>, save to Files app, then pick it below.<br><br>
           Expected columns:<br>
-          <code>Date</code> · <code>Day</code> · <code>City</code> · <code>Hotel</code> · <code>Activities</code> · <code>Region</code> · <code>RegionColor</code>
+          <code>Date</code> · <code>Day</code> · <code>City</code> · <code>Hotel</code> · <code>Activities</code> · <code>Region</code> · <code>RegionColor</code><br><br>
+          Activities separated by <code>|</code> e.g. <code>Dinner at Soma|Wine tasting</code>
         </div>
         <label class="form-label">Select Trip to Import Into</label>
         <select class="form-input" id="importTripSelect"></select>
-        <label class="form-label">Paste CSV Data</label>
-        <textarea class="form-input form-textarea" id="csvData" placeholder="Date,Day,City,Hotel,Activities,Region,RegionColor&#10;24-May,Sunday,Lyon,Intercontinental Lyon Hotel Dieu,Land in afternoon|Wine at Octobre caviste|Dinner at Carmelo's,Lyon,#c06a3d"></textarea>
-        <button class="form-btn" onclick="importCSV()">Import Days</button>
+        <label class="form-label">Import Method</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button id="importMethodFile" class="form-btn" style="flex:1;padding:10px;" onclick="setImportMethod('file')">📁 Pick CSV File</button>
+          <button id="importMethodPaste" class="form-btn secondary" style="flex:1;padding:10px;" onclick="setImportMethod('paste')">📋 Paste CSV</button>
+        </div>
+        <div id="importFileSection">
+          <label class="photo-upload-btn" for="csvFileInput" style="margin-bottom:8px;display:flex;">📄 Choose CSV from Files</label>
+          <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none" onchange="handleCSVFile(event)">
+          <div id="csvFileNameDisplay" style="font-size:12px;color:var(--sage);padding:4px 0;min-height:18px;"></div>
+        </div>
+        <div id="importPasteSection" style="display:none;">
+          <textarea class="form-input form-textarea" id="csvData" placeholder="Date,Day,City,Hotel,Activities,Region,RegionColor&#10;24-May,Sunday,Lyon,Intercontinental Lyon Hotel Dieu,Land in afternoon|Wine at Octobre caviste,Lyon,#c06a3d"></textarea>
+        </div>
+        <button class="form-btn" style="margin-top:8px;" onclick="importCSV()">Import Days</button>
       </div>
     </div>
 
-    <!-- LOAD FRANCE 2025 DEMO -->
+    <!-- LOAD DEMO -->
     <div class="admin-section">
       <div class="admin-section-title">Load Demo Data</div>
       <div class="admin-card">
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Load the France 2025 trip from your Google Sheet as a starting point.</p>
-        <button class="form-btn secondary" onclick="loadDemoData()">Load France 2025 Demo</button>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Load the France 2026 trip from your Google Sheet as a starting point.</p>
+        <button class="form-btn secondary" onclick="loadDemoData()">Load France 2026 Demo</button>
       </div>
     </div>
 
-    <!-- DELETE TRIPS -->
+    <!-- MANAGE TRIPS -->
     <div class="admin-section" style="padding-bottom:20px;">
       <div class="admin-section-title">Manage Existing Trips</div>
       <div id="adminTripList"></div>
@@ -577,21 +589,93 @@ body {
   </div>
 </div>
 
-<!-- ══ ADD TRIP MODAL ══ -->
-<div class="modal-overlay" id="addTripModal" onclick="closeModal(event)">
-  <div class="modal-sheet">
+<!-- ══ EDIT TRIP SCREEN ══ -->
+<div id="screen-edit" class="screen">
+  <div class="app-header">
+    <button class="back-btn" onclick="showScreen('screen-admin')">‹</button>
+    <div class="header-titles">
+      <div class="header-eyebrow">Edit Trip</div>
+      <div class="header-main" id="editTripHeaderName">Trip</div>
+    </div>
+    <button class="header-action" onclick="saveEditedTrip()" style="font-size:15px;color:var(--terracotta);font-weight:500;">Save</button>
+  </div>
+  <div class="scroll-content">
+
+    <!-- TRIP DETAILS -->
+    <div class="admin-section">
+      <div class="admin-section-title">Trip Details</div>
+      <div class="admin-card">
+        <label class="form-label">Trip Name</label>
+        <input class="form-input" id="editTripName" placeholder="e.g. France Spring 2026">
+        <label class="form-label">Year</label>
+        <input class="form-input" id="editTripYear" type="number">
+        <label class="form-label">Dates</label>
+        <input class="form-input" id="editTripDates" placeholder="e.g. May 23 – Jun 7">
+        <label class="form-label">Cover Emoji</label>
+        <input class="form-input" id="editTripEmoji" maxlength="4">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="editTripStatus">
+          <option value="upcoming">Upcoming</option>
+          <option value="active">Active (in progress)</option>
+          <option value="past">Past</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- FLIGHTS -->
+    <div class="admin-section">
+      <div class="admin-section-title">Flights</div>
+      <div class="admin-card">
+        <label class="form-label">Outbound Flight Date</label>
+        <input class="form-input" id="editFlightOutDate" placeholder="e.g. May 23">
+        <label class="form-label">Outbound Flights (one per line)</label>
+        <textarea class="form-input" style="min-height:70px;" id="editFlightOut" placeholder="UA8087 DEN → YUL · 11:25am – 5:07pm&#10;UA8069 YUL → LYS · 10:30pm – 11:40am"></textarea>
+        <label class="form-label">Return Flight Date</label>
+        <input class="form-input" id="editFlightReturnDate" placeholder="e.g. Jun 7">
+        <label class="form-label">Return Flights (one per line)</label>
+        <textarea class="form-input" style="min-height:70px;" id="editFlightReturn" placeholder="AF1435 BER → CDG · 9:50am – 11:40am&#10;AF58 CDG → DEN · 1:25pm – 3:40pm"></textarea>
+        <button class="form-btn" onclick="saveEditedTrip()">Save Trip Details</button>
+      </div>
+    </div>
+
+    <!-- DAYS -->
+    <div class="admin-section" style="padding-bottom:20px;">
+      <div class="admin-section-title">Days & Activities</div>
+      <div id="editDaysList"></div>
+      <div style="padding:0 0 8px;">
+        <button class="form-btn secondary" onclick="addNewDay()">＋ Add Day</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ EDIT DAY MODAL ══ -->
+<div class="modal-overlay" id="editDayModal" onclick="closeEditDayModal(event)">
+  <div class="modal-sheet" style="max-height:85vh;">
     <div class="modal-handle"></div>
-    <div class="modal-title">New Trip</div>
-    <label class="form-label">Trip Name</label>
-    <input class="form-input" id="modalTripName" placeholder="e.g. Italy 2027">
-    <label class="form-label">Year</label>
-    <input class="form-input" id="modalTripYear" type="number" placeholder="2027">
-    <label class="form-label">Dates</label>
-    <input class="form-input" id="modalTripDates" placeholder="e.g. June 1–14">
-    <label class="form-label">Cover Emoji</label>
-    <input class="form-input" id="modalTripEmoji" placeholder="🇮🇹" maxlength="4">
-    <button class="form-btn" onclick="createTripFromModal()">Create Trip</button>
-    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeAddTripModal()">Cancel</button>
+    <div class="modal-title" id="editDayModalTitle">Edit Day</div>
+    <label class="form-label">Date Number</label>
+    <input class="form-input" id="editDayNum" placeholder="e.g. 24">
+    <label class="form-label">Month</label>
+    <input class="form-input" id="editDayMonth" placeholder="e.g. May">
+    <label class="form-label">Day of Week</label>
+    <input class="form-input" id="editDayName" placeholder="e.g. Sunday">
+    <label class="form-label">City</label>
+    <input class="form-input" id="editDayCity" placeholder="e.g. Lyon">
+    <label class="form-label">Hotel</label>
+    <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon">
+    <label class="form-label">Region</label>
+    <input class="form-input" id="editDayRegion" placeholder="e.g. Lyon">
+    <label class="form-label">Region Color</label>
+    <input class="form-input" id="editDayRegionColor" placeholder="#c06a3d" style="max-width:140px;">
+    <label class="form-label">Region Dates (optional)</label>
+    <input class="form-input" id="editDayRegionDates" placeholder="e.g. May 24–27">
+    <label class="form-label">Activities (one per line)</label>
+    <textarea class="form-input" style="min-height:100px;" id="editDayActivities" placeholder="Land in afternoon&#10;Wine at Octobre caviste&#10;Dinner at Carmelo's"></textarea>
+    <button class="form-btn" onclick="saveDayEdit()">Save Day</button>
+    <button class="form-btn secondary" style="margin-top:8px;" id="deleteDayBtn" onclick="deleteDay()">Delete Day</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeEditDayModalDirect()">Cancel</button>
   </div>
 </div>
 
@@ -665,6 +749,10 @@ function initApp() {
     renderHome();
     populateImportSelect();
     renderAdminTripList();
+    // Refresh edit days list if currently editing
+    if (editingTripId && allTrips[editingTripId]) {
+      renderEditDaysList(allTrips[editingTripId]);
+    }
   });
   goHome();
 }
@@ -1018,9 +1106,16 @@ window.createTrip = async function() {
 // ════════════════════════════════════════
 window.importCSV = async function() {
   const tripId = document.getElementById('importTripSelect').value;
-  const csv = document.getElementById('csvData').value.trim();
   if (!tripId) { showToast('Select a trip first'); return; }
-  if (!csv) { showToast('Paste CSV data first'); return; }
+
+  let csv = '';
+  if (csvImportMethod === 'file') {
+    if (!csvFileContent) { showToast('Pick a CSV file first'); return; }
+    csv = csvFileContent;
+  } else {
+    csv = document.getElementById('csvData').value.trim();
+    if (!csv) { showToast('Paste CSV data first'); return; }
+  }
 
   const lines = csv.split('\n').filter(l=>l.trim());
   const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
@@ -1032,7 +1127,7 @@ window.importCSV = async function() {
     const obj = {};
     header.forEach((h,i) => obj[h] = (cols[i]||'').trim());
 
-    const dateStr = obj['date'] || obj['a'] || '';
+    const dateStr = obj['date'] || '';
     const parts = dateStr.match(/(\d+)-?(\w+)/);
     const dateNum = parts ? parts[1] : dateStr;
     const dateMonth = parts ? parts[2] : '';
@@ -1042,11 +1137,12 @@ window.importCSV = async function() {
     const dayData = {
       dateNum, dateMonth,
       date: dateStr,
-      dayName: obj['day']||obj['b']||'',
-      city: obj['city']||obj['c']||'',
-      hotel: obj['hotel']||obj['d']||'',
-      region: obj['region']||obj['f']||'',
-      regionColor: obj['regioncolor']||obj['g']||'#c06a3d',
+      dayName: obj['day']||'',
+      city: obj['city']||'',
+      hotel: obj['hotel']||'',
+      region: obj['region']||'',
+      regionColor: obj['regioncolor']||'#c06a3d',
+      regionDates: obj['regiondates']||'',
       activities,
       sortOrder: sortOrder++
     };
@@ -1054,8 +1150,10 @@ window.importCSV = async function() {
     const dayRef = window._push(window._ref(window._db, `trips/${tripId}/days`));
     await window._set(dayRef, dayData);
   }
-  showToast(`Imported ${rows.length} days!`);
-  document.getElementById('csvData').value = '';
+  csvFileContent = null;
+  document.getElementById('csvFileNameDisplay').textContent = '';
+  document.getElementById('csvFileInput').value = '';
+  showToast(`Imported ${rows.length} days! ✓`);
 };
 
 function parseCSVRow(row) {
@@ -1142,12 +1240,13 @@ function renderAdminTripList() {
   const keys = Object.keys(allTrips);
   if (!keys.length) { list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:0 0 12px;">No trips yet.</p>'; return; }
   list.innerHTML = keys.map(k=>`
-    <div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;">
+    <div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;">
       <span style="font-size:22px;">${allTrips[k].emoji||'✈️'}</span>
-      <div style="flex:1;">
-        <div style="font-size:14px;font-weight:500;">${allTrips[k].name||'Untitled'}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${allTrips[k].name||'Untitled'}</div>
         <div style="font-size:12px;color:var(--muted);">${allTrips[k].year||''} · ${allTrips[k].dates||''}</div>
       </div>
+      <button onclick="openEditTrip('${k}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;">Edit</button>
       <button onclick="deleteTrip('${k}')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);">🗑️</button>
     </div>`).join('');
 }
@@ -1156,6 +1255,156 @@ window.deleteTrip = async function(tripId) {
   if (!confirm('Delete this trip and all its data?')) return;
   await window._remove(window._ref(window._db, `trips/${tripId}`));
   showToast('Trip deleted');
+};
+
+// ════════════════════════════════════════
+//  EDIT TRIP
+// ════════════════════════════════════════
+let editingTripId = null;
+let editingDayId = null;
+
+window.openEditTrip = function(tripId) {
+  editingTripId = tripId;
+  const trip = allTrips[tripId];
+  document.getElementById('editTripHeaderName').textContent = trip.name || 'Trip';
+  document.getElementById('editTripName').value = trip.name || '';
+  document.getElementById('editTripYear').value = trip.year || '';
+  document.getElementById('editTripDates').value = trip.dates || '';
+  document.getElementById('editTripEmoji').value = trip.emoji || '';
+  document.getElementById('editTripStatus').value = trip.status || 'upcoming';
+  document.getElementById('editFlightOutDate').value = trip.flightOutDate || '';
+  document.getElementById('editFlightOut').value = trip.flightOut || '';
+  document.getElementById('editFlightReturnDate').value = trip.flightReturnDate || '';
+  document.getElementById('editFlightReturn').value = trip.flightReturn || '';
+  renderEditDaysList(trip);
+  showScreen('screen-edit');
+};
+
+window.saveEditedTrip = async function() {
+  if (!editingTripId) return;
+  const updates = {
+    name: document.getElementById('editTripName').value.trim(),
+    year: parseInt(document.getElementById('editTripYear').value) || new Date().getFullYear(),
+    dates: document.getElementById('editTripDates').value.trim(),
+    emoji: document.getElementById('editTripEmoji').value.trim() || '✈️',
+    status: document.getElementById('editTripStatus').value,
+    flightOutDate: document.getElementById('editFlightOutDate').value.trim(),
+    flightOut: document.getElementById('editFlightOut').value.trim(),
+    flightReturnDate: document.getElementById('editFlightReturnDate').value.trim(),
+    flightReturn: document.getElementById('editFlightReturn').value.trim(),
+  };
+  // Preserve existing days
+  const existing = allTrips[editingTripId];
+  if (existing.days) updates.days = existing.days;
+  await window._set(window._ref(window._db, `trips/${editingTripId}`), updates);
+  showToast('Trip saved! ✓');
+  document.getElementById('editTripHeaderName').textContent = updates.name;
+};
+
+function renderEditDaysList(trip) {
+  const list = document.getElementById('editDaysList');
+  const days = trip.days ? Object.entries(trip.days) : [];
+  days.sort((a,b)=>(a[1].sortOrder||0)-(b[1].sortOrder||0));
+  if (!days.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:0 0 12px;">No days yet. Import a CSV or add days manually.</p>';
+    return;
+  }
+  list.innerHTML = days.map(([dayId, day])=>`
+    <div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:8px;">
+      <div style="text-align:center;min-width:36px;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;">${day.dateNum||'–'}</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">${day.dateMonth||''}</div>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${day.city||day.dayName||'Day'}</div>
+        <div style="font-size:11px;color:var(--muted);">${day.region||''} · ${day.hotel||'No hotel'}</div>
+      </div>
+      <button onclick="openEditDay('${dayId}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">Edit</button>
+    </div>`).join('');
+}
+
+window.addNewDay = async function() {
+  if (!editingTripId) return;
+  const days = allTrips[editingTripId].days || {};
+  const sortOrder = Object.keys(days).length;
+  const newRef = window._push(window._ref(window._db, `trips/${editingTripId}/days`));
+  await window._set(newRef, { dateNum:'', dateMonth:'', dayName:'', city:'', hotel:'', region:'', regionColor:'#c06a3d', activities:[], sortOrder });
+  showToast('New day added — tap Edit to fill it in');
+};
+
+window.openEditDay = function(dayId) {
+  editingDayId = dayId;
+  const trip = allTrips[editingTripId];
+  const day = trip.days[dayId];
+  document.getElementById('editDayModalTitle').textContent = `${day.dateNum||'New'} ${day.dateMonth||'Day'}`;
+  document.getElementById('editDayNum').value = day.dateNum || '';
+  document.getElementById('editDayMonth').value = day.dateMonth || '';
+  document.getElementById('editDayName').value = day.dayName || '';
+  document.getElementById('editDayCity').value = day.city || '';
+  document.getElementById('editDayHotel').value = day.hotel || '';
+  document.getElementById('editDayRegion').value = day.region || '';
+  document.getElementById('editDayRegionColor').value = day.regionColor || '#c06a3d';
+  document.getElementById('editDayRegionDates').value = day.regionDates || '';
+  const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+  document.getElementById('editDayActivities').value = acts.map(a => typeof a==='object' ? a.text : a).join('\n');
+  document.getElementById('editDayModal').classList.add('open');
+};
+
+window.saveDayEdit = async function() {
+  if (!editingTripId || !editingDayId) return;
+  const existing = allTrips[editingTripId].days[editingDayId];
+  const actLines = document.getElementById('editDayActivities').value.split('\n').map(l=>l.trim()).filter(Boolean);
+  const activities = actLines.map(text => ({ text, emoji: getEmoji(text) }));
+  const dayData = {
+    dateNum: document.getElementById('editDayNum').value.trim(),
+    dateMonth: document.getElementById('editDayMonth').value.trim(),
+    dayName: document.getElementById('editDayName').value.trim(),
+    city: document.getElementById('editDayCity').value.trim(),
+    hotel: document.getElementById('editDayHotel').value.trim(),
+    region: document.getElementById('editDayRegion').value.trim(),
+    regionColor: document.getElementById('editDayRegionColor').value.trim() || '#c06a3d',
+    regionDates: document.getElementById('editDayRegionDates').value.trim(),
+    activities,
+    sortOrder: existing.sortOrder || 0,
+    notes: existing.notes || null,
+  };
+  await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
+  closeEditDayModalDirect();
+  showToast('Day saved! ✓');
+};
+
+window.deleteDay = async function() {
+  if (!editingTripId || !editingDayId) return;
+  if (!confirm('Delete this day?')) return;
+  await window._remove(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`));
+  closeEditDayModalDirect();
+  showToast('Day deleted');
+};
+
+window.closeEditDayModal = function(e) { if (e.target.id==='editDayModal') closeEditDayModalDirect(); };
+window.closeEditDayModalDirect = function() { document.getElementById('editDayModal').classList.remove('open'); editingDayId = null; };
+
+// ════════════════════════════════════════
+//  CSV FILE PICKER
+// ════════════════════════════════════════
+let csvImportMethod = 'file';
+let csvFileContent = null;
+
+window.setImportMethod = function(method) {
+  csvImportMethod = method;
+  document.getElementById('importFileSection').style.display = method==='file' ? '' : 'none';
+  document.getElementById('importPasteSection').style.display = method==='paste' ? '' : 'none';
+  document.getElementById('importMethodFile').className = method==='file' ? 'form-btn' : 'form-btn secondary';
+  document.getElementById('importMethodPaste').className = method==='paste' ? 'form-btn' : 'form-btn secondary';
+};
+
+window.handleCSVFile = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('csvFileNameDisplay').textContent = '✓ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = ev => { csvFileContent = ev.target.result; };
+  reader.readAsText(file);
 };
 
 // ════════════════════════════════════════
@@ -1195,7 +1444,8 @@ window.closeModal = function(e) {
   if (e.target.id==='addTripModal') closeAddTripModal();
 };
 window.closeAddTripModal = function() {
-  document.getElementById('addTripModal').classList.remove('open');
+  const m = document.getElementById('addTripModal');
+  if (m) m.classList.remove('open');
 };
 </script>
 </body>
