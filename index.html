@@ -603,6 +603,7 @@ body {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
 import { getDatabase, ref, set, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAM2Bm8PgkCk6c6uAiySuclKLkIq06HMxQ",
@@ -618,10 +619,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const storage = getStorage(app);
+const auth = getAuth(app);
 
 // ── Expose to window ──
 window._db = db;
 window._storage = storage;
+window._auth = auth;
 window._ref = ref;
 window._sRef = sRef;
 window._set = set;
@@ -631,6 +634,7 @@ window._remove = remove;
 window._get = get;
 window._uploadBytes = uploadBytes;
 window._getDownloadURL = getDownloadURL;
+window._signInAnonymously = signInAnonymously;
 
 // ── Bootstrap ──
 window.addEventListener('load', () => { initApp(); });
@@ -689,8 +693,13 @@ window.pinKey = function(digit) {
   pinEntry += digit;
   updatePinDots();
   if (pinEntry.length === 4) {
-    setTimeout(() => {
+    setTimeout(async () => {
       if (pinEntry === PIN) {
+        try {
+          await window._signInAnonymously(window._auth);
+        } catch(e) {
+          console.warn('Auth error:', e);
+        }
         isAdmin = true;
         showScreen('screen-admin');
         document.getElementById('tripAdminBtn').style.display = '';
