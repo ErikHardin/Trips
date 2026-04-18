@@ -264,9 +264,33 @@ body {
   font-size: 13px; color: var(--muted);
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
+.photo-preview-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+}
+.photo-preview-item {
+  position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+}
+.photo-preview-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-preview-item .photo-remove {
+  position: absolute; top: 4px; right: 4px;
+  background: rgba(0,0,0,0.55); color: white; border: none;
+  border-radius: 50%; width: 22px; height: 22px; font-size: 14px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
 .photo-preview-wrap { margin-top: 8px; position: relative; display: inline-block; }
 .photo-preview { max-width: 100%; max-height: 160px; border-radius: 10px; display: block; }
 .photo-remove { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* Note card photo grid */
+.note-photos-grid {
+  display: grid; gap: 3px;
+}
+.note-photos-grid.count-1 { grid-template-columns: 1fr; }
+.note-photos-grid.count-2 { grid-template-columns: 1fr 1fr; }
+.note-photos-grid.count-3 { grid-template-columns: 1fr 1fr 1fr; }
+.note-photos-grid.count-many { grid-template-columns: 1fr 1fr; }
+.note-photos-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: pointer; }
+.note-photos-grid.count-1 img { aspect-ratio: 4/3; max-height: 240px; }
 .save-note-btn {
   width: 100%; margin-top: 10px;
   padding: 12px; background: var(--terracotta);
@@ -498,12 +522,13 @@ body {
     <div class="add-note-form">
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
-      <label class="photo-upload-btn" for="photoInput">📷 Add Photo</label>
-      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(event)">
-      <div id="photoPreviewWrap" style="display:none;" class="photo-preview-wrap">
-        <img id="photoPreview" class="photo-preview" src="" alt="">
-        <button class="photo-remove" onclick="removePhoto()">×</button>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <label class="photo-upload-btn" for="photoInputCamera" style="flex:1;margin:0;">📷 Camera</label>
+        <label class="photo-upload-btn" for="photoInputLibrary" style="flex:1;margin:0;">🖼️ Library</label>
       </div>
+      <input type="file" id="photoInputCamera" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(event)">
+      <input type="file" id="photoInputLibrary" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
+      <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
       <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
     </div>
   </div>
@@ -735,7 +760,7 @@ let allTrips = {};
 let currentTripId = null;
 let currentActivityKey = null;
 let currentDayKey = null;
-let selectedPhotoFile = null;
+let selectedPhotoFiles = [];  // multi-photo array
 let notesUnsubscribe = null;
 
 // ════════════════════════════════════════
@@ -1004,7 +1029,7 @@ window.openNotes = function(dayId, actKey, actText) {
   document.getElementById('notesScreenTitle').textContent = actText.length>30 ? actText.slice(0,30)+'…' : actText;
   document.getElementById('notesActivityTitle').textContent = actText;
   document.getElementById('noteText').value = '';
-  removePhoto();
+  clearPhotos();
   renderNotesList(dayId, actKey);
   showScreen('screen-notes');
 };
@@ -1022,41 +1047,57 @@ function renderNotesList(dayId, actKey) {
       list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet — be the first to add one!</div>';
       return;
     }
-    list.innerHTML = entries.map(n => `
-      <div class="note-card">
-        ${n.photoUrl ? `<img class="note-card-photo" src="${n.photoUrl}" alt="Photo">` : ''}
-        <div class="note-card-body">
-          ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
-          <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-        </div>
-      </div>`).join('');
+    list.innerHTML = entries.map(n => {
+      const photos = n.photoUrls ? Object.values(n.photoUrls) : (n.photoUrl ? [n.photoUrl] : []);
+      const count = photos.length;
+      const gridClass = count===1?'count-1':count===2?'count-2':count===3?'count-3':'count-many';
+      const photosHTML = count > 0 ? `
+        <div class="note-photos-grid ${gridClass}">
+          ${photos.map(url=>`<img src="${url}" alt="Photo" onclick="openPhotoViewer('${url}')">`).join('')}
+        </div>` : '';
+      return `
+        <div class="note-card">
+          ${photosHTML}
+          <div class="note-card-body">
+            ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
+            <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+          </div>
+        </div>`;
+    }).join('');
   });
 }
 
 window.saveNote = async function() {
   const text = document.getElementById('noteText').value.trim();
-  if (!text && !selectedPhotoFile) { showToast('Add a note or photo first'); return; }
+  if (!text && selectedPhotoFiles.length === 0) { showToast('Add a note or photo first'); return; }
 
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true;
-  btn.innerHTML = '<div class="loading-spinner"></div>';
+  btn.innerHTML = selectedPhotoFiles.length > 0
+    ? `<div class="loading-spinner"></div> Uploading ${selectedPhotoFiles.length} photo${selectedPhotoFiles.length>1?'s':''}…`
+    : '<div class="loading-spinner"></div>';
 
   try {
-    let photoUrl = null;
-    if (selectedPhotoFile) {
-      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${selectedPhotoFile.name}`;
+    const photoUrls = {};
+    for (let i = 0; i < selectedPhotoFiles.length; i++) {
+      const file = selectedPhotoFiles[i];
+      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}_${file.name}`;
       const storageRef = window._sRef(window._storage, storePath);
-      const snap = await window._uploadBytes(storageRef, selectedPhotoFile);
-      photoUrl = await window._getDownloadURL(snap.ref);
+      const snap = await window._uploadBytes(storageRef, file);
+      photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
     }
 
     const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}`;
     const newRef = window._push(window._ref(window._db, notePath));
-    await window._set(newRef, { text, photoUrl, ts: Date.now() });
+    await window._set(newRef, {
+      text,
+      photoUrls: Object.keys(photoUrls).length > 0 ? photoUrls : null,
+      ts: Date.now()
+    });
 
     document.getElementById('noteText').value = '';
-    removePhoto();
-    showToast('Memory saved! 📸');
+    clearPhotos();
+    showToast(selectedPhotoFiles.length > 0 ? `Memory saved with ${Object.keys(photoUrls).length} photo${Object.keys(photoUrls).length>1?'s':''}! 📸` : 'Memory saved!');
   } catch(e) {
     showToast('Error saving — try again');
     console.error(e);
@@ -1067,21 +1108,58 @@ window.saveNote = async function() {
 };
 
 window.handlePhotoSelect = function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  selectedPhotoFile = file;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    document.getElementById('photoPreview').src = ev.target.result;
-    document.getElementById('photoPreviewWrap').style.display = '';
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  files.forEach(file => {
+    if (selectedPhotoFiles.length >= 10) { showToast('Max 10 photos per memory'); return; }
+    selectedPhotoFiles.push(file);
+    const reader = new FileReader();
+    reader.onload = ev => addPhotoPreview(ev.target.result, selectedPhotoFiles.length - 1);
+    reader.readAsDataURL(file);
+  });
+  e.target.value = ''; // allow re-selecting same file
 };
 
-window.removePhoto = function() {
-  selectedPhotoFile = null;
-  document.getElementById('photoPreviewWrap').style.display = 'none';
-  document.getElementById('photoInput').value = '';
+function addPhotoPreview(src, index) {
+  const grid = document.getElementById('photoPreviewGrid');
+  grid.style.display = '';
+  if (!grid.classList.contains('photo-preview-grid')) grid.className = 'photo-preview-grid';
+  const item = document.createElement('div');
+  item.className = 'photo-preview-item';
+  item.dataset.index = index;
+  item.innerHTML = `<img src="${src}" alt=""><button class="photo-remove" onclick="removePhoto(${index})">×</button>`;
+  grid.appendChild(item);
+}
+
+window.removePhoto = function(index) {
+  selectedPhotoFiles.splice(index, 1);
+  // Re-render all previews
+  const grid = document.getElementById('photoPreviewGrid');
+  grid.innerHTML = '';
+  if (selectedPhotoFiles.length === 0) { grid.style.display = 'none'; return; }
+  selectedPhotoFiles.forEach((file, i) => {
+    const reader = new FileReader();
+    reader.onload = ev => addPhotoPreview(ev.target.result, i);
+    reader.readAsDataURL(file);
+  });
+};
+
+function clearPhotos() {
+  selectedPhotoFiles = [];
+  const grid = document.getElementById('photoPreviewGrid');
+  grid.innerHTML = '';
+  grid.style.display = 'none';
+  document.getElementById('photoInputCamera').value = '';
+  document.getElementById('photoInputLibrary').value = '';
+}
+
+// Full-screen photo viewer
+window.openPhotoViewer = function(url) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:500;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;" alt="Photo"><button style="position:absolute;top:20px;right:20px;background:none;border:none;color:white;font-size:32px;cursor:pointer;line-height:1;">×</button>`;
+  overlay.onclick = () => document.body.removeChild(overlay);
+  document.body.appendChild(overlay);
 };
 
 // ════════════════════════════════════════
