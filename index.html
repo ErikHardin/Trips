@@ -526,7 +526,7 @@ body {
         <label class="photo-upload-btn" for="photoInputCamera" style="flex:1;margin:0;">📷 Camera</label>
         <label class="photo-upload-btn" for="photoInputLibrary" style="flex:1;margin:0;">🖼️ Library</label>
       </div>
-      <input type="file" id="photoInputCamera" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(event)">
+      <input type="file" id="photoInputCamera" accept="image/*" capture="user" style="display:none" onchange="handlePhotoSelect(event)">
       <input type="file" id="photoInputLibrary" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
       <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
       <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
@@ -1073,15 +1073,23 @@ window.saveNote = async function() {
 
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true;
-  btn.innerHTML = selectedPhotoFiles.length > 0
-    ? `<div class="loading-spinner"></div> Uploading ${selectedPhotoFiles.length} photo${selectedPhotoFiles.length>1?'s':''}…`
+  const photoCount = selectedPhotoFiles.length; // capture before async ops
+  btn.innerHTML = photoCount > 0
+    ? `<div class="loading-spinner"></div> Uploading ${photoCount} photo${photoCount>1?'s':''}…`
     : '<div class="loading-spinner"></div>';
 
   try {
+    // Ensure authenticated (needed for writes even for non-admin)
+    if (!window._auth.currentUser) {
+      await window._signInAnonymously(window._auth);
+    }
+
     const photoUrls = {};
     for (let i = 0; i < selectedPhotoFiles.length; i++) {
       const file = selectedPhotoFiles[i];
-      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}_${file.name}`;
+      // Sanitize filename - remove spaces and special chars
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}_${safeName}`;
       const storageRef = window._sRef(window._storage, storePath);
       const snap = await window._uploadBytes(storageRef, file);
       photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
@@ -1090,17 +1098,17 @@ window.saveNote = async function() {
     const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}`;
     const newRef = window._push(window._ref(window._db, notePath));
     await window._set(newRef, {
-      text,
+      text: text || null,
       photoUrls: Object.keys(photoUrls).length > 0 ? photoUrls : null,
       ts: Date.now()
     });
 
     document.getElementById('noteText').value = '';
     clearPhotos();
-    showToast(selectedPhotoFiles.length > 0 ? `Memory saved with ${Object.keys(photoUrls).length} photo${Object.keys(photoUrls).length>1?'s':''}! 📸` : 'Memory saved!');
+    showToast(photoCount > 0 ? `Saved with ${photoCount} photo${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
   } catch(e) {
-    showToast('Error saving — try again');
-    console.error(e);
+    showToast('Error saving — check connection');
+    console.error('saveNote error:', e);
   }
 
   btn.disabled = false;
