@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Hardin Trips</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root {
   --cream: #faf8f4;
@@ -350,7 +352,17 @@ body {
   display:flex; align-items:center; gap:6px;
   background:var(--cream); border-radius:10px; padding:8px 10px;
   border:1px solid var(--border);
+  transition: opacity 0.15s, box-shadow 0.15s;
+  cursor: default;
 }
+.act-row.dragging { opacity:0.4; }
+.act-row.drag-over { box-shadow: 0 0 0 2px var(--terracotta); background: var(--terracotta-light); }
+.act-drag-handle {
+  font-size:16px; color:var(--sand-dark); cursor:grab; flex-shrink:0;
+  padding:2px 4px; line-height:1; touch-action:none;
+  -webkit-user-select:none; user-select:none;
+}
+.act-drag-handle:active { cursor:grabbing; }
 .act-emoji-btn {
   font-size:20px; background:none; border:none; cursor:pointer;
   padding:2px 4px; border-radius:6px; flex-shrink:0;
@@ -511,6 +523,7 @@ body {
         <span id="secretHardinBtn" onclick="handleSecretTap()" style="cursor:default;-webkit-user-select:none;user-select:none;"><em>Hardin</em></span> Trips
       </div>
     </div>
+    <button class="header-action" onclick="showWorldMap()" title="World Map" style="font-size:22px;">🌏</button>
     <button class="header-action" id="adminNavBtn" onclick="showScreen('screen-admin')" style="display:none;" title="Admin">⚙️</button>
     <button class="header-action" id="lockBtn" onclick="lockApp()" style="display:none;font-size:15px;color:var(--muted);" title="Lock">🔒</button>
   </div>
@@ -526,6 +539,21 @@ body {
       <div class="empty-state-text">No trips yet — add your first!</div>
     </div>
   </div>
+</div>
+
+<!-- ══ WORLD MAP SCREEN ══ -->
+<div id="screen-worldmap" class="screen">
+  <div class="app-header">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="header-titles">
+      <div class="header-eyebrow">All Trips</div>
+      <div class="header-main">World Map</div>
+    </div>
+  </div>
+  <div id="worldMapContainer" style="flex:1;position:relative;">
+    <div id="worldMap" style="width:100%;height:100%;"></div>
+  </div>
+  <div id="worldMapStats" style="padding:12px 16px;background:var(--warm-white);border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:16px;flex-shrink:0;"></div>
 </div>
 
 <!-- ══ TRIP DETAIL SCREEN ══ -->
@@ -1104,17 +1132,18 @@ function renderTripOverview(trip) {
   const days = trip.days ? Object.values(trip.days) : [];
   const nights = days.length;
   const hotels = [...new Set(days.map(d=>d.hotel).filter(Boolean))];
-  const tastings = days.reduce((n,d)=>{
-    const acts = d.activities ? (Array.isArray(d.activities)?d.activities:Object.values(d.activities)) : [];
-    return n + acts.filter(a=>(typeof a==='string'?a:a.text||'').toLowerCase().includes('tasting')).length;
-  },0);
+  const cities = [...new Set(days.map(d=>d.city).filter(c=>c&&!c.includes('Flight')&&!c.includes('Home')))];
+  const regions = [...new Set(days.map(d=>d.region).filter(Boolean))];
 
   panel.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-num">${nights}</div><div class="stat-label">Nights</div></div>
       <div class="stat-card"><div class="stat-num">${hotels.length}</div><div class="stat-label">Hotels</div></div>
-      <div class="stat-card"><div class="stat-num">${tastings||'–'}</div><div class="stat-label">Tastings</div></div>
+      <div class="stat-card"><div class="stat-num">${regions.length||cities.length}</div><div class="stat-label">Regions</div></div>
       <div class="stat-card"><div class="stat-num">${trip.year||'–'}</div><div class="stat-label">Year</div></div>
+    </div>
+    <div id="tripMapContainer" style="margin:0 16px 16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);height:240px;background:var(--sand);display:flex;align-items:center;justify-content:center;">
+      <div id="tripMap" style="width:100%;height:100%;"></div>
     </div>
     <div style="padding:4px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Where you're staying</div>
     <div>${hotels.map((h,i)=>`
@@ -1123,6 +1152,9 @@ function renderTripOverview(trip) {
         <div><div class="hotel-row-name">${h}</div></div>
       </div>`).join('')}
     </div>`;
+
+  // Build trip map after DOM is ready
+  setTimeout(() => initTripMap(trip), 100);
 }
 
 window.toggleDay = function(id) {
@@ -1653,22 +1685,123 @@ window.addActivityRow = function(act) {
   const time  = (act && act.time)  ? act.time  : '';
   const row = document.createElement('div');
   row.className = 'act-row';
+  row.draggable = true;
   row.dataset.idx = idx;
   row.innerHTML = `
+    <span class="act-drag-handle" title="Drag to reorder">⠿</span>
     <button class="act-emoji-btn" onclick="openEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
     <input class="act-text-input" placeholder="Activity name" value="${escHtml(text)}">
     <input class="act-time-input" placeholder="Time" value="${escHtml(time)}">
     <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>`;
+
+  // Desktop drag-and-drop
+  row.addEventListener('dragstart', onDragStart);
+  row.addEventListener('dragover',  onDragOver);
+  row.addEventListener('dragleave', onDragLeave);
+  row.addEventListener('drop',      onDrop);
+  row.addEventListener('dragend',   onDragEnd);
+
+  // Touch drag-and-drop
+  row.addEventListener('touchstart', onTouchStart, {passive:true});
+  row.addEventListener('touchmove',  onTouchMove,  {passive:false});
+  row.addEventListener('touchend',   onTouchEnd,   {passive:true});
+
   container.appendChild(row);
 };
 
-window.removeActivityRow = function(btn) {
-  btn.closest('.act-row').remove();
-  // Re-index for emoji picker
+// ── Drag state ──
+let dragSrc = null;
+
+function reindexRows() {
   document.querySelectorAll('#editActivityRows .act-row').forEach((r,i) => {
     r.dataset.idx = i;
     r.querySelector('.act-emoji-btn').setAttribute('onclick', `openEmojiPicker(${i})`);
   });
+}
+
+function onDragStart(e) {
+  dragSrc = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (this !== dragSrc) this.classList.add('drag-over');
+}
+function onDragLeave() { this.classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  this.classList.remove('drag-over');
+  if (this === dragSrc) return;
+  const container = document.getElementById('editActivityRows');
+  const rows = [...container.children];
+  const srcIdx = rows.indexOf(dragSrc);
+  const tgtIdx = rows.indexOf(this);
+  if (srcIdx < tgtIdx) container.insertBefore(dragSrc, this.nextSibling);
+  else container.insertBefore(dragSrc, this);
+  reindexRows();
+}
+function onDragEnd() {
+  this.classList.remove('dragging');
+  document.querySelectorAll('.act-row').forEach(r => r.classList.remove('drag-over'));
+  dragSrc = null;
+}
+
+// ── Touch drag ──
+let touchDragSrc = null, touchClone = null, touchOffsetY = 0;
+
+function onTouchStart(e) {
+  // Only drag from the handle
+  if (!e.target.classList.contains('act-drag-handle')) return;
+  touchDragSrc = this;
+  const touch = e.touches[0];
+  const rect = this.getBoundingClientRect();
+  touchOffsetY = touch.clientY - rect.top;
+  touchClone = this.cloneNode(true);
+  touchClone.style.cssText = `position:fixed;left:${rect.left}px;width:${rect.width}px;opacity:0.85;z-index:999;pointer-events:none;border-radius:10px;background:var(--warm-white);box-shadow:0 4px 16px rgba(0,0,0,0.2);`;
+  touchClone.style.top = (touch.clientY - touchOffsetY) + 'px';
+  document.body.appendChild(touchClone);
+  this.classList.add('dragging');
+}
+function onTouchMove(e) {
+  if (!touchDragSrc || !touchClone) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  touchClone.style.top = (touch.clientY - touchOffsetY) + 'px';
+  // Find row under finger
+  touchClone.style.display = 'none';
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  touchClone.style.display = '';
+  const targetRow = el ? el.closest('.act-row') : null;
+  document.querySelectorAll('.act-row').forEach(r => r.classList.remove('drag-over'));
+  if (targetRow && targetRow !== touchDragSrc) targetRow.classList.add('drag-over');
+}
+function onTouchEnd(e) {
+  if (!touchDragSrc || !touchClone) return;
+  const touch = e.changedTouches[0];
+  touchClone.style.display = 'none';
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  touchClone.style.display = '';
+  const targetRow = el ? el.closest('.act-row') : null;
+  if (targetRow && targetRow !== touchDragSrc) {
+    const container = document.getElementById('editActivityRows');
+    const rows = [...container.children];
+    const srcIdx = rows.indexOf(touchDragSrc);
+    const tgtIdx = rows.indexOf(targetRow);
+    if (srcIdx < tgtIdx) container.insertBefore(touchDragSrc, targetRow.nextSibling);
+    else container.insertBefore(touchDragSrc, targetRow);
+    reindexRows();
+  }
+  document.querySelectorAll('.act-row').forEach(r => r.classList.remove('drag-over', 'dragging'));
+  touchClone.remove();
+  touchClone = null;
+  touchDragSrc = null;
+}
+
+window.removeActivityRow = function(btn) {
+  btn.closest('.act-row').remove();
+  reindexRows();
 };
 
 window.saveDayEdit = async function() {
@@ -1856,7 +1989,146 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2800);
 }
 
-window.closeModal = function(e) {
+// ════════════════════════════════════════
+//  MAPS
+// ════════════════════════════════════════
+
+// Known city coordinates to avoid geocoding API calls
+const CITY_COORDS = {
+  'lyon':[-0,45.75,4.85],'franschhoek':[-1,33.91,19.12],'stellenbosch':[-1,33.93,18.86],
+  'cape town':[-1,33.93,18.42],'hluhluwe':[-1,28.02,32.27],'new york':[1,40.71,-74.01],
+  'dubai':[1,25.2,55.27],'maldives':[1,3.2,73.22],'washington dc':[1,38.91,-77.04],
+  'lake como':[1,46.0,9.27],'portofino':[1,44.3,9.21],'piedmont':[1,44.7,8.0],
+  'milan':[1,45.46,9.19],'loire valley':[1,47.5,0.5],'burgundy':[1,47.05,4.85],
+  'alsace':[1,48.32,7.44],'champagne':[1,49.26,4.03],'paris':[1,48.85,2.35],
+  'london':[1,51.51,-0.13],'singapore':[1,1.35,103.82],'koh lanta':[1,7.53,99.05],
+  'chiang mai':[1,18.79,98.98],'bangkok':[1,13.75,100.5],'hoi an':[1,15.88,108.34],
+  'hanoi':[1,21.03,105.85],'halong bay':[1,20.91,107.18],'bay of islands':[1,-35.22,174.1],
+  'auckland':[1,-36.86,174.77],'havelock north':[1,-39.65,176.88],'wellington':[1,-41.29,174.78],
+  'marahau':[1,-40.99,172.99],'queenstown':[1,-45.03,168.66],'luz lagos':[1,37.08,-8.73],
+  'porto':[1,41.16,-8.62],'douro valley':[1,41.16,-7.75],'lisbon':[1,38.72,-9.14],
+  'berlin':[1,52.52,13.4],'cannes':[1,43.55,7.01],'bandol':[1,43.14,5.75],
+  'luberon':[1,43.82,5.45],'stellenbosch':[-1,33.93,18.86],
+};
+
+function getCityCoords(cityName) {
+  if (!cityName) return null;
+  const key = cityName.toLowerCase().replace(/[🛬🚗✈️]/g,'').trim();
+  for (const [k,v] of Object.entries(CITY_COORDS)) {
+    if (key.includes(k)) return [v[1], v[2]];
+  }
+  return null;
+}
+
+let tripMapInstance = null;
+let worldMapInstance = null;
+
+function initTripMap(trip) {
+  const el = document.getElementById('tripMap');
+  if (!el) return;
+
+  if (tripMapInstance) { tripMapInstance.remove(); tripMapInstance = null; }
+
+  const days = trip.days ? Object.values(trip.days) : [];
+  const points = [];
+  const seen = new Set();
+
+  days.forEach(day => {
+    if (!day.city || day.city.includes('Flight') || day.city.includes('Home')) return;
+    const coords = getCityCoords(day.city);
+    if (!coords) return;
+    const key = coords.join(',');
+    if (seen.has(key)) return;
+    seen.add(key);
+    const region = day.region || '';
+    const color = day.regionColor || '#c06a3d';
+    points.push({ coords, city: day.city.replace(/[🛬🚗✈️]/g,'').trim(), color, region });
+  });
+
+  if (points.length === 0) {
+    el.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-style:italic;">No mapped cities yet</div>';
+    return;
+  }
+
+  tripMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; CartoDB', maxZoom: 14
+  }).addTo(tripMapInstance);
+
+  const bounds = [];
+  points.forEach(p => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:12px;height:12px;border-radius:50%;background:${p.color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
+      iconSize: [12,12], iconAnchor: [6,6]
+    });
+    L.marker(p.coords, {icon}).addTo(tripMapInstance)
+      .bindPopup(`<strong>${p.city}</strong>${p.region ? '<br><span style="color:#8a7e72;font-size:12px;">'+p.region+'</span>' : ''}`);
+    bounds.push(p.coords);
+  });
+
+  if (bounds.length === 1) {
+    tripMapInstance.setView(bounds[0], 8);
+  } else {
+    tripMapInstance.fitBounds(bounds, { padding: [30,30] });
+  }
+}
+
+window.showWorldMap = function() {
+  showScreen('screen-worldmap');
+  setTimeout(initWorldMap, 150);
+};
+
+function initWorldMap() {
+  const el = document.getElementById('worldMap');
+  if (!el) return;
+  if (worldMapInstance) { worldMapInstance.remove(); worldMapInstance = null; }
+
+  worldMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; CartoDB', maxZoom: 14
+  }).addTo(worldMapInstance);
+
+  const allPoints = [];
+  const seen = new Set();
+  const tripColors = ['#c06a3d','#6d9b72','#4a7fb5','#8a6aad','#b8943f','#c45c7a','#5a7a8a'];
+  let tripIdx = 0;
+
+  Object.values(allTrips).forEach(trip => {
+    const color = tripColors[tripIdx % tripColors.length];
+    tripIdx++;
+    const days = trip.days ? Object.values(trip.days) : [];
+    days.forEach(day => {
+      if (!day.city || day.city.includes('Flight') || day.city.includes('Home')) return;
+      const coords = getCityCoords(day.city);
+      if (!coords) return;
+      const key = coords.join(',');
+      if (seen.has(key)) return;
+      seen.add(key);
+      allPoints.push({ coords, city: day.city.replace(/[🛬🚗✈️]/g,'').trim(), trip: trip.name, color });
+    });
+  });
+
+  const statsEl = document.getElementById('worldMapStats');
+  statsEl.innerHTML = `<span>📍 <strong>${allPoints.length}</strong> cities</span><span>✈️ <strong>${Object.keys(allTrips).length}</strong> trips</span>`;
+
+  if (allPoints.length === 0) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No mapped cities yet</div>';
+    return;
+  }
+
+  allPoints.forEach(p => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:11px;height:11px;border-radius:50%;background:${p.color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
+      iconSize: [11,11], iconAnchor: [5.5,5.5]
+    });
+    L.marker(p.coords, {icon}).addTo(worldMapInstance)
+      .bindPopup(`<strong>${p.city}</strong><br><span style="color:#8a7e72;font-size:12px;">${p.trip}</span>`);
+  });
+
+  worldMapInstance.fitBounds(allPoints.map(p=>p.coords), { padding: [30,30] });
+}
   if (e.target.id==='addTripModal') closeAddTripModal();
 };
 window.closeAddTripModal = function() {
