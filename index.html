@@ -6,7 +6,6 @@
 <title>Hardin Trips</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root {
   --cream: #faf8f4;
@@ -2129,6 +2128,8 @@ function initWorldMap() {
 
   worldMapInstance.fitBounds(allPoints.map(p=>p.coords), { padding: [30,30] });
 }
+
+window.closeModal = function(e) {
   if (e.target.id==='addTripModal') closeAddTripModal();
 };
 window.closeAddTripModal = function() {
@@ -2136,5 +2137,6 @@ window.closeAddTripModal = function() {
   if (m) m.classList.remove('open');
 };
 </script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>
