@@ -615,6 +615,8 @@ body {
     <div class="admin-section">
       <div class="admin-section-title">AI Trip Assistant</div>
       <div class="admin-card">
+        <label class="form-label">API Key (session only, never saved)</label>
+        <input class="form-input" id="aiApiKey" type="password" placeholder="sk-ant-api03-...">
         <label class="form-label">Trip</label>
         <select class="form-input" id="aiTripSelect">
           <option value="">— Select a trip —</option>
@@ -2181,6 +2183,8 @@ window.closeAddTripModal = function() {
 let pendingAIChanges = null;
 
 window.runAIAssistant = async function() {
+  const apiKey = document.getElementById('aiApiKey').value.trim();
+  if (!apiKey) { showToast('Enter your API key first'); return; }
   const selectedTripId = document.getElementById('aiTripSelect').value;
   const input = document.getElementById('aiInput').value.trim();
   if (!selectedTripId) { showToast('Select a trip first'); return; }
@@ -2238,7 +2242,7 @@ If day not found set changes:[] and explain in summary.`;
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': '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',
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
