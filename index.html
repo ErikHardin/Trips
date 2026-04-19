@@ -1190,17 +1190,16 @@ function renderTripItinerary(trip) {
       const emoji = typeof a==='object' && a.emoji ? a.emoji : getEmoji(text);
       const time = typeof a==='object' && a.time ? a.time : '';
       const michelin = typeof a==='object' && a.michelin;
-      // Append city for local context, bias Google results to trip country
+      // Build search URL and store in data attribute to avoid apostrophe/quote issues in onclick
       const cityClean = (day.city||'').replace(/[🛬🚗✈️🏠]/g,'').trim();
       const searchQ = cityClean ? text + ' ' + cityClean : text;
-      const countryCode = getCityCountryCode(day.city||"");
+      const countryCode = getCityCountryCode(day.city||'');
       const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQ) + (countryCode ? '&gl=' + countryCode : '');
-      // Use data attributes to avoid apostrophe/quote breaking onclick
       return `
-        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-text="${escAttr(text)}">
+        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-text="${escAttr(text)}" data-search="${escAttr(searchUrl)}">
           <div class="activity-emoji">${emoji}</div>
           <div style="flex:1;min-width:0;">
-            <div class="activity-text" onclick="window.open('${searchUrl}','_blank')" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
+            <div class="activity-text" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
             ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
           </div>
           <button class="notes-open-btn" title="Notes & Photos"
@@ -2236,6 +2235,16 @@ document.addEventListener('change', function(e) {
   }
 });
 document.addEventListener('click', function(e) {
+  // Activity text → Google search
+  const actText = e.target.closest('.activity-text');
+  if (actText) {
+    const item = actText.closest('.activity-item');
+    if (item && item.dataset.search) {
+      window.open(item.dataset.search, '_blank');
+      return;
+    }
+  }
+  // Notes button
   const btn = e.target.closest('.notes-open-btn');
   if (!btn) return;
   const item = btn.closest('.activity-item');
