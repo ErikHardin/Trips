@@ -2214,8 +2214,8 @@ window.runAIAssistant = async function() {
       const acts = day.activities
         ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
         : [];
-      const actStr = acts.map((a,i) => `${i}:${a.text||a}${a.time?'@'+a.time:''}`).join(' | ');
-      return `  D:${did} ${day.dateNum||''}${day.dateMonth||''} ${day.dayName||''} | ${day.city||''} | ${day.hotel||''} | [${actStr}]`;
+      const actStr = acts.map((a,i) => `[${i}] ${a.text||a}${a.time?' @'+a.time:''}`).join(' | ');
+      return `DAY_ID="${did}" date="${day.dateNum||''}${day.dateMonth||''}" weekday="${day.dayName||''}" city="${day.city||''}" hotel="${day.hotel||''}"\n    activities: ${actStr||'none'}`;
     }).join('\n');
 
   const tripContext = `TRIP id:${selectedTripId} "${trip.name}" ${trip.year}
@@ -2231,15 +2231,17 @@ ${dayLines}`;
 SELECTED TRIP DATA:
 ${tripContext}
 
+CRITICAL: Each day above shows DAY_ID="..." — you MUST copy that exact string (including dashes) into the dayId field. Never guess or shorten it.
+
 JSON format:
 {"summary":"what you are doing","changes":[...]}
 
 Change types:
 {"type":"update_trip_field","tripId":"${selectedTripId}","field":"flightOut|flightReturn|flightOutDate|flightReturnDate|name|dates","value":"..."}
-{"type":"add_activity","tripId":"${selectedTripId}","dayId":"D_ID","activity":{"text":"...","emoji":"...","time":"..."}}
-{"type":"update_activity","tripId":"${selectedTripId}","dayId":"D_ID","activityIndex":0,"activity":{"text":"...","emoji":"...","time":"..."}}
-{"type":"remove_activity","tripId":"${selectedTripId}","dayId":"D_ID","activityIndex":0}
-{"type":"update_day_field","tripId":"${selectedTripId}","dayId":"D_ID","field":"city|hotel|region","value":"..."}
+{"type":"add_activity","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","activity":{"text":"...","emoji":"...","time":"..."}}
+{"type":"update_activity","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","activityIndex":0,"activity":{"text":"...","emoji":"...","time":"..."}}
+{"type":"remove_activity","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","activityIndex":0}
+{"type":"update_day_field","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","field":"city|hotel|region","value":"..."}
 
 Emoji guide: 🍽️ dinner/lunch, 🍷 wine/tasting, 🥾 hike, 🏖️ beach, ✈️ flight, 🏨 hotel, 🚗 drive, ☕ breakfast/coffee, 🍸 cocktail/bar, 🎢 adventure, ⛵ cruise, 🗺️ explore, 🏛️ museum/sight, 🛍️ market/shopping, 💆 spa/massage
 If day not found set changes:[] and explain in summary.`;
