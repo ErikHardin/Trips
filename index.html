@@ -1073,6 +1073,10 @@ function switchTripTab(name, btn) {
   document.getElementById('tripItineraryPanel').classList.toggle('active', name==='itinerary');
   document.getElementById('tripOverviewPanel').classList.toggle('active', name==='overview');
   if(btn) btn.classList.add('active');
+  // Init map when Overview tab becomes visible so Leaflet can measure the container
+  if (name === 'overview' && currentTripId && allTrips[currentTripId]) {
+    setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
+  }
 }
 window.switchTripTab = switchTripTab;
 
@@ -1283,9 +1287,7 @@ function renderTripOverview(trip) {
   }
 
   panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + memoriesHTML;
-
-  // Build trip map after DOM is ready — zoom to fit all points
-  setTimeout(() => initTripMap(trip).catch(e => console.warn('Map error:', e)), 100);
+  // Map is initialized lazily when Overview tab becomes visible (see switchTripTab)
 }
 
 window.toggleDay = function(id) {
@@ -2256,6 +2258,9 @@ async function initTripMap(trip) {
   });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(tripMapInstance);
 
+  // invalidateSize ensures tiles load correctly when container was hidden during init
+  tripMapInstance.invalidateSize();
+
   const bounds = [];
 
   // Draw dashed route polyline first (renders behind markers)
@@ -2284,12 +2289,7 @@ async function initTripMap(trip) {
   if (bounds.length === 1) {
     tripMapInstance.setView(bounds[0], 6);
   } else {
-    // fitBounds then zoom out 1–2 levels to show more context
-    tripMapInstance.fitBounds(bounds, { padding: [40, 40] });
-    setTimeout(() => {
-      const z = tripMapInstance.getZoom();
-      tripMapInstance.setZoom(Math.max(3, z - 1));
-    }, 50);
+    tripMapInstance.fitBounds(bounds, { padding: [30, 30] });
   }
 }
 
