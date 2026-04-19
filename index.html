@@ -1558,7 +1558,7 @@ window.loadDemoData = async function() {
 function populateImportSelect() {
   const sorted = Object.entries(allTrips).sort((a,b) => (b[1].year||0)-(a[1].year||0));
   const opts = '<option value="">— Select trip —</option>' +
-    sorted.map(([k,t])=>`<option value="${k}">${t.name||'Untitled'} ${t.year||''}</option>`).join('');
+    sorted.map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
   const imp = document.getElementById('importTripSelect');
   if (imp) imp.innerHTML = opts;
   const ai = document.getElementById('aiTripSelect');
@@ -2243,7 +2243,7 @@ If day not found set changes:[] and explain in summary.`;
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: input }]
@@ -2253,7 +2253,7 @@ If day not found set changes:[] and explain in summary.`;
     const data = await response.json();
 
     // Check for API-level errors
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    if (data.error) throw new Error(data.error.message + ' (type: ' + data.error.type + ', status: ' + response.status + ')');
 
     const raw = data.content?.[0]?.text || '';
     if (!raw) throw new Error('Empty response from API');
