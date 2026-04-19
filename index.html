@@ -1222,7 +1222,7 @@ function renderTripOverview(trip) {
   // ── Map ──
   const mapHTML = `
     <div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Map</div>
-    <div id="tripMapContainer" style="margin:0 16px 16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);height:240px;background:var(--sand);">
+    <div id="tripMapContainer" style="margin:0 16px 16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);height:260px;background:var(--sand);">
       <div id="tripMap" style="width:100%;height:100%;"></div>
     </div>`;
 
@@ -2249,21 +2249,44 @@ async function initTripMap(trip) {
     return;
   }
 
-  tripMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
+  tripMapInstance = L.map(el, {
+    zoomControl: true,
+    attributionControl: false,
+    scrollWheelZoom: false,
+    dragging: !L.Browser.mobile
+  });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(tripMapInstance);
 
   const bounds = [];
-  points.forEach(p => {
+
+  // Draw dashed route polyline first (renders behind markers)
+  if (points.length > 1) {
+    L.polyline(points.map(p => p.coords), {
+      color: '#c06a3d',
+      weight: 1.5,
+      opacity: 0.4,
+      dashArray: '5, 7'
+    }).addTo(tripMapInstance);
+  }
+
+  points.forEach((p, i) => {
+    const isFirst = i === 0;
+    const isLast  = i === points.length - 1;
+    const size    = (isFirst || isLast) ? 14 : 11;
+    const border  = (isFirst || isLast) ? 2.5 : 2;
     const icon = L.divIcon({ className: '',
-      html: `<div style="width:12px;height:12px;border-radius:50%;background:${p.color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
-      iconSize: [12,12], iconAnchor: [6,6] });
+      html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${p.color};border:${border}px solid white;box-shadow:0 1px 5px rgba(0,0,0,0.35);"></div>`,
+      iconSize: [size, size], iconAnchor: [size/2, size/2] });
     L.marker(p.coords, {icon}).addTo(tripMapInstance)
       .bindPopup(`<strong>${p.city}</strong>${p.region?'<br><span style="color:#8a7e72;font-size:12px;">'+p.region+'</span>':''}`);
     bounds.push(p.coords);
   });
 
-  if (bounds.length === 1) tripMapInstance.setView(bounds[0], 6);
-  else tripMapInstance.fitBounds(bounds, { padding: [40,40], maxZoom: 7 });
+  if (bounds.length === 1) {
+    tripMapInstance.setView(bounds[0], 5);
+  } else {
+    tripMapInstance.fitBounds(bounds, { padding: [52, 52], maxZoom: 5 });
+  }
 }
 
 window.showWorldMap = function() {
