@@ -1171,31 +1171,120 @@ function renderTripItinerary(trip) {
 
 function renderTripOverview(trip) {
   const panel = document.getElementById('tripOverviewPanel');
-  const days = trip.days ? Object.values(trip.days) : [];
-  const nights = days.length;
-  const hotels = [...new Set(days.map(d=>d.hotel).filter(Boolean))];
-  const cities = [...new Set(days.map(d=>d.city).filter(c=>c&&!c.includes('Flight')&&!c.includes('Home')))];
-  const regions = [...new Set(days.map(d=>d.region).filter(Boolean))];
+  const days = trip.days ? Object.entries(trip.days) : [];
+  const dayVals = days.map(([,d]) => d);
+  const nights = dayVals.length;
+  const hotels = [...new Set(dayVals.map(d=>d.hotel).filter(Boolean))];
+  const regions = [...new Set(dayVals.map(d=>d.region).filter(Boolean))];
 
-  panel.innerHTML = `
-    <div class="stats-grid">
+  // ── Flights ──
+  let flightsHTML = '';
+  if (trip.flightOut) {
+    flightsHTML += `
+      <div class="flight-banner" style="margin:16px 16px 0;">
+        <div class="flight-icon">✈️</div>
+        <div>
+          <div class="flight-label">Outbound · ${trip.flightOutDate||''}</div>
+          ${trip.flightOut.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+  if (trip.flightReturn) {
+    flightsHTML += `
+      <div class="flight-banner" style="margin:10px 16px 0;">
+        <div class="flight-icon">🏠</div>
+        <div>
+          <div class="flight-label">Return · ${trip.flightReturnDate||''}</div>
+          ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  // ── Stats ──
+  const statsHTML = `
+    <div class="stats-grid" style="margin-top:16px;">
       <div class="stat-card"><div class="stat-num">${nights}</div><div class="stat-label">Nights</div></div>
       <div class="stat-card"><div class="stat-num">${hotels.length}</div><div class="stat-label">Hotels</div></div>
-      <div class="stat-card"><div class="stat-num">${regions.length||cities.length}</div><div class="stat-label">Regions</div></div>
+      <div class="stat-card"><div class="stat-num">${regions.length}</div><div class="stat-label">Regions</div></div>
       <div class="stat-card"><div class="stat-num">${trip.year||'–'}</div><div class="stat-label">Year</div></div>
-    </div>
-    <div id="tripMapContainer" style="margin:0 16px 16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);height:240px;background:var(--sand);display:flex;align-items:center;justify-content:center;">
-      <div id="tripMap" style="width:100%;height:100%;"></div>
-    </div>
-    <div style="padding:4px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Where you're staying</div>
-    <div>${hotels.map((h,i)=>`
-      <div class="hotel-row">
-        <div class="hotel-color" style="background:${['#c06a3d','#6d9b72','#4a7fb5','#8a6aad'][i%4]}"></div>
-        <div><div class="hotel-row-name">${h}</div></div>
-      </div>`).join('')}
     </div>`;
 
-  // Build trip map after DOM is ready
+  // ── Hotels ──
+  const hotelsHTML = hotels.length ? `
+    <div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Where you stayed</div>
+    <div style="margin:0 16px 0;">${hotels.map((h,i)=>`
+      <div class="hotel-row">
+        <div class="hotel-color" style="background:${['#c06a3d','#6d9b72','#4a7fb5','#8a6aad','#b8943f','#c45c7a'][i%6]}"></div>
+        <div><div class="hotel-row-name">${h}</div></div>
+      </div>`).join('')}
+    </div>` : '';
+
+  // ── Map ──
+  const mapHTML = `
+    <div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Map</div>
+    <div id="tripMapContainer" style="margin:0 16px 16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);height:240px;background:var(--sand);">
+      <div id="tripMap" style="width:100%;height:100%;"></div>
+    </div>`;
+
+  // ── Days with memories ──
+  const sortedDays = days.sort((a,b)=>(a[1].sortOrder||0)-(b[1].sortOrder||0));
+  const daysWithNotes = sortedDays.filter(([,d]) => d.notes && Object.keys(d.notes).length > 0);
+
+  let memoriesHTML = '';
+  if (daysWithNotes.length > 0) {
+    memoriesHTML = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Memories</div>`;
+    daysWithNotes.forEach(([dayId, day]) => {
+      // Collect all notes across all activities
+      const allNotes = [];
+      if (day.notes) {
+        Object.values(day.notes).forEach(actNotes => {
+          if (actNotes && typeof actNotes === 'object') {
+            Object.values(actNotes).forEach(note => {
+              if (note && (note.text || note.photoUrls || note.photoUrl)) allNotes.push(note);
+            });
+          }
+        });
+      }
+      if (!allNotes.length) return;
+      allNotes.sort((a,b)=>(a.ts||0)-(b.ts||0));
+
+      const dowFull = day.dateISO
+        ? new Date(day.dateISO+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
+        : (day.dayName||'').slice(0,3);
+
+      memoriesHTML += `
+        <div style="margin:0 16px 12px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-sm);">
+          <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <div style="text-align:center;min-width:36px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;">${day.dateNum||'–'}</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">${day.dateMonth||''}</div>
+              ${dowFull?`<div style="font-size:9px;color:var(--terracotta);font-weight:500;letter-spacing:1px;text-transform:uppercase;">${dowFull}</div>`:''}
+            </div>
+            <div style="width:1px;height:32px;background:var(--border);flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:14px;font-weight:500;">${day.city||''}</div>
+              <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
+            </div>
+          </div>
+          ${allNotes.map(note => {
+            const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
+            const photosHTML = photos.length ? `
+              <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
+                ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
+              </div>` : '';
+            return `
+              <div style="border-bottom:1px solid var(--border);">
+                ${photosHTML}
+                ${note.text?`<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">${escHtml(note.text)}</div>`:''}
+              </div>`;
+          }).join('')}
+        </div>`;
+    });
+  }
+
+  panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + memoriesHTML;
+
+  // Build trip map after DOM is ready — zoom to fit all points
   setTimeout(() => initTripMap(trip).catch(e => console.warn('Map error:', e)), 100);
 }
 
@@ -2173,8 +2262,8 @@ async function initTripMap(trip) {
     bounds.push(p.coords);
   });
 
-  if (bounds.length === 1) tripMapInstance.setView(bounds[0], 8);
-  else tripMapInstance.fitBounds(bounds, { padding: [30,30] });
+  if (bounds.length === 1) tripMapInstance.setView(bounds[0], 6);
+  else tripMapInstance.fitBounds(bounds, { padding: [40,40], maxZoom: 7 });
 }
 
 window.showWorldMap = function() {
