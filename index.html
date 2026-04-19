@@ -335,6 +335,15 @@ body {
 }
 .csv-instructions code { background: var(--sand); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
 
+/* ── COLOR SWATCHES ── */
+.color-swatch {
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  border: 3px solid transparent; transition: border-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.color-swatch:active { transform: scale(0.9); }
+.color-swatch.selected { border-color: var(--ink); }
+
 /* ── ACTIVITY EDITOR ROWS ── */
 .act-row {
   display:flex; align-items:center; gap:6px;
@@ -709,34 +718,37 @@ body {
     <div class="modal-handle"></div>
     <div class="modal-title" id="editDayModalTitle">Edit Day</div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      <div>
-        <label class="form-label">Date #</label>
-        <input class="form-input" id="editDayNum" placeholder="24">
+    <!-- Read-only date display -->
+    <div style="display:flex;align-items:center;gap:10px;background:var(--cream);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+      <div style="text-align:center;min-width:40px;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:var(--terracotta);line-height:1;" id="editDayNumDisplay">–</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;" id="editDayMonthDisplay"></div>
       </div>
-      <div>
-        <label class="form-label">Month</label>
-        <input class="form-input" id="editDayMonth" placeholder="May">
-      </div>
+      <div style="width:1px;height:32px;background:var(--border);"></div>
+      <div style="font-size:14px;font-weight:500;color:var(--ink);" id="editDayNameDisplay">–</div>
+      <!-- Hidden inputs to preserve values -->
+      <input type="hidden" id="editDayNum">
+      <input type="hidden" id="editDayMonth">
+      <input type="hidden" id="editDayName">
     </div>
-    <label class="form-label">Day of Week</label>
-    <input class="form-input" id="editDayName" placeholder="e.g. Sunday">
-    <label class="form-label">City</label>
-    <input class="form-input" id="editDayCity" placeholder="e.g. Lyon">
+
+    <label class="form-label">City / Description</label>
+    <input class="form-input" id="editDayCity" placeholder="e.g. 🛬 Arrive Lyon">
     <label class="form-label">Hotel</label>
     <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      <div>
-        <label class="form-label">Region</label>
-        <input class="form-input" id="editDayRegion" placeholder="e.g. Lyon">
-      </div>
-      <div>
-        <label class="form-label">Color</label>
-        <input class="form-input" id="editDayRegionColor" placeholder="#c06a3d">
-      </div>
+    <label class="form-label">Region</label>
+    <input class="form-input" id="editDayRegion" placeholder="e.g. Lyon">
+    <label class="form-label">Region Color</label>
+    <div style="display:flex;gap:10px;margin-bottom:12px;" id="regionColorSwatches">
+      <div class="color-swatch" data-color="#c06a3d" style="background:#c06a3d;" onclick="selectRegionColor('#c06a3d',this)" title="Terracotta"></div>
+      <div class="color-swatch" data-color="#6d9b72" style="background:#6d9b72;" onclick="selectRegionColor('#6d9b72',this)" title="Sage"></div>
+      <div class="color-swatch" data-color="#4a7fb5" style="background:#4a7fb5;" onclick="selectRegionColor('#4a7fb5',this)" title="Blue"></div>
+      <div class="color-swatch" data-color="#8a6aad" style="background:#8a6aad;" onclick="selectRegionColor('#8a6aad',this)" title="Purple"></div>
+      <div class="color-swatch" data-color="#b8943f" style="background:#b8943f;" onclick="selectRegionColor('#b8943f',this)" title="Gold"></div>
+      <div class="color-swatch" data-color="#c45c7a" style="background:#c45c7a;" onclick="selectRegionColor('#c45c7a',this)" title="Rose"></div>
+      <div class="color-swatch" data-color="#5a7a8a" style="background:#5a7a8a;" onclick="selectRegionColor('#5a7a8a',this)" title="Steel"></div>
     </div>
-    <label class="form-label">Region Dates</label>
-    <input class="form-input" id="editDayRegionDates" placeholder="e.g. May 24–27">
+    <input type="hidden" id="editDayRegionColor" value="#c06a3d">
 
     <label class="form-label" style="margin-top:4px;">Activities</label>
     <div id="editActivityRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
@@ -1585,17 +1597,38 @@ window.openEditDay = function(dayId) {
   editingDayId = dayId;
   const trip = allTrips[editingTripId];
   const day = trip.days[dayId];
-  document.getElementById('editDayModalTitle').textContent = `${day.dateNum||'New'} ${day.dateMonth||'Day'}`;
-  document.getElementById('editDayNum').value = day.dateNum || '';
-  document.getElementById('editDayMonth').value = day.dateMonth || '';
-  document.getElementById('editDayName').value = day.dayName || '';
-  document.getElementById('editDayCity').value = day.city || '';
-  document.getElementById('editDayHotel').value = day.hotel || '';
-  document.getElementById('editDayRegion').value = day.region || '';
-  document.getElementById('editDayRegionColor').value = day.regionColor || '#c06a3d';
-  document.getElementById('editDayRegionDates').value = day.regionDates || '';
 
-  // Build per-activity rows
+  // Derive display values
+  const dateNum   = day.dateNum   || '';
+  const dateMonth = day.dateMonth || '';
+  const dayName   = day.dateISO
+    ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'long'})
+    : (day.dayName || '');
+
+  document.getElementById('editDayModalTitle').textContent = `${dateNum} ${dateMonth} · ${dayName}`;
+
+  // Read-only date display
+  document.getElementById('editDayNumDisplay').textContent   = dateNum   || '–';
+  document.getElementById('editDayMonthDisplay').textContent = dateMonth || '';
+  document.getElementById('editDayNameDisplay').textContent  = dayName   || '';
+
+  // Hidden inputs
+  document.getElementById('editDayNum').value   = dateNum;
+  document.getElementById('editDayMonth').value = dateMonth;
+  document.getElementById('editDayName').value  = dayName;
+
+  document.getElementById('editDayCity').value   = day.city   || '';
+  document.getElementById('editDayHotel').value  = day.hotel  || '';
+  document.getElementById('editDayRegion').value = day.region || '';
+
+  // Color swatches
+  const color = day.regionColor || '#c06a3d';
+  document.getElementById('editDayRegionColor').value = color;
+  document.querySelectorAll('#regionColorSwatches .color-swatch').forEach(s => {
+    s.classList.toggle('selected', s.dataset.color === color);
+  });
+
+  // Activities
   const container = document.getElementById('editActivityRows');
   container.innerHTML = '';
   const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
@@ -1603,6 +1636,12 @@ window.openEditDay = function(dayId) {
   if (!acts.length) addActivityRow();
 
   document.getElementById('editDayModal').classList.add('open');
+};
+
+window.selectRegionColor = function(color, el) {
+  document.getElementById('editDayRegionColor').value = color;
+  document.querySelectorAll('#regionColorSwatches .color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
 };
 
 window.addActivityRow = function(act) {
@@ -1643,15 +1682,14 @@ window.saveDayEdit = async function() {
   }).filter(a => a.text);
 
   const dayData = {
-    dateNum:      document.getElementById('editDayNum').value.trim(),
-    dateMonth:    document.getElementById('editDayMonth').value.trim(),
+    dateNum:      document.getElementById('editDayNum').value,
+    dateMonth:    document.getElementById('editDayMonth').value,
     dateISO:      existing.dateISO || null,
-    dayName:      document.getElementById('editDayName').value.trim(),
+    dayName:      document.getElementById('editDayName').value,
     city:         document.getElementById('editDayCity').value.trim(),
     hotel:        document.getElementById('editDayHotel').value.trim(),
     region:       document.getElementById('editDayRegion').value.trim(),
-    regionColor:  document.getElementById('editDayRegionColor').value.trim() || '#c06a3d',
-    regionDates:  document.getElementById('editDayRegionDates').value.trim(),
+    regionColor:  document.getElementById('editDayRegionColor').value || '#c06a3d',
     activities,
     sortOrder: existing.sortOrder || 0,
     notes: existing.notes || null,
