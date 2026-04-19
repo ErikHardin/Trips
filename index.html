@@ -2252,8 +2252,7 @@ async function initTripMap(trip) {
   tripMapInstance = L.map(el, {
     zoomControl: true,
     attributionControl: false,
-    scrollWheelZoom: false,
-    dragging: !L.Browser.mobile
+    scrollWheelZoom: false
   });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(tripMapInstance);
 
@@ -2283,9 +2282,14 @@ async function initTripMap(trip) {
   });
 
   if (bounds.length === 1) {
-    tripMapInstance.setView(bounds[0], 5);
+    tripMapInstance.setView(bounds[0], 6);
   } else {
-    tripMapInstance.fitBounds(bounds, { padding: [52, 52], maxZoom: 5 });
+    // fitBounds then zoom out 1–2 levels to show more context
+    tripMapInstance.fitBounds(bounds, { padding: [40, 40] });
+    setTimeout(() => {
+      const z = tripMapInstance.getZoom();
+      tripMapInstance.setZoom(Math.max(3, z - 1));
+    }, 50);
   }
 }
 
