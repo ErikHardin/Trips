@@ -335,13 +335,41 @@ body {
 }
 .csv-instructions code { background: var(--sand); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
 
-/* Region color picker */
-.region-picker { display: flex; gap: 8px; margin-bottom: 10px; }
-.region-swatch {
-  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
-  border: 2px solid transparent; transition: border-color 0.15s;
+/* ── ACTIVITY EDITOR ROWS ── */
+.act-row {
+  display:flex; align-items:center; gap:6px;
+  background:var(--cream); border-radius:10px; padding:8px 10px;
+  border:1px solid var(--border);
 }
-.region-swatch.selected { border-color: var(--ink); }
+.act-emoji-btn {
+  font-size:20px; background:none; border:none; cursor:pointer;
+  padding:2px 4px; border-radius:6px; flex-shrink:0;
+  transition:background 0.15s;
+}
+.act-emoji-btn:active { background:var(--sand); }
+.act-text-input {
+  flex:1; border:none; background:transparent; font-size:13px;
+  font-family:'DM Sans',sans-serif; color:var(--ink); outline:none;
+  min-width:0;
+}
+.act-time-input {
+  width:80px; border:1px solid var(--border); border-radius:7px;
+  background:var(--warm-white); font-size:11px; font-family:'DM Sans',sans-serif;
+  color:var(--muted); padding:5px 7px; outline:none; flex-shrink:0;
+}
+.act-time-input:focus { border-color:var(--terracotta); }
+.act-delete-btn {
+  background:none; border:none; font-size:16px; cursor:pointer;
+  color:var(--muted); padding:2px 4px; flex-shrink:0; line-height:1;
+}
+
+/* ── EMOJI GRID ── */
+.emoji-cell {
+  font-size:24px; text-align:center; padding:6px 2px;
+  cursor:pointer; border-radius:8px; transition:background 0.1s;
+  -webkit-user-select:none; user-select:none;
+}
+.emoji-cell:active { background:var(--sand); }
 
 /* ══════════════════════════════
    PIN SCREEN
@@ -675,30 +703,57 @@ body {
 
 <!-- ══ EDIT DAY MODAL ══ -->
 <div class="modal-overlay" id="editDayModal" onclick="closeEditDayModal(event)">
-  <div class="modal-sheet" style="max-height:85vh;">
+  <div class="modal-sheet" style="max-height:90vh;overflow-y:auto;">
     <div class="modal-handle"></div>
     <div class="modal-title" id="editDayModalTitle">Edit Day</div>
-    <label class="form-label">Date Number</label>
-    <input class="form-input" id="editDayNum" placeholder="e.g. 24">
-    <label class="form-label">Month</label>
-    <input class="form-input" id="editDayMonth" placeholder="e.g. May">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div>
+        <label class="form-label">Date #</label>
+        <input class="form-input" id="editDayNum" placeholder="24">
+      </div>
+      <div>
+        <label class="form-label">Month</label>
+        <input class="form-input" id="editDayMonth" placeholder="May">
+      </div>
+    </div>
     <label class="form-label">Day of Week</label>
     <input class="form-input" id="editDayName" placeholder="e.g. Sunday">
     <label class="form-label">City</label>
     <input class="form-input" id="editDayCity" placeholder="e.g. Lyon">
     <label class="form-label">Hotel</label>
     <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon">
-    <label class="form-label">Region</label>
-    <input class="form-input" id="editDayRegion" placeholder="e.g. Lyon">
-    <label class="form-label">Region Color</label>
-    <input class="form-input" id="editDayRegionColor" placeholder="#c06a3d" style="max-width:140px;">
-    <label class="form-label">Region Dates (optional)</label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div>
+        <label class="form-label">Region</label>
+        <input class="form-input" id="editDayRegion" placeholder="e.g. Lyon">
+      </div>
+      <div>
+        <label class="form-label">Color</label>
+        <input class="form-input" id="editDayRegionColor" placeholder="#c06a3d">
+      </div>
+    </div>
+    <label class="form-label">Region Dates</label>
     <input class="form-input" id="editDayRegionDates" placeholder="e.g. May 24–27">
-    <label class="form-label">Activities (one per line)</label>
-    <textarea class="form-input" style="min-height:100px;" id="editDayActivities" placeholder="Land in afternoon&#10;Wine at Octobre caviste&#10;Dinner at Carmelo's"></textarea>
+
+    <label class="form-label" style="margin-top:4px;">Activities</label>
+    <div id="editActivityRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+    <button onclick="addActivityRow()" style="width:100%;padding:10px;background:var(--sand);border:1.5px dashed var(--sand-dark);border-radius:10px;font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:12px;">＋ Add Activity</button>
+
     <button class="form-btn" onclick="saveDayEdit()">Save Day</button>
     <button class="form-btn secondary" style="margin-top:8px;" id="deleteDayBtn" onclick="deleteDay()">Delete Day</button>
     <button class="form-btn secondary" style="margin-top:8px;" onclick="closeEditDayModalDirect()">Cancel</button>
+  </div>
+</div>
+
+<!-- ══ EMOJI PICKER SHEET ══ -->
+<div class="modal-overlay" id="emojiPickerModal" onclick="closeEmojiPicker(event)">
+  <div class="modal-sheet" style="max-height:70vh;">
+    <div class="modal-handle"></div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:20px;margin-bottom:10px;">Pick an Emoji</div>
+    <input type="text" id="emojiSearch" placeholder="Search… (food, wine, beach…)" oninput="filterEmojis(this.value)"
+      style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px;background:var(--cream);outline:none;margin-bottom:12px;">
+    <div id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;overflow-y:auto;max-height:300px;"></div>
   </div>
 </div>
 
@@ -943,13 +998,20 @@ function renderTripItinerary(trip) {
     const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
     const activitiesHTML = acts.map((a,i) => {
       const noteKey = typeof a === 'object' ? (a.key||i) : i;
+      const text = typeof a==='object' ? (a.text||'') : a;
+      const emoji = typeof a==='object' && a.emoji ? a.emoji : getEmoji(text);
+      const time = typeof a==='object' && a.time ? a.time : '';
+      const michelin = typeof a==='object' && a.michelin;
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}`;
       return `
-        <div class="activity-item" onclick="openNotes('${dayId}','${noteKey}','${escHtml(typeof a==='object'?a.text:a)}')">
-          <div class="activity-emoji">${typeof a==='object'&&a.emoji ? a.emoji : getEmoji(typeof a==='object'?a.text:a)}</div>
-          <div style="flex:1;">
-            <div class="activity-text">${typeof a==='object'?a.text:a}${typeof a==='object'&&a.michelin?'<span class="michelin">★ Michelin</span>':''}</div>
-            ${typeof a==='object'&&a.time?`<div class="activity-time">${a.time}</div>`:''}
+        <div class="activity-item">
+          <div class="activity-emoji">${emoji}</div>
+          <div style="flex:1;min-width:0;">
+            <div class="activity-text" onclick="window.open('${searchUrl}','_blank')" style="cursor:pointer;text-decoration-color:var(--sand-dark);text-decoration:underline dotted;">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
+            ${time?`<div class="activity-time">${time}</div>`:''}
           </div>
+          <button onclick="openNotes('${dayId}','${noteKey}','${escHtml(text)}')" title="Notes & Photos"
+            style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.5;">📝</button>
         </div>`;
     }).join('');
 
@@ -1445,25 +1507,63 @@ window.openEditDay = function(dayId) {
   document.getElementById('editDayRegion').value = day.region || '';
   document.getElementById('editDayRegionColor').value = day.regionColor || '#c06a3d';
   document.getElementById('editDayRegionDates').value = day.regionDates || '';
+
+  // Build per-activity rows
+  const container = document.getElementById('editActivityRows');
+  container.innerHTML = '';
   const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
-  document.getElementById('editDayActivities').value = acts.map(a => typeof a==='object' ? a.text : a).join('\n');
+  acts.forEach(a => addActivityRow(typeof a==='object' ? a : {text:a}));
+  if (!acts.length) addActivityRow();
+
   document.getElementById('editDayModal').classList.add('open');
+};
+
+window.addActivityRow = function(act) {
+  const container = document.getElementById('editActivityRows');
+  const idx = container.children.length;
+  const emoji = (act && act.emoji) ? act.emoji : '📍';
+  const text  = (act && act.text)  ? act.text  : '';
+  const time  = (act && act.time)  ? act.time  : '';
+  const row = document.createElement('div');
+  row.className = 'act-row';
+  row.dataset.idx = idx;
+  row.innerHTML = `
+    <button class="act-emoji-btn" onclick="openEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
+    <input class="act-text-input" placeholder="Activity name" value="${escHtml(text)}">
+    <input class="act-time-input" placeholder="Time" value="${escHtml(time)}">
+    <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>`;
+  container.appendChild(row);
+};
+
+window.removeActivityRow = function(btn) {
+  btn.closest('.act-row').remove();
+  // Re-index for emoji picker
+  document.querySelectorAll('#editActivityRows .act-row').forEach((r,i) => {
+    r.dataset.idx = i;
+    r.querySelector('.act-emoji-btn').setAttribute('onclick', `openEmojiPicker(${i})`);
+  });
 };
 
 window.saveDayEdit = async function() {
   if (!editingTripId || !editingDayId) return;
   const existing = allTrips[editingTripId].days[editingDayId];
-  const actLines = document.getElementById('editDayActivities').value.split('\n').map(l=>l.trim()).filter(Boolean);
-  const activities = actLines.map(text => ({ text, emoji: getEmoji(text) }));
+  const rows = document.querySelectorAll('#editActivityRows .act-row');
+  const activities = Array.from(rows).map(row => {
+    const emoji = row.querySelector('.act-emoji-btn').textContent.trim();
+    const text  = row.querySelector('.act-text-input').value.trim();
+    const time  = row.querySelector('.act-time-input').value.trim();
+    return { emoji: emoji||'📍', text, time };
+  }).filter(a => a.text);
+
   const dayData = {
-    dateNum: document.getElementById('editDayNum').value.trim(),
-    dateMonth: document.getElementById('editDayMonth').value.trim(),
-    dayName: document.getElementById('editDayName').value.trim(),
-    city: document.getElementById('editDayCity').value.trim(),
-    hotel: document.getElementById('editDayHotel').value.trim(),
-    region: document.getElementById('editDayRegion').value.trim(),
-    regionColor: document.getElementById('editDayRegionColor').value.trim() || '#c06a3d',
-    regionDates: document.getElementById('editDayRegionDates').value.trim(),
+    dateNum:      document.getElementById('editDayNum').value.trim(),
+    dateMonth:    document.getElementById('editDayMonth').value.trim(),
+    dayName:      document.getElementById('editDayName').value.trim(),
+    city:         document.getElementById('editDayCity').value.trim(),
+    hotel:        document.getElementById('editDayHotel').value.trim(),
+    region:       document.getElementById('editDayRegion').value.trim(),
+    regionColor:  document.getElementById('editDayRegionColor').value.trim() || '#c06a3d',
+    regionDates:  document.getElementById('editDayRegionDates').value.trim(),
     activities,
     sortOrder: existing.sortOrder || 0,
     notes: existing.notes || null,
@@ -1471,6 +1571,63 @@ window.saveDayEdit = async function() {
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
   closeEditDayModalDirect();
   showToast('Day saved! ✓');
+};
+
+// ════════════════════════════════════════
+//  EMOJI PICKER
+// ════════════════════════════════════════
+let emojiTargetIdx = null;
+
+const EMOJIS = [
+  {g:'Food & Drink', e:['🍽️','🥐','🥖','🧀','🥗','🍲','🫕','🥩','🍕','🌮','🍣','🍜','🥘','🫔','🥂','🍷','🍸','🍹','🍺','☕','🧃','🥃','🍾','🫖']},
+  {g:'Wine & Tastings', e:['🍇','🍷','🥂','🫙','🪣','🧴','🍾','🌿','🫒','🧑‍🍳']},
+  {g:'Travel & Transport', e:['✈️','🚗','🚕','🚂','🚢','🚁','🛬','🛫','🏎️','🚲','🛵','⛵','🚡','🚠','🚌']},
+  {g:'Places & Sights', e:['🏛️','⛪','🕌','🗼','🗽','🏰','🏯','🏟️','🎡','🎢','🗺️','🧭','🌁','🌉','🌃','🌆','🌇','🌄','🌅']},
+  {g:'Nature & Outdoors', e:['🏖️','🏝️','🏕️','⛰️','🏔️','🌋','🗻','🌊','🏞️','🌲','🌿','🌸','🌺','☀️','🌤️','⛅','🌙']},
+  {g:'Activities', e:['🚴','🏊','🏄','⛷️','🧗','🎭','🎨','🎬','🎤','🎸','⛳','🎾','🎯','🧘','🏃','🛍️','🎪','🎠']},
+  {g:'Accommodation', e:['🏨','🏩','🏡','⛺','🛏️','🛁','🪴','🔑']},
+  {g:'Misc', e:['📍','⭐','❤️','💡','📸','📷','🗓️','💼','🧳','🎁','🛒','💳','🎫','🎟️','📝','✅','⚠️','🔔','🌍','🌎','🌏']},
+];
+
+function buildEmojiGrid(filter) {
+  const grid = document.getElementById('emojiGrid');
+  grid.innerHTML = '';
+  const q = (filter||'').toLowerCase();
+  EMOJIS.forEach(({g, e}) => {
+    const filtered = q ? e.filter(em => g.toLowerCase().includes(q)) : e;
+    if (!filtered.length) return;
+    filtered.forEach(em => {
+      const cell = document.createElement('div');
+      cell.className = 'emoji-cell';
+      cell.textContent = em;
+      cell.onclick = () => selectEmoji(em);
+      grid.appendChild(cell);
+    });
+  });
+}
+
+window.openEmojiPicker = function(idx) {
+  emojiTargetIdx = idx;
+  document.getElementById('emojiSearch').value = '';
+  buildEmojiGrid('');
+  document.getElementById('emojiPickerModal').classList.add('open');
+};
+
+window.filterEmojis = function(val) { buildEmojiGrid(val); };
+
+function selectEmoji(em) {
+  if (emojiTargetIdx === null) return;
+  const rows = document.querySelectorAll('#editActivityRows .act-row');
+  const row = rows[emojiTargetIdx];
+  if (row) row.querySelector('.act-emoji-btn').textContent = em;
+  closeEmojiPicker();
+}
+
+window.closeEmojiPicker = function(e) {
+  if (!e || e.target.id==='emojiPickerModal') {
+    document.getElementById('emojiPickerModal').classList.remove('open');
+    emojiTargetIdx = null;
+  }
 };
 
 window.deleteDay = async function() {
