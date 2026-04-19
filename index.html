@@ -2192,9 +2192,20 @@ window.runAIAssistant = async function() {
   document.getElementById('aiPreview').style.display = 'none';
   pendingAIChanges = null;
 
-  // Build context for the selected trip only
-  const trip = allTrips[selectedTripId];
-  if (!trip) { showToast('Trip not found'); btn.disabled=false; btn.innerHTML='✨ Ask Assistant'; return; }
+  // Always fetch fresh trip data from Firebase
+  let trip;
+  try {
+    const snap = await window._get(window._ref(window._db, `trips/${selectedTripId}`));
+    trip = snap.val();
+    if (!trip) throw new Error('Trip not found');
+    // Update local cache too
+    allTrips[selectedTripId] = trip;
+  } catch(e) {
+    showToast('Could not load trip: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '✨ Ask Assistant';
+    return;
+  }
 
   const days = trip.days ? Object.entries(trip.days) : [];
   const dayLines = days
