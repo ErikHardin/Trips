@@ -523,11 +523,9 @@ body {
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <label class="photo-upload-btn" for="photoInputCamera" style="flex:1;margin:0;">📷 Camera</label>
-        <label class="photo-upload-btn" for="photoInputLibrary" style="flex:1;margin:0;">🖼️ Library</label>
+        <label class="photo-upload-btn" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos</label>
       </div>
-      <input type="file" id="photoInputCamera" accept="image/*" capture="user" style="display:none" onchange="handlePhotoSelect(event)">
-      <input type="file" id="photoInputLibrary" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
+      <input type="file" id="photoInputMain" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
       <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
       <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
     </div>
@@ -1173,8 +1171,8 @@ function clearPhotos() {
   const grid = document.getElementById('photoPreviewGrid');
   grid.innerHTML = '';
   grid.style.display = 'none';
-  document.getElementById('photoInputCamera').value = '';
-  document.getElementById('photoInputLibrary').value = '';
+  const inp = document.getElementById('photoInputMain');
+  if (inp) inp.value = '';
 }
 
 // Full-screen photo viewer
