@@ -1169,31 +1169,49 @@ window.deleteNote = async function(noteId) {
   }
 };
 
+// ── Image compression ──
+function compressImage(file, maxPx, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width > height) { height = Math.round(height * maxPx / width); width = maxPx; }
+        else { width = Math.round(width * maxPx / height); height = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}
+
 window.saveNote = async function() {
   const text = document.getElementById('noteText').value.trim();
   if (!text && selectedPhotoFiles.length === 0) { showToast('Add a note or photo first'); return; }
 
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true;
-  const photoCount = selectedPhotoFiles.length; // capture before async ops
+  const photoCount = selectedPhotoFiles.length;
   btn.innerHTML = photoCount > 0
     ? `<div class="loading-spinner"></div> Uploading ${photoCount} photo${photoCount>1?'s':''}…`
     : '<div class="loading-spinner"></div>';
 
   try {
-    // Ensure authenticated (needed for writes even for non-admin)
-    if (!window._auth.currentUser) {
-      await window._signInAnonymously(window._auth);
-    }
+    if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
 
     const photoUrls = {};
     for (let i = 0; i < selectedPhotoFiles.length; i++) {
       const file = selectedPhotoFiles[i];
-      // Sanitize filename - remove spaces and special chars
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}_${safeName}`;
+      // Compress to max 1200px, JPEG 80% — drops typical iPhone photo from ~6MB to ~200KB
+      const compressed = await compressImage(file, 1200, 0.8);
+      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
       const storageRef = window._sRef(window._storage, storePath);
-      const snap = await window._uploadBytes(storageRef, file);
+      const snap = await window._uploadBytes(storageRef, compressed);
       photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
     }
 
