@@ -615,11 +615,16 @@ body {
     <div class="admin-section">
       <div class="admin-section-title">AI Trip Assistant</div>
       <div class="admin-card">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
-          Tell me what to change. Examples:<br>
-          <em>"Add dinner at Le Bernardin 7:30pm to France day 3"</em><br>
-          <em>"Update outbound flight for Portugal to UA100 DEN-LIS 8am-10pm"</em><br>
-          <em>"Move the wine tasting on May 26 to 3pm"</em>
+        <label class="form-label">Trip</label>
+        <select class="form-input" id="aiTripSelect">
+          <option value="">— Select a trip —</option>
+        </select>
+        <div style="font-size:12px;color:var(--muted);margin:8px 0 10px;line-height:1.6;">
+          Then just describe what to change. Examples:<br>
+          <em>"Add dinner at Le Bernardin at 7:30pm on day 3"</em><br>
+          <em>"Update outbound flight to UA100 DEN-LIS 8am-10pm"</em><br>
+          <em>"Move the wine tasting on May 26 to 3pm"</em><br>
+          <em>"Change the hotel on day 5 to Park Hyatt"</em>
         </div>
         <textarea id="aiInput" class="form-input" style="min-height:80px;resize:none;" placeholder="What would you like to change?"></textarea>
         <button class="form-btn" id="aiSubmitBtn" onclick="runAIAssistant()" style="margin-top:8px;">
@@ -1551,10 +1556,13 @@ window.loadDemoData = async function() {
 //  ADMIN — HELPERS
 // ════════════════════════════════════════
 function populateImportSelect() {
-  const sel = document.getElementById('importTripSelect');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— Select trip —</option>' +
-    Object.entries(allTrips).map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
+  const sorted = Object.entries(allTrips).sort((a,b) => (b[1].year||0)-(a[1].year||0));
+  const opts = '<option value="">— Select trip —</option>' +
+    sorted.map(([k,t])=>`<option value="${k}">${t.name||'Untitled'} ${t.year||''}</option>`).join('');
+  const imp = document.getElementById('importTripSelect');
+  if (imp) imp.innerHTML = opts;
+  const ai = document.getElementById('aiTripSelect');
+  if (ai) ai.innerHTML = opts;
 }
 
 function renderAdminTripList() {
@@ -2173,7 +2181,9 @@ window.closeAddTripModal = function() {
 let pendingAIChanges = null;
 
 window.runAIAssistant = async function() {
+  const selectedTripId = document.getElementById('aiTripSelect').value;
   const input = document.getElementById('aiInput').value.trim();
+  if (!selectedTripId) { showToast('Select a trip first'); return; }
   if (!input) { showToast('Tell me what to change first'); return; }
 
   const btn = document.getElementById('aiSubmitBtn');
@@ -2182,45 +2192,53 @@ window.runAIAssistant = async function() {
   document.getElementById('aiPreview').style.display = 'none';
   pendingAIChanges = null;
 
-  // Build compact trip index - just enough to identify trips/days/activities
-  const tripIndex = Object.entries(allTrips).map(([tid, trip]) => {
-    const days = trip.days ? Object.entries(trip.days) : [];
-    const dayLines = days
-      .sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0))
-      .map(([did, day]) => {
-        const acts = day.activities
-          ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
-          : [];
-        const actStr = acts.map((a,i) => `${i}:${a.text||a}${a.time?'@'+a.time:''}`).join('|');
-        return `  D:${did} ${day.dateNum||''}${day.dateMonth||''} ${day.city||''} [${actStr}]`;
-      }).join('\n');
-    return `T:${tid} "${trip.name}" ${trip.year}\n  flightOut:${(trip.flightOut||'').replace(/\n/g,' ')}\n  flightReturn:${(trip.flightReturn||'').replace(/\n/g,' ')}\n${dayLines}`;
-  }).join('\n\n');
+  // Build context for the selected trip only
+  const trip = allTrips[selectedTripId];
+  if (!trip) { showToast('Trip not found'); btn.disabled=false; btn.innerHTML='✨ Ask Assistant'; return; }
+
+  const days = trip.days ? Object.entries(trip.days) : [];
+  const dayLines = days
+    .sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0))
+    .map(([did, day]) => {
+      const acts = day.activities
+        ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+        : [];
+      const actStr = acts.map((a,i) => `${i}:${a.text||a}${a.time?'@'+a.time:''}`).join(' | ');
+      return `  D:${did} ${day.dateNum||''}${day.dateMonth||''} ${day.dayName||''} | ${day.city||''} | ${day.hotel||''} | [${actStr}]`;
+    }).join('\n');
+
+  const tripContext = `TRIP id:${selectedTripId} "${trip.name}" ${trip.year}
+flightOut: ${(trip.flightOut||'none').replace(/\n/g,' ')}
+flightOutDate: ${trip.flightOutDate||''}
+flightReturn: ${(trip.flightReturn||'none').replace(/\n/g,' ')}
+flightReturnDate: ${trip.flightReturnDate||''}
+DAYS:
+${dayLines}`;
 
   const systemPrompt = `You are a trip assistant for Hardin Trips. Return ONLY valid JSON, no markdown fences.
 
-TRIP DATA (T=trip, D=day, activities as index:name@time):
-${tripIndex}
+SELECTED TRIP DATA:
+${tripContext}
 
 JSON format:
 {"summary":"what you are doing","changes":[...]}
 
 Change types:
-{"type":"update_trip_field","tripId":"T_ID","field":"flightOut|flightReturn|flightOutDate|flightReturnDate|name|dates","value":"..."}
-{"type":"add_activity","tripId":"T_ID","dayId":"D_ID","activity":{"text":"...","emoji":"...","time":"..."}}
-{"type":"update_activity","tripId":"T_ID","dayId":"D_ID","activityIndex":0,"activity":{"text":"...","emoji":"...","time":"..."}}
-{"type":"remove_activity","tripId":"T_ID","dayId":"D_ID","activityIndex":0}
-{"type":"update_day_field","tripId":"T_ID","dayId":"D_ID","field":"city|hotel|region","value":"..."}
+{"type":"update_trip_field","tripId":"${selectedTripId}","field":"flightOut|flightReturn|flightOutDate|flightReturnDate|name|dates","value":"..."}
+{"type":"add_activity","tripId":"${selectedTripId}","dayId":"D_ID","activity":{"text":"...","emoji":"...","time":"..."}}
+{"type":"update_activity","tripId":"${selectedTripId}","dayId":"D_ID","activityIndex":0,"activity":{"text":"...","emoji":"...","time":"..."}}
+{"type":"remove_activity","tripId":"${selectedTripId}","dayId":"D_ID","activityIndex":0}
+{"type":"update_day_field","tripId":"${selectedTripId}","dayId":"D_ID","field":"city|hotel|region","value":"..."}
 
 Emoji guide: 🍽️ dinner/lunch, 🍷 wine/tasting, 🥾 hike, 🏖️ beach, ✈️ flight, 🏨 hotel, 🚗 drive, ☕ breakfast/coffee, 🍸 cocktail/bar, 🎢 adventure, ⛵ cruise, 🗺️ explore, 🏛️ museum/sight, 🛍️ market/shopping, 💆 spa/massage
-If trip/day not found set changes:[] and explain in summary.`;
+If day not found set changes:[] and explain in summary.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': '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',
+        'x-api-key': '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',
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
