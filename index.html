@@ -2045,18 +2045,61 @@ function showToast(msg) {
 // ── Geocode cache stored in Firebase so lookups persist across sessions ──
 const localGeoCache = {};
 
+// Curated coordinates for all known destinations
+const KNOWN_COORDS = {
+  // France 2019 & 2026
+  'lyon':[45.75,4.85],'franschhoek':[-33.91,19.12],'stellenbosch':[-33.93,18.86],
+  'loire valley':[47.35,0.68],'amboise':[47.41,0.98],'burgundy':[47.05,4.85],
+  'alsace':[48.32,7.44],'champagne':[49.26,4.03],'paris':[48.85,2.35],
+  'london':[51.51,-0.13],'luberon':[43.82,5.45],'bandol':[43.14,5.75],
+  'cannes':[43.55,7.01],'berlin':[52.52,13.4],
+  // South Africa
+  'cape town':[-33.93,18.42],'hluhluwe':[-28.02,32.27],'durban':[-29.86,31.02],
+  // Dubai & Maldives
+  'dubai':[25.20,55.27],'maldives':[3.20,73.22],'washington dc':[38.91,-77.04],
+  // Northern Italy
+  'lake como':[45.98,9.27],'portofino':[44.30,9.21],'piedmont':[44.70,8.00],'milan':[45.46,9.19],
+  // Southeast Asia
+  'singapore':[1.35,103.82],'koh lanta':[7.53,99.05],'chiang mai':[18.79,98.98],
+  'bangkok':[13.75,100.50],'hoi an':[15.88,108.34],'hanoi':[21.03,105.85],
+  'halong bay':[20.91,107.18],
+  // New Zealand
+  'bay of islands':[-35.22,174.10],'auckland':[-36.86,174.77],
+  'havelock north':[-39.65,176.88],'wellington':[-41.29,174.78],
+  'marahau':[-40.99,172.99],'queenstown':[-45.03,168.66],
+  // Portugal
+  'luz lagos':[37.08,-8.73],'porto':[41.16,-8.62],
+  'douro valley':[41.16,-7.75],'lisbon':[38.72,-9.14],
+  // Australia
+  'sydney':[-33.87,151.21],'adelaide':[-34.93,138.60],
+  'tasmania':[-42.88,147.33],'hobart':[-42.88,147.33],
+  'melbourne':[-37.81,144.96],'mount lofty':[-34.97,138.71],
+  'mornington peninsula':[-38.38,145.06],
+  // New York / travel
+  'new york':[40.71,-74.01],
+};
+
 async function getCityCoords(cityName) {
   if (!cityName) return null;
   const raw = cityName.replace(/[🛬🚗✈️🏠]/g,'').trim();
-  const skip = ['flight','home','in flight','fly out','fly home'];
-  if (!raw || skip.some(s => raw.toLowerCase().includes(s))) return null;
+  const lower = raw.toLowerCase();
 
-  const cacheKey = raw.toLowerCase().replace(/[^a-z0-9]/g,'_');
+  // Skip travel/transition days
+  if (!raw) return null;
+  if (lower === 'home' || lower === 'in flight' || lower === 'home!' ) return null;
+  if (lower.startsWith('in flight') || lower.startsWith('fly out') || lower.startsWith('home')) return null;
 
-  // 1. Check local memory cache
+  // 1. Check curated table (fuzzy match)
+  for (const [k, v] of Object.entries(KNOWN_COORDS)) {
+    if (lower.includes(k) || k.includes(lower)) return v;
+  }
+
+  const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
+
+  // 2. Check local memory cache
   if (localGeoCache[cacheKey]) return localGeoCache[cacheKey];
 
-  // 2. Check Firebase cache
+  // 3. Check Firebase cache
   try {
     const snap = await window._get(window._ref(window._db, `geocache/${cacheKey}`));
     if (snap.val()) {
@@ -2066,8 +2109,9 @@ async function getCityCoords(cityName) {
     }
   } catch(e) {}
 
-  // 3. Fetch from Nominatim
+  // 4. Fetch from Nominatim as fallback for unknown cities
   try {
+    await new Promise(r => setTimeout(r, 1100));
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(raw)}&format=json&limit=1`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'HardinTrips/1.0' } });
     const data = await res.json();
@@ -2075,7 +2119,6 @@ async function getCityCoords(cityName) {
       const lat = parseFloat(data[0].lat);
       const lng = parseFloat(data[0].lon);
       localGeoCache[cacheKey] = [lat, lng];
-      // Save to Firebase for future use
       try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
       return [lat, lng];
     }
