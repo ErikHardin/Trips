@@ -2324,6 +2324,12 @@ window.confirmAIChange = async function() {
   btn.innerHTML = '<div class="loading-spinner"></div> Applying…';
 
   try {
+    // Fetch fresh trip data directly from Firebase before applying
+    const tripId = pendingAIChanges.changes[0].tripId;
+    const freshSnap = await window._get(window._ref(window._db, `trips/${tripId}`));
+    const freshTrip = freshSnap.val();
+    if (!freshTrip) throw new Error('Trip not found in database');
+
     for (const change of pendingAIChanges.changes) {
       if (change.type === 'update_trip_field') {
         await window._set(
@@ -2338,11 +2344,10 @@ window.confirmAIChange = async function() {
         );
 
       } else if (change.type === 'add_activity') {
-        const trip = allTrips[change.tripId];
-        const day = trip?.days?.[change.dayId];
+        const day = freshTrip.days?.[change.dayId];
         if (!day) throw new Error(`Day ${change.dayId} not found`);
         const existing = day.activities
-          ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+          ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities))
           : [];
         existing.push(change.activity);
         await window._set(
@@ -2351,8 +2356,7 @@ window.confirmAIChange = async function() {
         );
 
       } else if (change.type === 'update_activity') {
-        const trip = allTrips[change.tripId];
-        const day = trip?.days?.[change.dayId];
+        const day = freshTrip.days?.[change.dayId];
         if (!day) throw new Error(`Day ${change.dayId} not found`);
         const existing = day.activities
           ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities))
@@ -2364,8 +2368,7 @@ window.confirmAIChange = async function() {
         );
 
       } else if (change.type === 'remove_activity') {
-        const trip = allTrips[change.tripId];
-        const day = trip?.days?.[change.dayId];
+        const day = freshTrip.days?.[change.dayId];
         if (!day) throw new Error(`Day ${change.dayId} not found`);
         const existing = day.activities
           ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities))
@@ -2384,7 +2387,7 @@ window.confirmAIChange = async function() {
     pendingAIChanges = null;
 
   } catch(e) {
-    showToast('Error applying changes: ' + e.message);
+    showToast('Error: ' + e.message);
     console.error(e);
   }
 
