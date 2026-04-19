@@ -1992,58 +1992,57 @@ function showToast(msg) {
 //  MAPS
 // ════════════════════════════════════════
 
-// Geocode cache so we don't re-fetch the same city
-const geocodeCache = {};
+// Known city coordinates to avoid geocoding API calls
+const CITY_COORDS = {
+  'lyon':[-0,45.75,4.85],'franschhoek':[-1,33.91,19.12],'stellenbosch':[-1,33.93,18.86],
+  'cape town':[-1,33.93,18.42],'hluhluwe':[-1,28.02,32.27],'new york':[1,40.71,-74.01],
+  'dubai':[1,25.2,55.27],'maldives':[1,3.2,73.22],'washington dc':[1,38.91,-77.04],
+  'lake como':[1,46.0,9.27],'portofino':[1,44.3,9.21],'piedmont':[1,44.7,8.0],
+  'milan':[1,45.46,9.19],'loire valley':[1,47.5,0.5],'burgundy':[1,47.05,4.85],
+  'alsace':[1,48.32,7.44],'champagne':[1,49.26,4.03],'paris':[1,48.85,2.35],
+  'london':[1,51.51,-0.13],'singapore':[1,1.35,103.82],'koh lanta':[1,7.53,99.05],
+  'chiang mai':[1,18.79,98.98],'bangkok':[1,13.75,100.5],'hoi an':[1,15.88,108.34],
+  'hanoi':[1,21.03,105.85],'halong bay':[1,20.91,107.18],'bay of islands':[1,-35.22,174.1],
+  'auckland':[1,-36.86,174.77],'havelock north':[1,-39.65,176.88],'wellington':[1,-41.29,174.78],
+  'marahau':[1,-40.99,172.99],'queenstown':[1,-45.03,168.66],'luz lagos':[1,37.08,-8.73],
+  'porto':[1,41.16,-8.62],'douro valley':[1,41.16,-7.75],'lisbon':[1,38.72,-9.14],
+  'berlin':[1,52.52,13.4],'cannes':[1,43.55,7.01],'bandol':[1,43.14,5.75],
+  'luberon':[1,43.82,5.45],'stellenbosch':[-1,33.93,18.86],
+};
 
-async function geocode(cityName) {
-  const key = cityName.toLowerCase().replace(/[🛬🚗✈️🏠]/g,'').trim();
-  if (!key || key.includes('flight') || key.includes('home') || key.includes('in flight')) return null;
-  if (geocodeCache[key]) return geocodeCache[key];
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(key)}&format=json&limit=1`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-    const data = await res.json();
-    if (data && data[0]) {
-      const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-      geocodeCache[key] = coords;
-      return coords;
-    }
-  } catch(e) { console.warn('Geocode failed for', key, e); }
+function getCityCoords(cityName) {
+  if (!cityName) return null;
+  const key = cityName.toLowerCase().replace(/[🛬🚗✈️]/g,'').trim();
+  for (const [k,v] of Object.entries(CITY_COORDS)) {
+    if (key.includes(k)) return [v[1], v[2]];
+  }
   return null;
 }
 
 let tripMapInstance = null;
 let worldMapInstance = null;
 
-async function initTripMap(trip) {
+function initTripMap(trip) {
   const el = document.getElementById('tripMap');
   if (!el) return;
+
   if (tripMapInstance) { tripMapInstance.remove(); tripMapInstance = null; }
 
-  // Show loading state
-  el.parentElement.style.background = 'var(--sand)';
-  el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">Loading map…</div>';
-
   const days = trip.days ? Object.values(trip.days) : [];
+  const points = [];
   const seen = new Set();
-  const toGeocode = [];
 
   days.forEach(day => {
-    if (!day.city) return;
-    const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
-    if (!clean || clean.toLowerCase().includes('flight') || clean.toLowerCase().includes('home')) return;
-    if (!seen.has(clean)) { seen.add(clean); toGeocode.push({ city: clean, region: day.region||'', color: day.regionColor||'#c06a3d' }); }
+    if (!day.city || day.city.includes('Flight') || day.city.includes('Home')) return;
+    const coords = getCityCoords(day.city);
+    if (!coords) return;
+    const key = coords.join(',');
+    if (seen.has(key)) return;
+    seen.add(key);
+    const region = day.region || '';
+    const color = day.regionColor || '#c06a3d';
+    points.push({ coords, city: day.city.replace(/[🛬🚗✈️]/g,'').trim(), color, region });
   });
-
-  // Geocode all unique cities
-  const points = [];
-  for (const item of toGeocode) {
-    const coords = await geocode(item.city);
-    if (coords) points.push({ ...item, coords });
-  }
-
-  el.innerHTML = '';
-  el.parentElement.style.background = '';
 
   if (points.length === 0) {
     el.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-style:italic;">No mapped cities yet</div>';
@@ -2051,7 +2050,9 @@ async function initTripMap(trip) {
   }
 
   tripMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(tripMapInstance);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; CartoDB', maxZoom: 14
+  }).addTo(tripMapInstance);
 
   const bounds = [];
   points.forEach(p => {
@@ -2065,8 +2066,11 @@ async function initTripMap(trip) {
     bounds.push(p.coords);
   });
 
-  if (bounds.length === 1) tripMapInstance.setView(bounds[0], 8);
-  else tripMapInstance.fitBounds(bounds, { padding: [30,30] });
+  if (bounds.length === 1) {
+    tripMapInstance.setView(bounds[0], 8);
+  } else {
+    tripMapInstance.fitBounds(bounds, { padding: [30,30] });
+  }
 }
 
 window.showWorldMap = function() {
@@ -2074,51 +2078,45 @@ window.showWorldMap = function() {
   setTimeout(initWorldMap, 150);
 };
 
-async function initWorldMap() {
+function initWorldMap() {
   const el = document.getElementById('worldMap');
   if (!el) return;
   if (worldMapInstance) { worldMapInstance.remove(); worldMapInstance = null; }
 
-  el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">Loading map…</div>';
+  worldMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; CartoDB', maxZoom: 14
+  }).addTo(worldMapInstance);
 
+  const allPoints = [];
+  const seen = new Set();
   const tripColors = ['#c06a3d','#6d9b72','#4a7fb5','#8a6aad','#b8943f','#c45c7a','#5a7a8a'];
   let tripIdx = 0;
-  const toGeocode = [];
-  const seenCities = new Set();
 
   Object.values(allTrips).forEach(trip => {
     const color = tripColors[tripIdx % tripColors.length];
     tripIdx++;
     const days = trip.days ? Object.values(trip.days) : [];
     days.forEach(day => {
-      if (!day.city) return;
-      const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
-      if (!clean || clean.toLowerCase().includes('flight') || clean.toLowerCase().includes('home')) return;
-      if (!seenCities.has(clean)) {
-        seenCities.add(clean);
-        toGeocode.push({ city: clean, trip: trip.name, color });
-      }
+      if (!day.city || day.city.includes('Flight') || day.city.includes('Home')) return;
+      const coords = getCityCoords(day.city);
+      if (!coords) return;
+      const key = coords.join(',');
+      if (seen.has(key)) return;
+      seen.add(key);
+      allPoints.push({ coords, city: day.city.replace(/[🛬🚗✈️]/g,'').trim(), trip: trip.name, color });
     });
   });
 
-  // Geocode all cities
-  const points = [];
-  for (const item of toGeocode) {
-    const coords = await geocode(item.city);
-    if (coords) points.push({ ...item, coords });
+  const statsEl = document.getElementById('worldMapStats');
+  statsEl.innerHTML = `<span>📍 <strong>${allPoints.length}</strong> cities</span><span>✈️ <strong>${Object.keys(allTrips).length}</strong> trips</span>`;
+
+  if (allPoints.length === 0) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">No mapped cities yet</div>';
+    return;
   }
 
-  const statsEl = document.getElementById('worldMapStats');
-  statsEl.innerHTML = `<span>📍 <strong>${points.length}</strong> cities</span><span>✈️ <strong>${Object.keys(allTrips).length}</strong> trips</span>`;
-
-  el.innerHTML = '';
-
-  if (points.length === 0) return;
-
-  worldMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(worldMapInstance);
-
-  points.forEach(p => {
+  allPoints.forEach(p => {
     const icon = L.divIcon({
       className: '',
       html: `<div style="width:11px;height:11px;border-radius:50%;background:${p.color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
@@ -2128,7 +2126,7 @@ async function initWorldMap() {
       .bindPopup(`<strong>${p.city}</strong><br><span style="color:#8a7e72;font-size:12px;">${p.trip}</span>`);
   });
 
-  worldMapInstance.fitBounds(points.map(p=>p.coords), { padding: [30,30] });
+  worldMapInstance.fitBounds(allPoints.map(p=>p.coords), { padding: [30,30] });
 }
 
 window.closeModal = function(e) {
