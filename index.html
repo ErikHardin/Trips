@@ -1557,12 +1557,15 @@ window.loadDemoData = async function() {
 // ════════════════════════════════════════
 function populateImportSelect() {
   const sorted = Object.entries(allTrips).sort((a,b) => (b[1].year||0)-(a[1].year||0));
-  const opts = '<option value="">— Select trip —</option>' +
+  const allOpts = '<option value="">— Select trip —</option>' +
     sorted.map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
+  const upcomingOpts = '<option value="">— Select trip —</option>' +
+    sorted.filter(([k,t]) => t.status === 'upcoming' || t.status === 'active')
+    .map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
   const imp = document.getElementById('importTripSelect');
-  if (imp) imp.innerHTML = opts;
+  if (imp) imp.innerHTML = allOpts;
   const ai = document.getElementById('aiTripSelect');
-  if (ai) ai.innerHTML = opts;
+  if (ai) ai.innerHTML = upcomingOpts;
 }
 
 function renderAdminTripList() {
