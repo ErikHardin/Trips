@@ -1190,7 +1190,11 @@ function renderTripItinerary(trip) {
       const emoji = typeof a==='object' && a.emoji ? a.emoji : getEmoji(text);
       const time = typeof a==='object' && a.time ? a.time : '';
       const michelin = typeof a==='object' && a.michelin;
-      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}`;
+      // Append city for local context, bias Google results to trip country
+      const cityClean = (day.city||'').replace(/[🛬🚗✈️🏠]/g,'').trim();
+      const searchQ = cityClean ? text + ' ' + cityClean : text;
+      const countryCode = getCityCountryCode(day.city||"");
+      const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQ) + (countryCode ? '&gl=' + countryCode : '');
       // Use data attributes to avoid apostrophe/quote breaking onclick
       return `
         <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-text="${escAttr(text)}">
@@ -2142,6 +2146,51 @@ window.handleCSVFile = function(e) {
 // ════════════════════════════════════════
 //  UTILITIES
 // ════════════════════════════════════════
+
+// Maps city name to Google country code (gl param) — per-day so multi-country trips work correctly
+function getCityCountryCode(city) {
+  if (!city) return '';
+  const c = city.toLowerCase();
+  // France
+  if (c.includes('lyon') || c.includes('paris') || c.includes('luberon') || c.includes('bandol') ||
+      c.includes('cannes') || c.includes('provence') || c.includes('beaujolais') || c.includes('alsace') ||
+      c.includes('champagne') || c.includes('burgundy') || c.includes('amboise') || c.includes('loire') ||
+      c.includes('nice') || c.includes('tropez') || c.includes('bordeaux') || c.includes('marseille')) return 'fr';
+  // Germany
+  if (c.includes('berlin') || c.includes('munich') || c.includes('hamburg') || c.includes('frankfurt')) return 'de';
+  // Italy
+  if (c.includes('milan') || c.includes('rome') || c.includes('florence') || c.includes('venice') ||
+      c.includes('como') || c.includes('portofino') || c.includes('piedmont') || c.includes('tuscany')) return 'it';
+  // Portugal
+  if (c.includes('lisbon') || c.includes('porto') || c.includes('douro') || c.includes('algarve') || c.includes('lagos')) return 'pt';
+  // Australia
+  if (c.includes('sydney') || c.includes('melbourne') || c.includes('adelaide') || c.includes('hobart') ||
+      c.includes('tasmania') || c.includes('lofty') || c.includes('mornington')) return 'au';
+  // New Zealand
+  if (c.includes('auckland') || c.includes('queenstown') || c.includes('wellington') || c.includes('marahau') ||
+      c.includes('havelock') || c.includes('bay of islands')) return 'nz';
+  // South Africa
+  if (c.includes('cape town') || c.includes('franschhoek') || c.includes('stellenbosch') ||
+      c.includes('hluhluwe') || c.includes('durban')) return 'za';
+  // UAE
+  if (c.includes('dubai') || c.includes('abu dhabi')) return 'ae';
+  // Maldives
+  if (c.includes('maldives') || c.includes('male')) return 'mv';
+  // Thailand
+  if (c.includes('bangkok') || c.includes('chiang mai') || c.includes('koh') || c.includes('phuket')) return 'th';
+  // Vietnam
+  if (c.includes('hanoi') || c.includes('hoi an') || c.includes('halong') || c.includes('ho chi minh')) return 'vn';
+  // Singapore
+  if (c.includes('singapore')) return 'sg';
+  // Spain
+  if (c.includes('madrid') || c.includes('barcelona') || c.includes('seville')) return 'es';
+  // Japan
+  if (c.includes('tokyo') || c.includes('kyoto') || c.includes('osaka')) return 'jp';
+  // UK
+  if (c.includes('london') || c.includes('edinburgh') || c.includes('manchester')) return 'gb';
+  return '';
+}
+
 function getEmoji(text) {
   if (!text) return '📍';
   const t = text.toLowerCase();
