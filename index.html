@@ -1174,7 +1174,7 @@ function renderTripItinerary(trip) {
 
   // Fetch weather for upcoming/active trips
   if (trip.status === 'upcoming' || trip.status === 'active') {
-    setTimeout(() => fetchTripWeather(days), 100);
+    setTimeout(() => fetchTripWeather(days, trip.year), 100);
   }
   // Return flights
   if (trip.flightReturn) {
@@ -2162,7 +2162,7 @@ function wxInfo(code) {
   return { icon: '🌡️', label: '' };
 }
 
-async function fetchTripWeather(days) {
+async function fetchTripWeather(days, tripYear) {
   const today = new Date();
   today.setHours(0,0,0,0);
   const forecastCutoff = new Date(today);
@@ -2172,13 +2172,26 @@ async function fetchTripWeather(days) {
   const forecastCityDays = {};   // city -> [{dayId, dateISO, cardId}]
   const climateCityDays  = {};   // city -> [{dayId, dateISO, cardId, month}]
 
+  const MONTHS_MAP = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+
   for (const [dayId, day] of days) {
-    if (!day.dateISO || !day.city) continue;
-    const d = new Date(day.dateISO + 'T00:00:00');
+    if (!day.city) continue;
+    // Derive dateISO from stored field or fall back to dateNum+dateMonth+year
+    let dateISO = day.dateISO;
+    if (!dateISO && day.dateNum && day.dateMonth && tripYear) {
+      const m = MONTHS_MAP[day.dateMonth.slice(0,3)];
+      if (m) {
+        const mm = String(m).padStart(2,'0');
+        const dd = String(day.dateNum).padStart(2,'0');
+        dateISO = tripYear + '-' + mm + '-' + dd;
+      }
+    }
+    if (!dateISO) continue;
+    const d = new Date(dateISO + 'T00:00:00');
     if (d < today) continue;
     const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
     if (!clean) continue;
-    const entry = { dayId, dateISO: day.dateISO, cardId: 'dc-' + dayId };
+    const entry = { dayId, dateISO, cardId: 'dc-' + dayId };
     if (d <= forecastCutoff) {
       if (!forecastCityDays[clean]) forecastCityDays[clean] = [];
       forecastCityDays[clean].push(entry);
