@@ -464,10 +464,10 @@ body {
 <body>
 
 <!-- ══ PIN SCREEN ══ -->
-<div id="screen-pin" class="screen active">
+<div id="screen-pin" class="screen">
   <div class="pin-screen">
     <div class="pin-logo"><em>Hardin</em> Trips</div>
-    <div class="pin-subtitle">Admin Access</div>
+    <div class="pin-subtitle">Enter PIN to unlock editing</div>
     <div class="pin-dots" id="pinDots">
       <div class="pin-dot" id="d0"></div>
       <div class="pin-dot" id="d1"></div>
@@ -493,13 +493,16 @@ body {
 </div>
 
 <!-- ══ HOME SCREEN ══ -->
-<div id="screen-home" class="screen">
+<div id="screen-home" class="screen active">
   <div class="app-header">
     <div class="header-titles">
       <div class="header-eyebrow">Your Journeys</div>
-      <div class="header-main"><em>Hardin</em> Trips</div>
+      <div class="header-main">
+        <span id="secretHardinBtn" onclick="handleSecretTap()" style="cursor:default;-webkit-user-select:none;user-select:none;"><em>Hardin</em></span> Trips
+      </div>
     </div>
-    <button class="header-action" onclick="showPin()" title="Admin">⚙️</button>
+    <button class="header-action" id="adminNavBtn" onclick="showScreen('screen-admin')" style="display:none;" title="Admin">⚙️</button>
+    <button class="header-action" id="lockBtn" onclick="lockApp()" style="display:none;font-size:15px;color:var(--muted);" title="Lock">🔒</button>
   </div>
   <div class="scroll-content" id="homeContent">
     <div class="home-hero">
@@ -547,7 +550,7 @@ body {
   <div class="scroll-content">
     <div class="notes-activity-title" id="notesActivityTitle"></div>
     <div class="notes-list" id="notesList"></div>
-    <div class="add-note-form">
+    <div id="addNoteForm" class="add-note-form" style="display:none;">
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
@@ -845,6 +848,31 @@ function showScreen(id) {
 window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 window.showPin = function() { pinEntry = ''; updatePinDots(); document.getElementById('pinError').textContent=''; showScreen('screen-pin'); };
 
+// ── Secret tap logic: 3 taps within 1.5s ──
+let secretTapCount = 0;
+let secretTapTimer = null;
+window.handleSecretTap = function() {
+  secretTapCount++;
+  clearTimeout(secretTapTimer);
+  secretTapTimer = setTimeout(() => { secretTapCount = 0; }, 1500);
+  if (secretTapCount >= 3) {
+    secretTapCount = 0;
+    clearTimeout(secretTapTimer);
+    showPin();
+  }
+};
+
+window.lockApp = function() {
+  isAdmin = false;
+  document.getElementById('adminNavBtn').style.display = 'none';
+  document.getElementById('lockBtn').style.display = 'none';
+  document.getElementById('tripAdminBtn').style.display = 'none';
+  document.getElementById('addNoteForm').style.display = 'none';
+  renderHome();
+  goHome();
+  showToast('Locked 🔒');
+};
+
 function goBackFromNotes() {
   if (notesUnsubscribe) { notesUnsubscribe(); notesUnsubscribe = null; }
   showScreen('screen-trip');
@@ -867,8 +895,12 @@ window.pinKey = function(digit) {
           console.warn('Auth error:', e);
         }
         isAdmin = true;
-        showScreen('screen-admin');
-        document.getElementById('tripAdminBtn').style.display = '';
+        document.getElementById('adminNavBtn').style.display = '';
+        document.getElementById('lockBtn').style.display = '';
+        document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
+        renderHome();
+        goHome();
+        showToast('Unlocked ✓');
       } else {
         document.getElementById('pinError').textContent = 'Incorrect PIN';
         pinEntry = '';
@@ -944,7 +976,6 @@ function openTrip(tripId) {
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
   document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
-
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -1090,6 +1121,8 @@ window.openNotes = function(dayId, actKey, actText) {
   document.getElementById('notesActivityTitle').textContent = actText;
   document.getElementById('noteText').value = '';
   clearPhotos();
+  // Show add form only if authenticated
+  document.getElementById('addNoteForm').style.display = isAdmin ? '' : 'none';
   renderNotesList(dayId, actKey);
   showScreen('screen-notes');
 };
@@ -1122,7 +1155,7 @@ function renderNotesList(dayId, actKey) {
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
               <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-              <button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button>
+              ${isAdmin ? `<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button>` : ''}
             </div>
           </div>
         </div>`;
