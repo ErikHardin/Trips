@@ -489,6 +489,53 @@ body {
 .hotel-row-dates { font-size: 12px; color: var(--muted); }
 .hotel-row-nights { margin-left: auto; font-size: 12px; background: var(--sand); padding: 3px 9px; border-radius: 20px; color: var(--muted); white-space: nowrap; }
 
+/* ── LOGISTICS TAB ── */
+.logistics-section { padding: 20px 16px 0; }
+.logistics-section-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; margin-bottom: 12px; color: var(--ink); }
+.logistics-card {
+  background: var(--warm-white); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 4px; margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.logistics-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 14px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.logistics-item:last-child { border-bottom: none; }
+.logistics-item:active { background: var(--cream); }
+.logistics-checkbox {
+  width: 22px; height: 22px; border-radius: 6px;
+  border: 2px solid var(--sand-dark); background: var(--cream);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all 0.15s;
+}
+.logistics-checkbox.checked {
+  background: var(--sage); border-color: var(--sage);
+}
+.logistics-checkbox.checked::after {
+  content: "✓"; color: white; font-size: 13px; font-weight: 700; line-height: 1;
+}
+.logistics-item-label { font-size: 14px; font-weight: 500; color: var(--ink); flex: 1; }
+.logistics-item-label.checked { color: var(--muted); text-decoration: line-through; }
+.logistics-item-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.logistics-progress {
+  margin: 0 16px 16px; padding: 10px 14px;
+  background: var(--sage-light); border: 1px solid #b8d8bb;
+  border-radius: var(--radius-sm);
+  font-size: 12px; color: var(--sage); font-weight: 500;
+  display: flex; align-items: center; gap: 8px;
+}
+.logistics-progress-bar {
+  flex: 1; height: 5px; background: rgba(109,155,114,0.2);
+  border-radius: 3px; overflow: hidden;
+}
+.logistics-progress-fill {
+  height: 100%; background: var(--sage);
+  border-radius: 3px; transition: width 0.4s ease;
+}
+
 /* ── WEATHER WIDGET ── */
 .weather-chip {
   display: inline-flex; align-items: center; gap: 4px;
@@ -587,10 +634,12 @@ body {
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTripTab('itinerary',this)">Itinerary</button>
     <button class="tab-btn" onclick="switchTripTab('overview',this)">Overview</button>
+    <button class="tab-btn" id="logisticsTabBtn" onclick="switchTripTab('logistics',this)" style="display:none;">Logistics</button>
   </div>
   <div class="scroll-content">
     <div id="tripItineraryPanel" class="tab-panel active"></div>
     <div id="tripOverviewPanel" class="tab-panel"></div>
+    <div id="tripLogisticsPanel" class="tab-panel"></div>
   </div>
 </div>
 
@@ -960,7 +1009,13 @@ window.lockApp = function() {
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripAdminBtn').style.display = 'none';
+  document.getElementById('logisticsTabBtn').style.display = 'none';
   document.getElementById('addNoteForm').style.display = 'none';
+  // Switch away from logistics tab if active
+  const logBtn = document.querySelector('.tab-btn.active');
+  if (document.getElementById('tripLogisticsPanel').classList.contains('active')) {
+    switchTripTab('itinerary', document.querySelector('.tab-btn'));
+  }
   renderHome();
   goHome();
   showToast('Locked 🔒');
@@ -991,6 +1046,7 @@ window.pinKey = function(digit) {
         document.getElementById('adminNavBtn').style.display = '';
         document.getElementById('lockBtn').style.display = '';
         document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
+        document.getElementById('logisticsTabBtn').style.display = currentTripId ? '' : 'none';
         renderHome();
         goHome();
         showToast('Unlocked ✓');
@@ -1069,6 +1125,7 @@ function openTrip(tripId) {
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
   document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('logisticsTabBtn').style.display = isAdmin ? '' : 'none';
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -1083,10 +1140,13 @@ function switchTripTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tripItineraryPanel').classList.toggle('active', name==='itinerary');
   document.getElementById('tripOverviewPanel').classList.toggle('active', name==='overview');
+  document.getElementById('tripLogisticsPanel').classList.toggle('active', name==='logistics');
   if(btn) btn.classList.add('active');
-  // Init map when Overview tab becomes visible so Leaflet can measure the container
   if (name === 'overview' && currentTripId && allTrips[currentTripId]) {
     setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
+  }
+  if (name === 'logistics' && currentTripId) {
+    renderLogisticsPanel(currentTripId);
   }
 }
 window.switchTripTab = switchTripTab;
@@ -2144,6 +2204,71 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2800);
 }
 
+
+
+// ════════════════════════════════════════
+//  LOGISTICS TAB
+// ════════════════════════════════════════
+const LOGISTICS_ITEMS = [
+  { key: 'flightsBooked',    label: 'Flights Booked',     icon: '✈️' },
+  { key: 'hotelsBooked',     label: 'Hotels Booked',      icon: '🏨' },
+  { key: 'carRentalBooked',  label: 'Car Rental Booked',  icon: '🚗' },
+];
+
+async function renderLogisticsPanel(tripId) {
+  const panel = document.getElementById('tripLogisticsPanel');
+  panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading...</div>';
+
+  // Fetch current logistics state from Firebase
+  let logistics = {};
+  try {
+    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics'));
+    logistics = snap.val() || {};
+  } catch(e) { console.warn('Could not load logistics', e); }
+
+  const checkedCount = LOGISTICS_ITEMS.filter(item => logistics[item.key]).length;
+  const total = LOGISTICS_ITEMS.length;
+  const pct = Math.round((checkedCount / total) * 100);
+
+  const itemsHTML = LOGISTICS_ITEMS.map(item => {
+    const checked = !!logistics[item.key];
+    return `
+      <div class="logistics-item" onclick="toggleLogisticsItem('${tripId}','${item.key}',${!checked})">
+        <div class="logistics-checkbox${checked ? ' checked' : ''}"></div>
+        <div>
+          <div class="logistics-item-label${checked ? ' checked' : ''}">${item.icon} ${item.label}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="logistics-section">
+      <div class="logistics-section-title">Booking Checklist</div>
+    </div>
+    <div class="logistics-progress">
+      <span>${checkedCount}/${total} booked</span>
+      <div class="logistics-progress-bar">
+        <div class="logistics-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <span>${pct}%</span>
+    </div>
+    <div class="logistics-section" style="padding-top:0;">
+      <div class="logistics-card">${itemsHTML}</div>
+    </div>`;
+}
+
+window.toggleLogisticsItem = async function(tripId, key, value) {
+  try {
+    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/' + key), value);
+    // Update local cache and re-render
+    if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
+    allTrips[tripId].logistics[key] = value;
+    renderLogisticsPanel(tripId);
+  } catch(e) {
+    showToast('Could not save — check connection');
+    console.error(e);
+  }
+};
 
 // ════════════════════════════════════════
 //  WEATHER
