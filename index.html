@@ -488,6 +488,17 @@ body {
 .hotel-row-name { font-size: 13.5px; font-weight: 500; }
 .hotel-row-dates { font-size: 12px; color: var(--muted); }
 .hotel-row-nights { margin-left: auto; font-size: 12px; background: var(--sand); padding: 3px 9px; border-radius: 20px; color: var(--muted); white-space: nowrap; }
+
+/* ── WEATHER WIDGET ── */
+.weather-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--muted);
+  background: var(--blue-light); border-radius: 20px;
+  padding: 2px 8px; margin-left: auto; flex-shrink: 0;
+  white-space: nowrap;
+}
+.weather-chip .wx-icon { font-size: 13px; line-height: 1; }
+.weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
 </style>
 </head>
 <body>
@@ -1160,6 +1171,11 @@ function renderTripItinerary(trip) {
       </div>`;
   });
 
+
+  // Fetch weather for upcoming/active trips
+  if (trip.status === 'upcoming' || trip.status === 'active') {
+    setTimeout(() => fetchTripWeather(days), 100);
+  }
   // Return flights
   if (trip.flightReturn) {
     panel.innerHTML += `
@@ -2128,6 +2144,150 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2800);
 }
 
+
+// ════════════════════════════════════════
+//  WEATHER
+// ════════════════════════════════════════
+function wxInfo(code) {
+  if (code === 0)  return { icon: '☀️',  label: 'Clear' };
+  if (code <= 2)   return { icon: '⛅',  label: 'Partly cloudy' };
+  if (code === 3)  return { icon: '☁️',  label: 'Overcast' };
+  if (code <= 49)  return { icon: '🌫️', label: 'Foggy' };
+  if (code <= 57)  return { icon: '🌦️', label: 'Drizzle' };
+  if (code <= 67)  return { icon: '🌧️', label: 'Rain' };
+  if (code <= 77)  return { icon: '❄️',  label: 'Snow' };
+  if (code <= 82)  return { icon: '🌧️', label: 'Showers' };
+  if (code <= 86)  return { icon: '🌨️', label: 'Snow showers' };
+  if (code <= 99)  return { icon: '⛈️',  label: 'Thunderstorm' };
+  return { icon: '🌡️', label: '' };
+}
+
+async function fetchTripWeather(days) {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const forecastCutoff = new Date(today);
+  forecastCutoff.setDate(forecastCutoff.getDate() + 15);
+
+  // Separate days into: real forecast (<=15 days) vs climate average (beyond)
+  const forecastCityDays = {};   // city -> [{dayId, dateISO, cardId}]
+  const climateCityDays  = {};   // city -> [{dayId, dateISO, cardId, month}]
+
+  for (const [dayId, day] of days) {
+    if (!day.dateISO || !day.city) continue;
+    const d = new Date(day.dateISO + 'T00:00:00');
+    if (d < today) continue;
+    const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
+    if (!clean) continue;
+    const entry = { dayId, dateISO: day.dateISO, cardId: 'dc-' + dayId };
+    if (d <= forecastCutoff) {
+      if (!forecastCityDays[clean]) forecastCityDays[clean] = [];
+      forecastCityDays[clean].push(entry);
+    } else {
+      if (!climateCityDays[clean]) climateCityDays[clean] = [];
+      climateCityDays[clean].push({ ...entry, month: d.getMonth() + 1 });
+    }
+  }
+
+  // ── Real forecasts ──
+  for (const [city, entries] of Object.entries(forecastCityDays)) {
+    try {
+      const coords = await getCityCoords(city);
+      if (!coords) continue;
+      const [lat, lon] = coords;
+      const dates = entries.map(e => e.dateISO);
+      const startDate = dates.reduce((a,b) => a < b ? a : b);
+      const endDate   = dates.reduce((a,b) => a > b ? a : b);
+      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+        '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + startDate + '&end_date=' + endDate;
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (!data.daily) continue;
+      const wxByDate = {};
+      data.daily.time.forEach((date, i) => {
+        wxByDate[date] = {
+          code: data.daily.weathercode[i],
+          hi:   Math.round(data.daily.temperature_2m_max[i]),
+          lo:   Math.round(data.daily.temperature_2m_min[i]),
+          avg:  false
+        };
+      });
+      for (const { dateISO, cardId } of entries) {
+        const wx = wxByDate[dateISO];
+        if (!wx) continue;
+        injectWeatherChip(cardId, wx);
+      }
+    } catch(e) { console.warn('Forecast fetch failed for', city, e); }
+  }
+
+  // ── Historical climate averages (last 10 years same month) ──
+  for (const [city, entries] of Object.entries(climateCityDays)) {
+    try {
+      const coords = await getCityCoords(city);
+      if (!coords) continue;
+      const [lat, lon] = coords;
+
+      // Group entries by month so we only fetch once per city+month
+      const byMonth = {};
+      for (const entry of entries) {
+        if (!byMonth[entry.month]) byMonth[entry.month] = [];
+        byMonth[entry.month].push(entry);
+      }
+
+      for (const [month, monthEntries] of Object.entries(byMonth)) {
+        // Use last 5 years of same-month data to get averages
+        const refYear = today.getFullYear() - 1;
+        const mm = String(month).padStart(2,'0');
+        // Get days in that month
+        const daysInMonth = new Date(refYear, parseInt(month), 0).getDate();
+        const startDate = refYear + '-' + mm + '-01';
+        const endDate   = refYear + '-' + mm + '-' + daysInMonth;
+        const url = 'https://archive-api.open-meteo.com/v1/archive?latitude=' + lat + '&longitude=' + lon +
+          '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + startDate + '&end_date=' + endDate;
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (!data.daily) continue;
+
+        // Average the whole month
+        const codes = data.daily.weathercode.filter(c => c !== null);
+        const maxes = data.daily.temperature_2m_max.filter(v => v !== null);
+        const mins  = data.daily.temperature_2m_min.filter(v => v !== null);
+        if (!maxes.length) continue;
+        const avgHi = Math.round(maxes.reduce((a,b)=>a+b,0)/maxes.length);
+        const avgLo = Math.round(mins.reduce((a,b)=>a+b,0)/mins.length);
+        // Most common weather code
+        const codeFreq = {};
+        codes.forEach(c => { codeFreq[c] = (codeFreq[c]||0)+1; });
+        const typicalCode = parseInt(Object.entries(codeFreq).sort((a,b)=>b[1]-a[1])[0][0]);
+        const wx = { code: typicalCode, hi: avgHi, lo: avgLo, avg: true };
+
+        for (const { cardId } of monthEntries) {
+          injectWeatherChip(cardId, wx);
+        }
+      }
+    } catch(e) { console.warn('Climate fetch failed for', city, e); }
+  }
+}
+
+function injectWeatherChip(cardId, wx) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const header = card.querySelector('.day-header');
+  if (!header) return;
+  const old = header.querySelector('.weather-chip');
+  if (old) old.remove();
+  const { icon, label } = wxInfo(wx.code);
+  const chip = document.createElement('div');
+  chip.className = 'weather-chip';
+  chip.title = (wx.avg ? 'Typical: ' : '') + label;
+  // avg = historical estimate, show ~ prefix on temp
+  const prefix = wx.avg ? '~' : '';
+  chip.innerHTML = '<span class="wx-icon">' + icon + '</span>' +
+    '<span class="wx-temp">' + prefix + wx.hi + '°</span>' +
+    '<span style="color:var(--muted);font-size:10px;">/' + prefix + wx.lo + '°</span>';
+  const chevron = header.querySelector('.day-chevron');
+  header.insertBefore(chip, chevron);
+}
+
 // ════════════════════════════════════════
 //  MAPS
 // ════════════════════════════════════════
@@ -2263,16 +2423,7 @@ async function initTripMap(trip) {
 
   const bounds = [];
 
-  // Draw dashed route polyline first (renders behind markers)
-  if (points.length > 1) {
-    L.polyline(points.map(p => p.coords), {
-      color: '#c06a3d',
-      weight: 1.5,
-      opacity: 0.4,
-      dashArray: '5, 7'
-    }).addTo(tripMapInstance);
-  }
-
+  // Add markers first
   points.forEach((p, i) => {
     const isFirst = i === 0;
     const isLast  = i === points.length - 1;
@@ -2290,6 +2441,45 @@ async function initTripMap(trip) {
     tripMapInstance.setView(bounds[0], 6);
   } else {
     tripMapInstance.fitBounds(bounds, { padding: [30, 30] });
+  }
+
+  // Animated route line — draws segment by segment after map settles
+  if (points.length > 1) {
+    setTimeout(() => {
+      const allCoords = points.map(p => p.coords);
+      // Draw a faint full route as base
+      L.polyline(allCoords, { color: '#c06a3d', weight: 1.5, opacity: 0.15, dashArray: '4,6' }).addTo(tripMapInstance);
+      // Animate segment by segment
+      let drawn = [allCoords[0]];
+      const animLine = L.polyline([allCoords[0]], { color: '#c06a3d', weight: 2, opacity: 0.7, dashArray: '6,5' }).addTo(tripMapInstance);
+      let seg = 1;
+      const STEPS = 20;
+      const INTERVAL = 30; // ms per interpolation step
+      function animateNext() {
+        if (seg >= allCoords.length) return;
+        const from = allCoords[seg - 1];
+        const to   = allCoords[seg];
+        let step = 0;
+        const timer = setInterval(() => {
+          step++;
+          const t = step / STEPS;
+          const mid = [
+            from[0] + (to[0] - from[0]) * t,
+            from[1] + (to[1] - from[1]) * t
+          ];
+          drawn.push(mid);
+          animLine.setLatLngs(drawn);
+          if (step >= STEPS) {
+            clearInterval(timer);
+            drawn[drawn.length - 1] = to;
+            animLine.setLatLngs(drawn);
+            seg++;
+            setTimeout(animateNext, 80);
+          }
+        }, INTERVAL);
+      }
+      animateNext();
+    }, 400);
   }
 }
 
