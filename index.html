@@ -611,6 +611,36 @@ body {
   </div>
   <div class="scroll-content">
 
+    <!-- AI ASSISTANT -->
+    <div class="admin-section">
+      <div class="admin-section-title">AI Trip Assistant</div>
+      <div class="admin-card">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+          Tell me what to change. Examples:<br>
+          <em>"Add dinner at Le Bernardin 7:30pm to France day 3"</em><br>
+          <em>"Update outbound flight for Portugal to UA100 DEN-LIS 8am-10pm"</em><br>
+          <em>"Move the wine tasting on May 26 to 3pm"</em>
+        </div>
+        <textarea id="aiInput" class="form-input" style="min-height:80px;resize:none;" placeholder="What would you like to change?"></textarea>
+        <button class="form-btn" id="aiSubmitBtn" onclick="runAIAssistant()" style="margin-top:8px;">
+          ✨ Ask Assistant
+        </button>
+      </div>
+
+      <!-- AI Preview / Response -->
+      <div id="aiPreview" style="display:none;margin-top:10px;">
+        <div class="admin-card" style="border:2px solid var(--terracotta);">
+          <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--terracotta);margin-bottom:8px;">Proposed Changes</div>
+          <div id="aiPreviewText" style="font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-wrap;"></div>
+          <div id="aiError" style="display:none;font-size:13px;color:var(--terracotta);margin-top:6px;"></div>
+          <div id="aiConfirmBtns" style="display:flex;gap:8px;margin-top:12px;">
+            <button class="form-btn" onclick="confirmAIChange()" style="flex:1;">Apply Changes</button>
+            <button class="form-btn secondary" onclick="cancelAIChange()" style="flex:1;">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ADD NEW TRIP -->
     <div class="admin-section">
       <div class="admin-section-title">Add New Trip</div>
@@ -2135,6 +2165,237 @@ window.closeModal = function(e) {
 window.closeAddTripModal = function() {
   const m = document.getElementById('addTripModal');
   if (m) m.classList.remove('open');
+};
+
+// ════════════════════════════════════════
+//  AI TRIP ASSISTANT
+// ════════════════════════════════════════
+let pendingAIChanges = null;
+
+window.runAIAssistant = async function() {
+  const input = document.getElementById('aiInput').value.trim();
+  if (!input) { showToast('Tell me what to change first'); return; }
+
+  const btn = document.getElementById('aiSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loading-spinner"></div> Thinking…';
+  document.getElementById('aiPreview').style.display = 'none';
+  pendingAIChanges = null;
+
+  // Build a compact summary of all trips for context
+  const tripSummary = Object.entries(allTrips).map(([tid, trip]) => {
+    const days = trip.days ? Object.entries(trip.days) : [];
+    const dayList = days
+      .sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0))
+      .map(([did, day]) => {
+        const acts = day.activities
+          ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+          : [];
+        const actList = acts.map(a => `${a.emoji||''} ${a.text||a}${a.time?' ('+a.time+')':''}`.trim()).join(', ');
+        return `    dayId:${did} | ${day.dateNum||''} ${day.dateMonth||''} (${day.dayName||''}) | city:${day.city||''} | hotel:${day.hotel||''} | acts:[${actList}]`;
+      }).join('\n');
+    return `TRIP id:${tid} | "${trip.name}" ${trip.year} | flights out:${trip.flightOut||''} | flights back:${trip.flightReturn||''}\n${dayList}`;
+  }).join('\n\n');
+
+  const systemPrompt = `You are a trip planning assistant for Hardin Trips, a travel app. 
+You have access to the user's trip data and must return a JSON object describing exactly what Firebase database changes to make.
+
+CURRENT TRIP DATA:
+${tripSummary}
+
+You must respond with ONLY valid JSON in this exact format (no markdown, no explanation outside the JSON):
+{
+  "summary": "A 1-2 sentence plain English description of what you are changing",
+  "changes": [
+    {
+      "type": "update_trip_field",
+      "tripId": "...",
+      "field": "flightOut|flightReturn|flightOutDate|flightReturnDate|name|dates|status",
+      "value": "new value"
+    },
+    {
+      "type": "add_activity",
+      "tripId": "...",
+      "dayId": "...",
+      "activity": { "text": "...", "emoji": "...", "time": "..." }
+    },
+    {
+      "type": "update_activity",
+      "tripId": "...",
+      "dayId": "...",
+      "activityIndex": 0,
+      "activity": { "text": "...", "emoji": "...", "time": "..." }
+    },
+    {
+      "type": "remove_activity",
+      "tripId": "...",
+      "dayId": "...",
+      "activityIndex": 0
+    },
+    {
+      "type": "update_day_field",
+      "tripId": "...",
+      "dayId": "...",
+      "field": "city|hotel|region|regionColor",
+      "value": "..."
+    }
+  ]
+}
+
+If you cannot find the relevant trip or day, set "changes" to [] and explain in "summary".
+Pick appropriate emojis for activities (🍽️ dinner, 🍷 wine, 🥾 hike, 🏖️ beach, ✈️ flight, 🏨 hotel, 🚗 drive, ☕ breakfast, 🍸 cocktail, 🎢 adventure, ⛵ cruise).
+For time fields use format like "7:30pm" or "10am-2pm".`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': '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',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: input }]
+      })
+    });
+
+    const data = await response.json();
+    const raw = data.content?.[0]?.text || '';
+
+    // Strip any markdown fences
+    const clean = raw.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+
+    if (!parsed.changes || !parsed.summary) throw new Error('Unexpected response format');
+
+    pendingAIChanges = parsed;
+
+    // Show preview
+    const preview = document.getElementById('aiPreview');
+    const previewText = document.getElementById('aiPreviewText');
+    const confirmBtns = document.getElementById('aiConfirmBtns');
+    const errEl = document.getElementById('aiError');
+
+    errEl.style.display = 'none';
+    previewText.textContent = parsed.summary;
+
+    if (parsed.changes.length === 0) {
+      confirmBtns.style.display = 'none';
+      previewText.textContent = parsed.summary + '\n\nNo changes to apply.';
+    } else {
+      confirmBtns.style.display = 'flex';
+      // Append change detail
+      const detail = parsed.changes.map(c => {
+        if (c.type === 'add_activity') return `  + Add activity to day ${c.dayId}: "${c.activity.text}"${c.activity.time ? ' at '+c.activity.time : ''}`;
+        if (c.type === 'update_activity') return `  ~ Update activity #${c.activityIndex+1} on day ${c.dayId}: "${c.activity.text}"`;
+        if (c.type === 'remove_activity') return `  - Remove activity #${c.activityIndex+1} from day ${c.dayId}`;
+        if (c.type === 'update_trip_field') return `  ~ Set ${c.field} → "${c.value}"`;
+        if (c.type === 'update_day_field') return `  ~ Set ${c.field} on day ${c.dayId} → "${c.value}"`;
+        return `  • ${JSON.stringify(c)}`;
+      }).join('\n');
+      previewText.textContent = parsed.summary + '\n\n' + detail;
+    }
+
+    preview.style.display = '';
+
+  } catch(e) {
+    console.error('AI error:', e);
+    const preview = document.getElementById('aiPreview');
+    document.getElementById('aiPreviewText').textContent = '';
+    document.getElementById('aiError').textContent = 'Error: ' + e.message;
+    document.getElementById('aiError').style.display = '';
+    document.getElementById('aiConfirmBtns').style.display = 'none';
+    preview.style.display = '';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '✨ Ask Assistant';
+};
+
+window.confirmAIChange = async function() {
+  if (!pendingAIChanges || !pendingAIChanges.changes.length) return;
+
+  const btn = document.querySelector('#aiConfirmBtns .form-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loading-spinner"></div> Applying…';
+
+  try {
+    for (const change of pendingAIChanges.changes) {
+      if (change.type === 'update_trip_field') {
+        await window._set(
+          window._ref(window._db, `trips/${change.tripId}/${change.field}`),
+          change.value
+        );
+
+      } else if (change.type === 'update_day_field') {
+        await window._set(
+          window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/${change.field}`),
+          change.value
+        );
+
+      } else if (change.type === 'add_activity') {
+        const trip = allTrips[change.tripId];
+        const day = trip?.days?.[change.dayId];
+        if (!day) throw new Error(`Day ${change.dayId} not found`);
+        const existing = day.activities
+          ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+          : [];
+        existing.push(change.activity);
+        await window._set(
+          window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/activities`),
+          existing
+        );
+
+      } else if (change.type === 'update_activity') {
+        const trip = allTrips[change.tripId];
+        const day = trip?.days?.[change.dayId];
+        if (!day) throw new Error(`Day ${change.dayId} not found`);
+        const existing = day.activities
+          ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities))
+          : [];
+        existing[change.activityIndex] = change.activity;
+        await window._set(
+          window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/activities`),
+          existing
+        );
+
+      } else if (change.type === 'remove_activity') {
+        const trip = allTrips[change.tripId];
+        const day = trip?.days?.[change.dayId];
+        if (!day) throw new Error(`Day ${change.dayId} not found`);
+        const existing = day.activities
+          ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities))
+          : [];
+        existing.splice(change.activityIndex, 1);
+        await window._set(
+          window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/activities`),
+          existing
+        );
+      }
+    }
+
+    showToast('Changes applied! ✓');
+    document.getElementById('aiPreview').style.display = 'none';
+    document.getElementById('aiInput').value = '';
+    pendingAIChanges = null;
+
+  } catch(e) {
+    showToast('Error applying changes: ' + e.message);
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Apply Changes';
+};
+
+window.cancelAIChange = function() {
+  document.getElementById('aiPreview').style.display = 'none';
+  pendingAIChanges = null;
+  showToast('Cancelled');
 };
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
