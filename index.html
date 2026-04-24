@@ -1220,7 +1220,7 @@ function renderHome() {
     const t = allTrips[k];
     const card = document.createElement('div');
     card.className = 'trip-card';
-    const datesHTML    = t.dates ? '<span class="trip-pill">' + escHtml(t.dates) + '</span>' : '';
+    const datesHTML    = t.dates ? '<span class="trip-pill">' + (t.dates||'') + '</span>' : '';
     const activeHTML    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : '';
     const countdownHTML = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
     card.innerHTML =
@@ -1228,7 +1228,7 @@ function renderHome() {
         '<span class="trip-card-cover-emoji">' + (t.emoji || '✈️') + '</span>' +
       '</div>' +
       '<div class="trip-card-body">' +
-        '<div class="trip-card-name">' + escHtml(t.name || 'Untitled Trip') + '</div>' +
+        '<div class="trip-card-name">' + (t.name || 'Untitled Trip') + '</div>' +
         '<div class="trip-card-meta">' +
           '<span class="trip-pill">' + (t.year || '') + '</span>' +
           datesHTML + activeHTML + countdownHTML +
