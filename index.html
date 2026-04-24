@@ -1038,7 +1038,7 @@ body {
 <!-- ══ FIREBASE ══ -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-import { getDatabase, ref, set, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+import { getDatabase, ref, set, update, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
@@ -1065,6 +1065,7 @@ window._auth = auth;
 window._ref = ref;
 window._sRef = sRef;
 window._set = set;
+window._update = update;
 window._push = push;
 window._onValue = onValue;
 window._remove = remove;
@@ -1945,6 +1946,8 @@ window.openEditTrip = function(tripId) {
 
 window.saveEditedTrip = async function() {
   if (!editingTripId) return;
+  // Use update (not set) so only edited fields are touched —
+  // preserves days, logistics, packingList, startDateISO, avatars etc.
   const updates = {
     name: document.getElementById('editTripName').value.trim(),
     year: parseInt(document.getElementById('editTripYear').value) || new Date().getFullYear(),
@@ -1956,10 +1959,7 @@ window.saveEditedTrip = async function() {
     flightReturnDate: document.getElementById('editFlightReturnDate').value.trim(),
     flightReturn: document.getElementById('editFlightReturn').value.trim(),
   };
-  // Preserve existing days
-  const existing = allTrips[editingTripId];
-  if (existing.days) updates.days = existing.days;
-  await window._set(window._ref(window._db, `trips/${editingTripId}`), updates);
+  await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
   showToast('Trip saved! ✓');
   document.getElementById('editTripHeaderName').textContent = updates.name;
 };
