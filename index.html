@@ -558,6 +558,17 @@ body {
 .packing-checkbox.checked::after { content: "✓"; color: white; font-size: 12px; font-weight: 700; }
 .packing-item-label { font-size: 13.5px; color: var(--ink); flex: 1; cursor: pointer; }
 .packing-item-label.checked { color: var(--muted); text-decoration: line-through; }
+.packing-edit-btn {
+  background: none; border: none; font-size: 14px; cursor: pointer;
+  color: var(--muted); padding: 4px; opacity: 0.4; flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.packing-edit-btn:active { opacity: 1; }
+.packing-edit-input {
+  flex: 1; border: none; border-bottom: 1.5px solid var(--terracotta);
+  background: transparent; font-size: 13.5px; color: var(--ink);
+  outline: none; padding: 2px 0;
+}
 .packing-delete-btn {
   background: none; border: none; font-size: 16px; cursor: pointer;
   color: var(--muted); padding: 4px; opacity: 0.4; flex-shrink: 0;
@@ -1205,7 +1216,8 @@ function openTrip(tripId) {
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
   document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
-  document.getElementById('logisticsTabBtn').style.display = isAdmin ? '' : 'none';
+  const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
+  document.getElementById('logisticsTabBtn').style.display = (isAdmin && isUpcomingOrActive) ? '' : 'none';
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -2389,6 +2401,19 @@ async function renderLogisticsPanel(tripId) {
     'Months: ' + (trip.months||''),
   ].filter(Boolean).join(', ');
 
+  // Laundry stepper locked once list has been generated
+  const laundryLocked = hasPackingList;
+  const laundryStepperHTML = laundryLocked
+    ? `<div style="display:flex;align-items:center;gap:8px;">
+        <div class="packing-laundry-count" style="font-size:16px;font-weight:600;">${laundryCount}</div>
+        <span style="font-size:11px;color:var(--muted);">times</span>
+       </div>`
+    : `<div class="packing-laundry-stepper">
+        <button class="packing-laundry-btn" onclick="adjustLaundry('${tripId}',-1)">−</button>
+        <div class="packing-laundry-count" id="laundryCount">${laundryCount}</div>
+        <button class="packing-laundry-btn" onclick="adjustLaundry('${tripId}',1)">+</button>
+       </div>`;
+
   panel.innerHTML = `
     <div style="height:16px;"></div>
 
@@ -2410,21 +2435,16 @@ async function renderLogisticsPanel(tripId) {
       <div class="logistics-section-title" style="padding:0 0 12px;">Packing List</div>
       <div class="packing-laundry-row">
         <div class="packing-laundry-label">🧺 Times doing laundry</div>
-        <div class="packing-laundry-stepper">
-          <button class="packing-laundry-btn" onclick="adjustLaundry('${tripId}',-1)">−</button>
-          <div class="packing-laundry-count" id="laundryCount">${laundryCount}</div>
-          <button class="packing-laundry-btn" onclick="adjustLaundry('${tripId}',1)">+</button>
-        </div>
+        ${laundryStepperHTML}
       </div>
     </div>
 
-    <button class="packing-generate-btn" id="packingGenerateBtn" onclick="generatePackingList('${tripId}')">
-      ${hasPackingList ? '🔄 Regenerate Packing List' : '✨ Generate Packing List'}
-    </button>
+    ${!hasPackingList ? `<button class="packing-generate-btn" id="packingGenerateBtn" onclick="generatePackingList('${tripId}')">✨ Generate Packing List</button>` : ''}
 
     <div id="packingListContainer">
       ${packingHTML}
     </div>
+
     <div style="height:32px;"></div>`;
 }
 
@@ -2435,10 +2455,11 @@ function buildPackingListHTML(tripId, packingList) {
     const personIcon = personObj.person === 'Erik' ? '👨' : personObj.person === 'Megan' ? '👩' : '🌍';
     const sectionsHTML = personObj.sections.map(sec => {
       const itemsHTML = sec.items.map(item => `
-        <div class="packing-item" id="pitem-${item.id}">
+        <div class="packing-item" id="pitem-${item.id}" data-trip="${tripId}" data-item="${item.id}" data-checked="${item.checked}">
           <div class="packing-checkbox${item.checked?' checked':''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})"></div>
           <div class="packing-item-label${item.checked?' checked':''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})">${escHtml(item.label)}</div>
-          <button class="packing-delete-btn" onclick="deletePackingItem('${tripId}','${item.id}')">×</button>
+          <button class="packing-edit-btn" data-edit-trip="${tripId}" data-edit-item="${item.id}" title="Edit">✏️</button>
+          <button class="packing-delete-btn" data-del-trip="${tripId}" data-del-item="${item.id}">×</button>
         </div>`).join('');
       return `
         <div class="packing-section-group">
@@ -2509,11 +2530,12 @@ Generate a packing list JSON with this EXACT structure. Respond ONLY with valid 
 {
   "packingList": [
     {
-      "person": "Erik",
+      "person": "General",
       "sections": [
-        { "title": "Clothing", "items": ["...", "..."] },
-        { "title": "Toiletries", "items": ["...", "..."] },
-        { "title": "Travel Essentials", "items": ["...", "..."] }
+        { "title": "Documents", "items": ["...", "..."] },
+        { "title": "Electronics", "items": ["...", "..."] },
+        { "title": "Accessories", "items": ["...", "..."] },
+        { "title": "Miscellaneous", "items": ["...", "..."] }
       ]
     },
     {
@@ -2521,15 +2543,15 @@ Generate a packing list JSON with this EXACT structure. Respond ONLY with valid 
       "sections": [
         { "title": "Clothing", "items": ["...", "..."] },
         { "title": "Toiletries", "items": ["...", "..."] },
-        { "title": "Travel Essentials", "items": ["...", "..."] }
+        { "title": "Personal Care", "items": ["...", "..."] }
       ]
     },
     {
-      "person": "General",
+      "person": "Erik",
       "sections": [
-        { "title": "Documents", "items": ["...", "..."] },
-        { "title": "Electronics", "items": ["...", "..."] },
-        { "title": "Miscellaneous", "items": ["...", "..."] }
+        { "title": "Clothing", "items": ["...", "..."] },
+        { "title": "Toiletries", "items": ["...", "..."] },
+        { "title": "Personal Care", "items": ["...", "..."] }
       ]
     }
   ]
@@ -2538,9 +2560,9 @@ Generate a packing list JSON with this EXACT structure. Respond ONLY with valid 
 Rules:
 - Clothing quantities should be based on ${Math.ceil(parseInt(nights||14)/(laundryCount+1))} days between washes
 - Include weather-appropriate clothing for the destination and travel months
-- Erik's list: men's clothing + his personal toiletries/essentials from the list above
-- Megan's list: women's clothing + her personal toiletries/essentials (curling iron, makeup cloths, hair ties etc) from the list above
-- General: shared items — electronics, documents, accessories, miscellaneous from the list above
+- General (first): shared items — electronics, documents, accessories, miscellaneous from the list above
+- Megan (second): women's clothing + her personal toiletries/essentials (curling iron, makeup cloths, hair ties etc)
+- Erik (third): men's clothing + his personal toiletries/essentials from the list above
 - Be specific with quantities where helpful (e.g. "5 t-shirts", "3 pairs shorts")
 - Use 3-6 sections per person as appropriate for the trip type
 - Do not include items that are not relevant to the destination/weather`;
@@ -2582,14 +2604,73 @@ Rules:
 
     // Re-render
     document.getElementById('packingListContainer').innerHTML = buildPackingListHTML(tripId, packingList);
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerate Packing List'; }
     showToast('Packing list generated! ✓');
   } catch(e) {
     console.error('Packing list generation failed', e);
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Generate Packing List'; }
+    if (btn) { btn.disabled = false; }
     showToast('Generation failed — check connection');
   }
 };
+
+// ── Edit/Delete packing items via delegated handlers (avoids apostrophe issues) ──
+document.addEventListener('click', function(e) {
+  // Edit button
+  const editBtn = e.target.closest('[data-edit-item]');
+  if (editBtn) {
+    const tripId  = editBtn.dataset.editTrip;
+    const itemId  = editBtn.dataset.editItem;
+    const row     = document.getElementById('pitem-' + itemId);
+    if (!row) return;
+    const labelEl = row.querySelector('.packing-item-label');
+    if (!labelEl) return;
+    const currentText = labelEl.textContent.trim();
+    const input = document.createElement('input');
+    input.className = 'packing-edit-input';
+    input.value = currentText;
+    labelEl.replaceWith(input);
+    input.focus();
+    input.select();
+    editBtn.style.display = 'none';
+
+    async function saveEdit() {
+      const newLabel = input.value.trim() || currentText;
+      try {
+        const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+        const packingList = snap.val();
+        if (packingList) {
+          for (const personObj of packingList) {
+            for (const sec of personObj.sections) {
+              const item = sec.items.find(i => i.id === itemId);
+              if (item) { item.label = newLabel; break; }
+            }
+          }
+          await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+        }
+      } catch(err) { console.error(err); }
+      const isChecked = row.querySelector('.packing-checkbox.checked');
+      const newLabelEl = document.createElement('div');
+      newLabelEl.className = 'packing-item-label' + (isChecked ? ' checked' : '');
+      newLabelEl.setAttribute('onclick', `togglePackingItem('${tripId}','${itemId}',${!isChecked})`);
+      newLabelEl.textContent = newLabel;
+      input.replaceWith(newLabelEl);
+      editBtn.style.display = '';
+    }
+    input.addEventListener('blur', saveEdit);
+    input.addEventListener('keydown', e2 => {
+      if (e2.key === 'Enter')  { e2.preventDefault(); input.blur(); }
+      if (e2.key === 'Escape') { input.value = currentText; input.blur(); }
+    });
+    return;
+  }
+
+  // Delete button
+  const delBtn = e.target.closest('[data-del-item]');
+  if (delBtn) {
+    const tripId = delBtn.dataset.delTrip;
+    const itemId = delBtn.dataset.delItem;
+    window.deletePackingItem(tripId, itemId);
+  }
+});
 
 // ── Toggle a packing item checked state ──
 window.togglePackingItem = async function(tripId, itemId, newChecked) {
@@ -2656,10 +2737,14 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
       const div = document.createElement('div');
       div.className = 'packing-item';
       div.id = 'pitem-' + newItem.id;
+      div.setAttribute('data-trip', tripId);
+      div.setAttribute('data-item', newItem.id);
+      div.setAttribute('data-checked', 'false');
       div.innerHTML = `
         <div class="packing-checkbox" onclick="togglePackingItem('${tripId}','${newItem.id}',true)"></div>
         <div class="packing-item-label" onclick="togglePackingItem('${tripId}','${newItem.id}',true)">${escHtml(label)}</div>
-        <button class="packing-delete-btn" onclick="deletePackingItem('${tripId}','${newItem.id}')">×</button>`;
+        <button class="packing-edit-btn" data-edit-trip="${tripId}" data-edit-item="${newItem.id}" title="Edit">✏️</button>
+        <button class="packing-delete-btn" data-del-trip="${tripId}" data-del-item="${newItem.id}">×</button>`;
       secEl.appendChild(div);
     }
     inputEl.value = '';
