@@ -527,6 +527,30 @@ body {
   font-size: 12px; color: var(--sage); font-weight: 500;
   display: flex; align-items: center; gap: 8px;
 }
+.packing-person-block {
+  background: var(--warm-white); border: 1px solid var(--border);
+  border-radius: var(--radius); margin: 0 16px 12px;
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.packing-person-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  background: var(--warm-white);
+}
+.packing-person-toggle:active { background: var(--cream); }
+.packing-person-left { display: flex; align-items: center; gap: 10px; }
+.packing-person-right { display: flex; align-items: center; gap: 10px; }
+.packing-person-pct {
+  font-size: 11px; font-weight: 600; color: var(--sage);
+  background: var(--sage-light); border: 1px solid #b8d8bb;
+  padding: 3px 8px; border-radius: 20px;
+}
+.packing-person-chevron {
+  font-size: 11px; color: var(--muted); transition: transform 0.2s;
+}
+.packing-person-chevron.open { transform: rotate(90deg); }
+.packing-person-body { display: none; border-top: 1px solid var(--border); }
+.packing-person-body.open { display: block; }
 .packing-person-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 16px 6px;
@@ -2450,37 +2474,68 @@ async function renderLogisticsPanel(tripId) {
 
 // ── Build packing list HTML from stored data ──
 function buildPackingListHTML(tripId, packingList) {
-  // packingList: [{person, sections:[{title, items:[{id,label,checked}]}]}]
-  return packingList.map(personObj => {
+  // Enforce display order: General, Megan, Erik
+  const ORDER = ['General', 'Megan', 'Erik'];
+  const sorted = [...packingList].sort((a, b) => {
+    const ai = ORDER.indexOf(a.person), bi = ORDER.indexOf(b.person);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return sorted.map(personObj => {
     const personIcon = personObj.person === 'Erik' ? '👨' : personObj.person === 'Megan' ? '👩' : '🌍';
+    // Calculate packed % across all sections
+    const allItems = personObj.sections.flatMap(s => s.items);
+    const checkedCount = allItems.filter(i => i.checked).length;
+    const pct = allItems.length ? Math.round((checkedCount / allItems.length) * 100) : 0;
+    const blockId = 'pblock-' + personObj.person;
+
     const sectionsHTML = personObj.sections.map(sec => {
+      const secKey = personObj.person + '-' + sec.title.replace(/\s+/g, '_');
       const itemsHTML = sec.items.map(item => `
         <div class="packing-item" id="pitem-${item.id}" data-trip="${tripId}" data-item="${item.id}" data-checked="${item.checked}">
-          <div class="packing-checkbox${item.checked?' checked':''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})"></div>
-          <div class="packing-item-label${item.checked?' checked':''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})">${escHtml(item.label)}</div>
+          <div class="packing-checkbox${item.checked ? ' checked' : ''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})"></div>
+          <div class="packing-item-label${item.checked ? ' checked' : ''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})">${escHtml(item.label)}</div>
           <button class="packing-edit-btn" data-edit-trip="${tripId}" data-edit-item="${item.id}" title="Edit">✏️</button>
           <button class="packing-delete-btn" data-del-trip="${tripId}" data-del-item="${item.id}">×</button>
         </div>`).join('');
       return `
         <div class="packing-section-group">
           <div class="packing-section-title">${escHtml(sec.title)}</div>
-          <div id="psec-${personObj.person}-${sec.title.replace(/\s+/g,'_')}">
-            ${itemsHTML}
-          </div>
+          <div id="psec-${secKey}">${itemsHTML}</div>
           <div class="packing-add-row">
-            <input class="packing-add-input" placeholder="Add item…" id="padd-${personObj.person}-${sec.title.replace(/\s+/g,'_')}"
+            <input class="packing-add-input" placeholder="Add item…" id="padd-${secKey}"
               onkeydown="if(event.key==='Enter')addPackingItem('${tripId}','${personObj.person}','${escAttr(sec.title)}',this)">
-            <button class="packing-add-btn" onclick="addPackingItem('${tripId}','${personObj.person}','${escAttr(sec.title)}',document.getElementById('padd-${personObj.person}-${sec.title.replace(/\s+/g,'_')}'))">+</button>
+            <button class="packing-add-btn" onclick="addPackingItem('${tripId}','${personObj.person}','${escAttr(sec.title)}',document.getElementById('padd-${secKey}'))">+</button>
           </div>
         </div>`;
     }).join('');
+
     return `
-      <div class="packing-person-header">
-        <div class="packing-person-name">${personIcon} ${personObj.person}</div>
-      </div>
-      ${sectionsHTML}`;
-  }).join('<div class="packing-divider" style="margin:8px 16px 0;"></div>');
+      <div class="packing-person-block">
+        <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}')">
+          <div class="packing-person-left">
+            <span style="font-size:20px;">${personIcon}</span>
+            <span class="packing-person-name" style="font-style:italic;font-family:'Cormorant Garamond',serif;font-size:20px;">${personObj.person}</span>
+          </div>
+          <div class="packing-person-right">
+            <span class="packing-person-pct" id="pct-${personObj.person}">${pct}% packed</span>
+            <span class="packing-person-chevron" id="chev-${blockId}">›</span>
+          </div>
+        </div>
+        <div class="packing-person-body" id="${blockId}">
+          ${sectionsHTML}
+        </div>
+      </div>`;
+  }).join('');
 }
+
+window.togglePackingBlock = function(blockId) {
+  const body = document.getElementById(blockId);
+  const chev = document.getElementById('chev-' + blockId);
+  if (!body) return;
+  const isOpen = body.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', isOpen);
+};
 
 // ── Laundry stepper ──
 window.adjustLaundry = async function(tripId, delta) {
@@ -2691,9 +2746,10 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
     if (row) {
       row.querySelector('.packing-checkbox').classList.toggle('checked', newChecked);
       row.querySelector('.packing-item-label').classList.toggle('checked', newChecked);
-      // Update onclick
       row.querySelector('.packing-checkbox').setAttribute('onclick', `togglePackingItem('${tripId}','${itemId}',${!newChecked})`);
       row.querySelector('.packing-item-label').setAttribute('onclick', `togglePackingItem('${tripId}','${itemId}',${!newChecked})`);
+      // Refresh % badge for this person block
+      refreshPackingPct(packingList);
     }
   } catch(e) { showToast('Could not save'); console.error(e); }
 };
@@ -2764,6 +2820,16 @@ window.toggleBookingItem = async function(tripId, key, value) {
 
 // Keep old name as alias
 window.toggleLogisticsItem = window.toggleBookingItem;
+
+function refreshPackingPct(packingList) {
+  if (!packingList) return;
+  for (const personObj of packingList) {
+    const allItems = personObj.sections.flatMap(s => s.items);
+    const pct = allItems.length ? Math.round((allItems.filter(i => i.checked).length / allItems.length) * 100) : 0;
+    const el = document.getElementById('pct-' + personObj.person);
+    if (el) el.textContent = pct + '% packed';
+  }
+}
 
 // ════════════════════════════════════════
 //  WEATHER
