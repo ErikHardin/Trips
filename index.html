@@ -527,6 +527,21 @@ body {
   font-size: 12px; color: var(--sage); font-weight: 500;
   display: flex; align-items: center; gap: 8px;
 }
+.packing-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  object-fit: cover; border: 2px solid var(--border);
+  background: var(--sand); flex-shrink: 0;
+  cursor: pointer; transition: opacity 0.15s;
+}
+.packing-avatar:active { opacity: 0.7; }
+.packing-avatar-placeholder {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--sand); border: 2px dashed var(--sand-dark);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; cursor: pointer; flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.packing-avatar-placeholder:active { opacity: 0.7; }
 .packing-person-block {
   background: var(--warm-white); border: 1px solid var(--border);
   border-radius: var(--radius); margin: 0 16px 12px;
@@ -1183,6 +1198,19 @@ function updatePinDots() {
 // ════════════════════════════════════════
 //  HOME
 // ════════════════════════════════════════
+function getTripCountdown(t) {
+  var startISO = t.startDateISO;
+  if (!startISO && t.days) {
+    var dayDates = Object.values(t.days).map(function(d){ return d.dateISO; }).filter(Boolean).sort();
+    if (dayDates.length) startISO = dayDates[0];
+  }
+  if (!startISO) return '⏳ Upcoming';
+  var diff = Math.round((new Date(startISO + 'T00:00:00') - new Date()) / 86400000);
+  if (diff <= 0) return '⏳ Upcoming';
+  if (diff === 1) return '🗓️ Tomorrow!';
+  return '🗓️ ' + diff + ' days away';
+}
+
 function renderHome() {
   const list = document.getElementById('tripsList');
   const empty = document.getElementById('homeEmpty');
@@ -1215,7 +1243,7 @@ function renderHome() {
           <span class="trip-pill">${t.year||''}</span>
           ${t.dates ? `<span class="trip-pill">${t.dates}</span>` : ''}
           ${t.status==='active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : ''}
-          ${t.status==='upcoming' ? '<span class="trip-pill">⏳ Upcoming</span>' : ''}
+          ${t.status==='upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : ''}
         </div>
       </div>`;
     card.onclick = () => openTrip(k);
@@ -1433,13 +1461,22 @@ function renderTripOverview(trip) {
   if (daysWithNotes.length > 0) {
     memoriesHTML = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Memories</div>`;
     daysWithNotes.forEach(([dayId, day]) => {
-      // Collect all notes across all activities
+      // Collect all notes with activity label
       const allNotes = [];
       if (day.notes) {
-        Object.values(day.notes).forEach(actNotes => {
+        Object.entries(day.notes).forEach(([actKey, actNotes]) => {
           if (actNotes && typeof actNotes === 'object') {
-            Object.values(actNotes).forEach(note => {
-              if (note && (note.text || note.photoUrls || note.photoUrl)) allNotes.push(note);
+            let actLabel = '';
+            if (day.activities) {
+              const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
+              const idx = parseInt(actKey);
+              const act = isNaN(idx) ? acts.find(function(a){ return a && a.key === actKey; }) : acts[idx];
+              if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
+            }
+            Object.values(actNotes).forEach(function(note) {
+              if (note && (note.text || note.photoUrls || note.photoUrl)) {
+                allNotes.push(Object.assign({}, note, { actLabel: actLabel }));
+              }
             });
           }
         });
@@ -1471,11 +1508,9 @@ function renderTripOverview(trip) {
               <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
                 ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
               </div>` : '';
-            return `
-              <div style="border-bottom:1px solid var(--border);">
-                ${photosHTML}
-                ${note.text?`<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">${escHtml(note.text)}</div>`:''}
-              </div>`;
+            var actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + '</div>' : '';
+            var noteTextHTML = note.text ? '<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">' + escHtml(note.text) + '</div>' : '';
+            return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
           }).join('')}
         </div>`;
     });
@@ -1698,7 +1733,7 @@ window.createTrip = async function() {
 
   const newRef = window._push(window._ref(window._db, 'trips'));
   const tripId = newRef.key;
-  await window._set(newRef, { name, year, dates, emoji, status });
+  await window._set(newRef, { name, year, dates, emoji, status, startDateISO: startVal });
 
   // Auto-generate a blank day for each date in the range
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -2394,11 +2429,15 @@ async function renderLogisticsPanel(tripId) {
   const panel = document.getElementById('tripLogisticsPanel');
   panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
 
-  let logistics = {};
+  let logistics = {}, avatarUrls = {};
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics'));
     logistics = snap.val() || {};
   } catch(e) { console.warn('Could not load logistics', e); }
+  try {
+    const aSnap = await window._get(window._ref(window._db, 'avatarUrls'));
+    avatarUrls = aSnap.val() || {};
+  } catch(e) { console.warn('Could not load avatars', e); }
 
   // ── Booking checklist ──
   const checkedCount = BOOKING_ITEMS.filter(i => logistics[i.key]).length;
@@ -2414,7 +2453,7 @@ async function renderLogisticsPanel(tripId) {
   // ── Packing list ──
   const laundryCount = logistics.laundryCount !== undefined ? logistics.laundryCount : 1;
   const packingList  = logistics.packingList || null; // array of {person, section, items:[{id,label,checked}]}
-  const packingHTML  = packingList ? buildPackingListHTML(tripId, packingList) : '';
+  const packingHTML  = packingList ? buildPackingListHTML(tripId, packingList, avatarUrls) : '';
   const hasPackingList = !!packingList;
 
   const trip = allTrips[tripId];
@@ -2473,7 +2512,8 @@ async function renderLogisticsPanel(tripId) {
 }
 
 // ── Build packing list HTML from stored data ──
-function buildPackingListHTML(tripId, packingList) {
+function buildPackingListHTML(tripId, packingList, avatarUrls) {
+  avatarUrls = avatarUrls || {};
   // Enforce display order: General, Megan, Erik
   const ORDER = ['General', 'Megan', 'Erik'];
   const sorted = [...packingList].sort((a, b) => {
@@ -2514,7 +2554,11 @@ function buildPackingListHTML(tripId, packingList) {
       <div class="packing-person-block">
         <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}')">
           <div class="packing-person-left">
-            <span style="font-size:20px;">${personIcon}</span>
+            ${(function(){
+              var p = personObj.person;
+              if (avatarUrls[p]) return '<img class="packing-avatar" src="' + avatarUrls[p] + '" alt="' + p + '" onclick="event.stopPropagation();uploadAvatar(\'' + p + '\')">';
+              return '<div class="packing-avatar-placeholder" onclick="event.stopPropagation();uploadAvatar(\'' + p + '\')" title="Tap to add photo">' + personIcon + '</div>';
+            })()}
             <span class="packing-person-name" style="font-style:italic;font-family:'Cormorant Garamond',serif;font-size:20px;">${personObj.person}</span>
           </div>
           <div class="packing-person-right">
@@ -2528,6 +2572,42 @@ function buildPackingListHTML(tripId, packingList) {
       </div>`;
   }).join('');
 }
+
+window.uploadAvatar = function(person) {
+  if (person === 'General') return;
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async function() {
+    var file = input.files[0];
+    if (!file) return;
+    showToast('Uploading photo…');
+    try {
+      var compressed = await compressImage(file, 400, 0.85);
+      var storePath = 'avatars/' + person + '.jpg';
+      var storageRef = window._sRef(window._storage, storePath);
+      var snap = await window._uploadBytes(storageRef, compressed);
+      var url = await window._getDownloadURL(snap.ref);
+      await window._set(window._ref(window._db, 'avatarUrls/' + person), url);
+      var placeholder = document.querySelector('.packing-avatar-placeholder[onclick*="' + person + '"]');
+      var existingImg = document.querySelector('.packing-avatar[alt="' + person + '"]');
+      var el = placeholder || existingImg;
+      if (el) {
+        var img = document.createElement('img');
+        img.className = 'packing-avatar';
+        img.src = url;
+        img.alt = person;
+        img.setAttribute('onclick', "event.stopPropagation();uploadAvatar('" + person + "')");
+        el.replaceWith(img);
+      }
+      showToast(person + "’s photo saved ✓");
+    } catch(e) {
+      console.error('Avatar upload failed', e);
+      showToast('Upload failed — try again');
+    }
+  };
+  input.click();
+};
 
 window.togglePackingBlock = function(blockId) {
   const body = document.getElementById(blockId);
@@ -2658,7 +2738,7 @@ Rules:
     allTrips[tripId].logistics.packingList = packingList;
 
     // Re-render
-    document.getElementById('packingListContainer').innerHTML = buildPackingListHTML(tripId, packingList);
+    document.getElementById('packingListContainer').innerHTML = buildPackingListHTML(tripId, packingList, avatarUrls);
     showToast('Packing list generated! ✓');
   } catch(e) {
     console.error('Packing list generation failed', e);
