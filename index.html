@@ -1220,32 +1220,21 @@ function renderHome() {
     const t = allTrips[k];
     const card = document.createElement('div');
     card.className = 'trip-card';
-    card.innerHTML = `
-      <div class="trip-card-cover">
-        <span class="trip-card-cover-emoji">${t.emoji||'✈️'}</span>
-      </div>
-      <div class="trip-card-body">
-        <div class="trip-card-name">${t.name||'Untitled Trip'}</div>
-        <div class="trip-card-meta">
-          <span class="trip-pill">${t.year||''}</span>
-          ${t.dates ? `<span class="trip-pill">${t.dates}</span>` : ''}
-          ${t.status==='active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : ''}
-          ${t.status==='upcoming' ? `<span class="trip-pill">${(()=>{
-            // Fallback: find earliest dateISO from days if startDateISO not stored
-            let startISO = t.startDateISO;
-            if (!startISO && t.days) {
-              const dayDates = Object.values(t.days).map(d=>d.dateISO).filter(Boolean).sort();
-              if (dayDates.length) startISO = dayDates[0];
-            }
-            if (!startISO) return '⏳ Upcoming';
-            const diff = Math.round((new Date(startISO+'T00:00:00') - new Date()) / 86400000);
-            if (diff <= 0) return '⏳ Upcoming';
-            if (diff === 1) return '🗓️ Tomorrow!';
-            return '🗓️ ' + diff + ' days away';
-          })()}</span>` : ''}
-        </div>
-      </div>`;
-    card.onclick = () => openTrip(k);
+    const datesHTML    = t.dates ? '<span class="trip-pill">' + escHtml(t.dates) + '</span>' : '';
+    const activeHTML    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : '';
+    const countdownHTML = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
+    card.innerHTML =
+      '<div class="trip-card-cover">' +
+        '<span class="trip-card-cover-emoji">' + (t.emoji || '✈️') + '</span>' +
+      '</div>' +
+      '<div class="trip-card-body">' +
+        '<div class="trip-card-name">' + escHtml(t.name || 'Untitled Trip') + '</div>' +
+        '<div class="trip-card-meta">' +
+          '<span class="trip-pill">' + (t.year || '') + '</span>' +
+          datesHTML + activeHTML + countdownHTML +
+        '</div>' +
+      '</div>';
+        card.onclick = () => openTrip(k);
     list.appendChild(card);
   });
 
@@ -1508,12 +1497,9 @@ function renderTripOverview(trip) {
               <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
                 ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
               </div>` : '';
-            return `
-              <div style="border-bottom:1px solid var(--border);">
-                ${note.actLabel ? `<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">${escHtml(note.actLabel)}</div>` : ''}
-                ${photosHTML}
-                ${note.text?`<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">${escHtml(note.text)}</div>`:''}
-              </div>`;
+            const actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + '</div>' : '';
+            const noteTextHTML = note.text ? '<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">' + escHtml(note.text) + '</div>' : '';
+            return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
           }).join('')}
         </div>`;
     });
@@ -2606,7 +2592,7 @@ window.uploadAvatar = function(person) {
         img.setAttribute('onclick', "event.stopPropagation();uploadAvatar('" + person + "')");
         el.replaceWith(img);
       }
-      showToast(person + ''s photo saved ✓');
+      showToast(person + "'s photo saved ✓");
     } catch(e) {
       console.error('Avatar upload failed', e);
       showToast('Upload failed — try again');
