@@ -2826,6 +2826,7 @@ document.addEventListener('click', function(e) {
     const tripId = toggleEl.dataset.toggleTrip;
     const itemId = toggleEl.dataset.toggleItem;
     const val = toggleEl.dataset.toggleVal === 'true';
+    showToast('Toggling ' + itemId.slice(0,8) + ' val=' + val);
     togglePackingItem(tripId, itemId, val);
     return;
   }
@@ -2851,6 +2852,7 @@ document.addEventListener('click', function(e) {
   if (delBtn) {
     const tripId = delBtn.dataset.delTrip;
     const itemId = delBtn.dataset.delItem;
+    showToast('Deleting ' + itemId.slice(0,8));
     window.deletePackingItem(tripId, itemId);
   }
 });
