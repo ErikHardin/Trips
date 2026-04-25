@@ -2418,13 +2418,12 @@ function showToast(msg) {
 // ── Normalize Firebase array-as-object to real array ──
 function normalizePackingList(val) {
   if (!val) return null;
-  if (Array.isArray(val)) return val;
-  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => {
-    const person = val[k];
+  var arr = Array.isArray(val) ? val : Object.keys(val).sort(function(a,b){ return parseInt(a)-parseInt(b); }).map(function(k){ return val[k]; });
+  return arr.filter(Boolean).map(function(person) {
     if (person.sections) {
-      person.sections = normalizeArray(person.sections);
-      person.sections.forEach(sec => {
-        if (sec && sec.items) sec.items = normalizeArray(sec.items);
+      person.sections = normalizeArray(person.sections).filter(Boolean).map(function(sec) {
+        if (sec && sec.items) sec.items = normalizeArray(sec.items).filter(Boolean);
+        return sec;
       });
     }
     return person;
@@ -2432,8 +2431,8 @@ function normalizePackingList(val) {
 }
 function normalizeArray(val) {
   if (!val) return [];
-  if (Array.isArray(val)) return val;
-  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => val[k]);
+  if (Array.isArray(val)) return val.filter(Boolean);
+  return Object.keys(val).sort(function(a,b){ return parseInt(a)-parseInt(b); }).map(function(k){ return val[k]; }).filter(Boolean);
 }
 
 // ════════════════════════════════════════
@@ -2544,14 +2543,14 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
   return sorted.map(personObj => {
     const personIcon = personObj.person === 'Erik' ? '👨' : personObj.person === 'Megan' ? '👩' : '🌍';
     // Calculate packed % across all sections
-    const allItems = personObj.sections.flatMap(s => s.items);
-    const checkedCount = allItems.filter(i => i.checked).length;
+    const allItems = (personObj.sections || []).flatMap(s => (s && s.items) ? s.items.filter(Boolean) : []);
+    const checkedCount = allItems.filter(i => i && i.checked).length;
     const pct = allItems.length ? Math.round((checkedCount / allItems.length) * 100) : 0;
     const blockId = 'pblock-' + personObj.person;
 
     const sectionsHTML = personObj.sections.map(sec => {
       const secKey = personObj.person + '-' + sec.title.replace(/\s+/g, '_');
-      const itemsHTML = sec.items.map(item => `
+      const itemsHTML = (sec.items || []).filter(Boolean).map(item => `
         <div class="packing-item" id="pitem-${item.id}" data-trip="${tripId}" data-item="${item.id}" data-checked="${item.checked}">
           <div class="packing-checkbox${item.checked ? ' checked' : ''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})"></div>
           <div class="packing-item-label${item.checked ? ' checked' : ''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})">${escHtml(item.label)}</div>
