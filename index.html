@@ -2452,7 +2452,7 @@ async function renderLogisticsPanel(tripId) {
 
   // ── Packing list ──
   const laundryCount = logistics.laundryCount !== undefined ? logistics.laundryCount : 1;
-  const packingList  = logistics.packingList || null; // array of {person, section, items:[{id,label,checked}]}
+  const packingList  = normalizePackingList(logistics.packingList) || null; // array of {person, section, items:[{id,label,checked}]}
   const packingHTML  = packingList ? buildPackingListHTML(tripId, packingList, avatarUrls) : '';
   const hasPackingList = !!packingList;
 
@@ -2771,7 +2771,7 @@ document.addEventListener('click', function(e) {
       const newLabel = input.value.trim() || currentText;
       try {
         const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
-        const packingList = snap.val();
+        const packingList = normalizePackingList(snap.val());
         if (packingList) {
           for (const personObj of packingList) {
             for (const sec of personObj.sections) {
@@ -2807,11 +2807,33 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// ── Normalize Firebase array-as-object to real array ──
+function normalizePackingList(val) {
+  if (!val) return null;
+  if (Array.isArray(val)) return val;
+  // Firebase returns {0:{...}, 1:{...}} instead of [{...},{...}]
+  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => {
+    const person = val[k];
+    if (person.sections) {
+      person.sections = normalizeArray(person.sections);
+      person.sections.forEach(sec => {
+        if (sec && sec.items) sec.items = normalizeArray(sec.items);
+      });
+    }
+    return person;
+  });
+}
+function normalizeArray(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => val[k]);
+}
+
 // ── Toggle a packing item checked state ──
 window.togglePackingItem = async function(tripId, itemId, newChecked) {
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
-    const packingList = snap.val();
+    const packingList = normalizePackingList(snap.val());
     if (!packingList) return;
     // Find and update item
     for (const personObj of packingList) {
@@ -2838,7 +2860,7 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
 window.deletePackingItem = async function(tripId, itemId) {
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
-    const packingList = snap.val();
+    const packingList = normalizePackingList(snap.val());
     if (!packingList) return;
     for (const personObj of packingList) {
       for (const sec of personObj.sections) {
@@ -2858,7 +2880,7 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
   const newItem = { id: 'pi' + Date.now(), label, checked: false };
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
-    const packingList = snap.val();
+    const packingList = normalizePackingList(snap.val());
     if (!packingList) return;
     const personObj = packingList.find(p => p.person === person);
     if (!personObj) return;
