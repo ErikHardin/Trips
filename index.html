@@ -2415,6 +2415,27 @@ function showToast(msg) {
 
 
 
+// ── Normalize Firebase array-as-object to real array ──
+function normalizePackingList(val) {
+  if (!val) return null;
+  if (Array.isArray(val)) return val;
+  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => {
+    const person = val[k];
+    if (person.sections) {
+      person.sections = normalizeArray(person.sections);
+      person.sections.forEach(sec => {
+        if (sec && sec.items) sec.items = normalizeArray(sec.items);
+      });
+    }
+    return person;
+  });
+}
+function normalizeArray(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => val[k]);
+}
+
 // ════════════════════════════════════════
 //  LOGISTICS TAB
 // ════════════════════════════════════════
@@ -2806,28 +2827,6 @@ document.addEventListener('click', function(e) {
     window.deletePackingItem(tripId, itemId);
   }
 });
-
-// ── Normalize Firebase array-as-object to real array ──
-function normalizePackingList(val) {
-  if (!val) return null;
-  if (Array.isArray(val)) return val;
-  // Firebase returns {0:{...}, 1:{...}} instead of [{...},{...}]
-  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => {
-    const person = val[k];
-    if (person.sections) {
-      person.sections = normalizeArray(person.sections);
-      person.sections.forEach(sec => {
-        if (sec && sec.items) sec.items = normalizeArray(sec.items);
-      });
-    }
-    return person;
-  });
-}
-function normalizeArray(val) {
-  if (!val) return [];
-  if (Array.isArray(val)) return val;
-  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => val[k]);
-}
 
 // ── Toggle a packing item checked state ──
 window.togglePackingItem = async function(tripId, itemId, newChecked) {
