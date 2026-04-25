@@ -2460,71 +2460,69 @@ async function renderLogisticsPanel(tripId) {
     avatarUrls = aSnap.val() || {};
   } catch(e) { console.warn('Could not load avatars', e); }
 
-  // ── Booking checklist ──
-  const checkedCount = BOOKING_ITEMS.filter(i => logistics[i.key]).length;
+  // Booking checklist
+  const checkedCount = BOOKING_ITEMS.filter(function(i) { return logistics[i.key]; }).length;
   const pct = Math.round((checkedCount / BOOKING_ITEMS.length) * 100);
-  const bookingHTML = BOOKING_ITEMS.map(item => {
-    const chk = !!logistics[item.key];
-    return `<div class="logistics-item" onclick="toggleBookingItem('${tripId}','${item.key}',${!chk})">
-      <div class="logistics-checkbox${chk?' checked':''}"></div>
-      <div class="logistics-item-label${chk?' checked':''}">${item.icon} ${item.label}</div>
-    </div>`;
+  var bookingHTML = BOOKING_ITEMS.map(function(item) {
+    var chk = !!logistics[item.key];
+    var div = document.createElement('div');
+    div.className = 'logistics-item';
+    div.onclick = (function(k,v){ return function(){ toggleBookingItem(tripId,k,v); }; })(item.key, !chk);
+    div.innerHTML = '<div class="logistics-checkbox' + (chk ? ' checked' : '') + '"></div>' +
+      '<div class="logistics-item-label' + (chk ? ' checked' : '') + '">' + item.icon + ' ' + item.label + '</div>';
+    return div.outerHTML;
   }).join('');
 
-  // ── Packing list ──
-  const laundryCount = logistics.laundryCount !== undefined ? logistics.laundryCount : 1;
-  const packingList  = normalizePackingList(logistics.packingList) || null; // array of {person, section, items:[{id,label,checked}]}
-  const packingHTML  = packingList ? buildPackingListHTML(tripId, packingList, avatarUrls) : '';
-  const hasPackingList = !!packingList;
+  // Packing list
+  var laundryCount = logistics.laundryCount !== undefined ? logistics.laundryCount : 1;
+  var packingList  = normalizePackingList(logistics.packingList) || null;
+  var packingHTML  = packingList ? buildPackingListHTML(tripId, packingList, avatarUrls) : '';
+  var hasPackingList = !!packingList;
 
-  const trip = allTrips[tripId];
-  const tripSummary = [
-    trip.name, trip.destination||'',
-    'Nights: ' + (trip.nights||'?'),
-    'Regions: ' + (trip.regions||''),
-    'Months: ' + (trip.months||''),
-  ].filter(Boolean).join(', ');
-
-  // Laundry stepper locked once list has been generated
-  const laundryLocked = hasPackingList;
-  var tId = tripId;
-  var laundryStepperHTML = laundryLocked
+  // Laundry stepper — locked after list generated
+  var laundryStepperHTML = hasPackingList
     ? '<div style="display:flex;align-items:center;gap:8px;"><div class="packing-laundry-count" style="font-size:16px;font-weight:600;">' + laundryCount + '</div><span style="font-size:11px;color:var(--muted);">times</span></div>'
-    : '<div class="packing-laundry-stepper"><button class="packing-laundry-btn" onclick="adjustLaundry(&#39;' + tId + '&#39;,-1)">−</button><div class="packing-laundry-count" id="laundryCount">' + laundryCount + '</div><button class="packing-laundry-btn" onclick="adjustLaundry(&#39;' + tId + '&#39;,1)">+</button></div>';
+    : '<div class="packing-laundry-stepper">' +
+        '<button class="packing-laundry-btn" data-laundry-trip="' + tripId + '" data-laundry-delta="-1">−</button>' +
+        '<div class="packing-laundry-count" id="laundryCount">' + laundryCount + '</div>' +
+        '<button class="packing-laundry-btn" data-laundry-trip="' + tripId + '" data-laundry-delta="1">+</button>' +
+      '</div>';
 
-  panel.innerHTML = `
-    <div style="height:16px;"></div>
+  var generateBtnHTML = hasPackingList ? '' :
+    '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">✨ Generate Packing List</button>';
 
-    <div class="logistics-section" style="padding-top:0;">
-      <div class="logistics-section-title" style="padding:0 0 10px;">Booking Checklist</div>
-    </div>
-    <div class="logistics-progress" style="margin-top:0;">
-      <span>${checkedCount}/${BOOKING_ITEMS.length} booked</span>
-      <div class="logistics-progress-bar"><div class="logistics-progress-fill" style="width:${pct}%"></div></div>
-      <span>${pct}%</span>
-    </div>
-    <div class="logistics-section" style="padding-top:0;">
-      <div class="logistics-card">${bookingHTML}</div>
-    </div>
+  panel.innerHTML =
+    '<div style="height:16px;"></div>' +
 
-    <div class="packing-divider"></div>
+    '<div class="logistics-section" style="padding-top:0;">' +
+      '<div class="logistics-section-title" style="padding:0 0 10px;">Booking Checklist</div>' +
+    '</div>' +
+    '<div class="logistics-progress" style="margin-top:0;">' +
+      '<span>' + checkedCount + '/' + BOOKING_ITEMS.length + ' booked</span>' +
+      '<div class="logistics-progress-bar"><div class="logistics-progress-fill" style="width:' + pct + '%"></div></div>' +
+      '<span>' + pct + '%</span>' +
+    '</div>' +
+    '<div class="logistics-section" style="padding-top:0;">' +
+      '<div class="logistics-card">' + bookingHTML + '</div>' +
+    '</div>' +
 
-    <div class="logistics-section" style="padding-top:0; padding-bottom:12px;">
-      <div class="logistics-section-title" style="padding:0 0 12px;">Packing List</div>
-      <div class="packing-laundry-row">
-        <div class="packing-laundry-label">🧺 Times doing laundry</div>
-        ${laundryStepperHTML}
-      </div>
-    </div>
+    '<div class="packing-divider"></div>' +
 
-    ${!hasPackingList ? '<button class="packing-generate-btn" id="packingGenerateBtn" onclick="generatePackingList(&#39;' + tripId + '&#39;)">✨ Generate Packing List</button>' : ''}
+    '<div class="logistics-section" style="padding-top:0; padding-bottom:12px;">' +
+      '<div class="logistics-section-title" style="padding:0 0 12px;">Packing List</div>' +
+      '<div class="packing-laundry-row">' +
+        '<div class="packing-laundry-label">🧺 Times doing laundry</div>' +
+        laundryStepperHTML +
+      '</div>' +
+    '</div>' +
 
-    <div id="packingListContainer">
-      ${packingHTML}
-    </div>
+    generateBtnHTML +
 
-    <div style="height:32px;"></div>`;
+    '<div id="packingListContainer">' + packingHTML + '</div>' +
+
+    '<div style="height:32px;"></div>';
 }
+
 
 // ── Build packing list HTML from stored data ──
 function buildPackingListHTML(tripId, packingList, avatarUrls) {
@@ -2810,6 +2808,22 @@ document.addEventListener('click', function(e) {
       if (e2.key === 'Enter')  { e2.preventDefault(); input.blur(); }
       if (e2.key === 'Escape') { input.value = currentText; input.blur(); }
     });
+    return;
+  }
+
+  // Generate packing list button
+  const genBtn = e.target.closest('[data-gen-trip]');
+  if (genBtn && !e.target.closest('[data-edit-item]') && !e.target.closest('[data-del-item]')) {
+    const tid = genBtn.dataset.genTrip;
+    if (tid) { generatePackingList(tid); return; }
+  }
+
+  // Laundry stepper buttons
+  const laundryBtn = e.target.closest('[data-laundry-trip]');
+  if (laundryBtn) {
+    const tid = laundryBtn.dataset.laundryTrip;
+    const delta = parseInt(laundryBtn.dataset.laundryDelta);
+    adjustLaundry(tid, delta);
     return;
   }
 
