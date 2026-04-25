@@ -2550,13 +2550,14 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
 
     const sectionsHTML = personObj.sections.map(sec => {
       const secKey = personObj.person + '-' + sec.title.replace(/\s+/g, '_');
-      const itemsHTML = (sec.items || []).filter(Boolean).map(item => `
-        <div class="packing-item" id="pitem-${item.id}" data-trip="${tripId}" data-item="${item.id}" data-checked="${item.checked}">
-          <div class="packing-checkbox${item.checked ? ' checked' : ''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})"></div>
-          <div class="packing-item-label${item.checked ? ' checked' : ''}" onclick="togglePackingItem('${tripId}','${item.id}',${!item.checked})">${escHtml(item.label)}</div>
-          <button class="packing-edit-btn" data-edit-trip="${tripId}" data-edit-item="${item.id}" title="Edit">✏️</button>
-          <button class="packing-delete-btn" data-del-trip="${tripId}" data-del-item="${item.id}">×</button>
-        </div>`).join('');
+      const itemsHTML = (sec.items || []).filter(Boolean).map(function(item) {
+        return '<div class="packing-item" id="pitem-' + item.id + '" data-trip="' + tripId + '" data-item="' + item.id + '" data-checked="' + item.checked + '">' +
+          '<div class="packing-checkbox' + (item.checked ? ' checked' : '') + '" data-toggle-trip="' + tripId + '" data-toggle-item="' + item.id + '" data-toggle-val="' + (!item.checked) + '"></div>' +
+          '<div class="packing-item-label' + (item.checked ? ' checked' : '') + '" data-toggle-trip="' + tripId + '" data-toggle-item="' + item.id + '" data-toggle-val="' + (!item.checked) + '">' + escHtml(item.label) + '</div>' +
+          '<button class="packing-edit-btn" data-edit-trip="' + tripId + '" data-edit-item="' + item.id + '" title="Edit">✏️</button>' +
+          '<button class="packing-delete-btn" data-del-trip="' + tripId + '" data-del-item="' + item.id + '">×</button>' +
+          '</div>';
+      }).join('');
       return `
         <div class="packing-section-group">
           <div class="packing-section-title">${escHtml(sec.title)}</div>
@@ -2804,7 +2805,9 @@ document.addEventListener('click', function(e) {
       const isChecked = row.querySelector('.packing-checkbox.checked');
       const newLabelEl = document.createElement('div');
       newLabelEl.className = 'packing-item-label' + (isChecked ? ' checked' : '');
-      newLabelEl.setAttribute('onclick', `togglePackingItem('${tripId}','${itemId}',${!isChecked})`);
+      newLabelEl.setAttribute('data-toggle-trip', tripId);
+      newLabelEl.setAttribute('data-toggle-item', itemId);
+      newLabelEl.setAttribute('data-toggle-val', String(!isChecked));
       newLabelEl.textContent = newLabel;
       input.replaceWith(newLabelEl);
       editBtn.style.display = '';
@@ -2814,6 +2817,16 @@ document.addEventListener('click', function(e) {
       if (e2.key === 'Enter')  { e2.preventDefault(); input.blur(); }
       if (e2.key === 'Escape') { input.value = currentText; input.blur(); }
     });
+    return;
+  }
+
+  // Toggle packing item checkbox/label
+  const toggleEl = e.target.closest('[data-toggle-trip]');
+  if (toggleEl) {
+    const tripId = toggleEl.dataset.toggleTrip;
+    const itemId = toggleEl.dataset.toggleItem;
+    const val = toggleEl.dataset.toggleVal === 'true';
+    togglePackingItem(tripId, itemId, val);
     return;
   }
 
@@ -2861,8 +2874,8 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
     if (row) {
       row.querySelector('.packing-checkbox').classList.toggle('checked', newChecked);
       row.querySelector('.packing-item-label').classList.toggle('checked', newChecked);
-      row.querySelector('.packing-checkbox').setAttribute('onclick', `togglePackingItem('${tripId}','${itemId}',${!newChecked})`);
-      row.querySelector('.packing-item-label').setAttribute('onclick', `togglePackingItem('${tripId}','${itemId}',${!newChecked})`);
+      row.querySelector('.packing-checkbox').setAttribute('data-toggle-val', String(!newChecked));
+      row.querySelector('.packing-item-label').setAttribute('data-toggle-val', String(!newChecked));
       // Refresh % badge for this person block
       refreshPackingPct(packingList);
     }
@@ -2911,11 +2924,11 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
       div.setAttribute('data-trip', tripId);
       div.setAttribute('data-item', newItem.id);
       div.setAttribute('data-checked', 'false');
-      div.innerHTML = `
-        <div class="packing-checkbox" onclick="togglePackingItem('${tripId}','${newItem.id}',true)"></div>
-        <div class="packing-item-label" onclick="togglePackingItem('${tripId}','${newItem.id}',true)">${escHtml(label)}</div>
-        <button class="packing-edit-btn" data-edit-trip="${tripId}" data-edit-item="${newItem.id}" title="Edit">✏️</button>
-        <button class="packing-delete-btn" data-del-trip="${tripId}" data-del-item="${newItem.id}">×</button>`;
+      div.innerHTML =
+        '<div class="packing-checkbox" data-toggle-trip="' + tripId + '" data-toggle-item="' + newItem.id + '" data-toggle-val="true"></div>' +
+        '<div class="packing-item-label" data-toggle-trip="' + tripId + '" data-toggle-item="' + newItem.id + '" data-toggle-val="true">' + escHtml(label) + '</div>' +
+        '<button class="packing-edit-btn" data-edit-trip="' + tripId + '" data-edit-item="' + newItem.id + '" title="Edit">✏️</button>' +
+        '<button class="packing-delete-btn" data-del-trip="' + tripId + '" data-del-item="' + newItem.id + '">×</button>';
       secEl.appendChild(div);
     }
     inputEl.value = '';
