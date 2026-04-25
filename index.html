@@ -2487,16 +2487,10 @@ async function renderLogisticsPanel(tripId) {
 
   // Laundry stepper locked once list has been generated
   const laundryLocked = hasPackingList;
-  const laundryStepperHTML = laundryLocked
-    ? `<div style="display:flex;align-items:center;gap:8px;">
-        <div class="packing-laundry-count" style="font-size:16px;font-weight:600;">${laundryCount}</div>
-        <span style="font-size:11px;color:var(--muted);">times</span>
-       </div>`
-    : `<div class="packing-laundry-stepper">
-        <button class="packing-laundry-btn" onclick="adjustLaundry('${tripId}',-1)">−</button>
-        <div class="packing-laundry-count" id="laundryCount">${laundryCount}</div>
-        <button class="packing-laundry-btn" onclick="adjustLaundry('${tripId}',1)">+</button>
-       </div>`;
+  var tId = tripId;
+  var laundryStepperHTML = laundryLocked
+    ? '<div style="display:flex;align-items:center;gap:8px;"><div class="packing-laundry-count" style="font-size:16px;font-weight:600;">' + laundryCount + '</div><span style="font-size:11px;color:var(--muted);">times</span></div>'
+    : '<div class="packing-laundry-stepper"><button class="packing-laundry-btn" onclick="adjustLaundry(&#39;' + tId + '&#39;,-1)">−</button><div class="packing-laundry-count" id="laundryCount">' + laundryCount + '</div><button class="packing-laundry-btn" onclick="adjustLaundry(&#39;' + tId + '&#39;,1)">+</button></div>';
 
   panel.innerHTML = `
     <div style="height:16px;"></div>
@@ -2523,7 +2517,7 @@ async function renderLogisticsPanel(tripId) {
       </div>
     </div>
 
-    ${!hasPackingList ? `<button class="packing-generate-btn" id="packingGenerateBtn" onclick="generatePackingList('${tripId}')">✨ Generate Packing List</button>` : ''}
+    ${!hasPackingList ? '<button class="packing-generate-btn" id="packingGenerateBtn" onclick="generatePackingList(&#39;' + tripId + '&#39;)">✨ Generate Packing List</button>' : ''}
 
     <div id="packingListContainer">
       ${packingHTML}
