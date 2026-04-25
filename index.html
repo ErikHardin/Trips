@@ -1082,7 +1082,7 @@ window.addEventListener('load', () => { initApp(); });
 // ════════════════════════════════════════
 //  APP STATE
 // ════════════════════════════════════════
-const PIN = '1248';
+// PIN is verified server-side via Cloudflare Worker — not stored in client code
 let pinEntry = '';
 let isAdmin = false;
 let allTrips = {};
@@ -1167,22 +1167,35 @@ window.pinKey = function(digit) {
   updatePinDots();
   if (pinEntry.length === 4) {
     setTimeout(async () => {
-      if (pinEntry === PIN) {
-        try {
-          await window._signInAnonymously(window._auth);
-        } catch(e) {
-          console.warn('Auth error:', e);
+      try {
+        const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/verify-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: pinEntry })
+        });
+        const data = await res.json();
+        if (data.valid) {
+          try {
+            await window._signInAnonymously(window._auth);
+          } catch(e) {
+            console.warn('Auth error:', e);
+          }
+          isAdmin = true;
+          document.getElementById('adminNavBtn').style.display = '';
+          document.getElementById('lockBtn').style.display = '';
+          document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
+          document.getElementById('logisticsTabBtn').style.display = currentTripId ? '' : 'none';
+          renderHome();
+          goHome();
+          showToast('Unlocked ✓');
+        } else {
+          document.getElementById('pinError').textContent = 'Incorrect PIN';
+          pinEntry = '';
+          updatePinDots();
         }
-        isAdmin = true;
-        document.getElementById('adminNavBtn').style.display = '';
-        document.getElementById('lockBtn').style.display = '';
-        document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
-        document.getElementById('logisticsTabBtn').style.display = currentTripId ? '' : 'none';
-        renderHome();
-        goHome();
-        showToast('Unlocked ✓');
-      } else {
-        document.getElementById('pinError').textContent = 'Incorrect PIN';
+      } catch(e) {
+        console.error('PIN verification failed', e);
+        document.getElementById('pinError').textContent = 'Connection error — try again';
         pinEntry = '';
         updatePinDots();
       }
