@@ -2416,23 +2416,24 @@ function showToast(msg) {
 
 
 // ── Normalize Firebase array-as-object to real array ──
-function normalizePackingList(val) {
-  if (!val) return null;
-  var arr = Array.isArray(val) ? val : Object.keys(val).sort(function(a,b){ return parseInt(a)-parseInt(b); }).map(function(k){ return val[k]; });
-  return arr.filter(Boolean).map(function(person) {
-    if (person.sections) {
-      person.sections = normalizeArray(person.sections).filter(Boolean).map(function(sec) {
-        if (sec && sec.items) sec.items = normalizeArray(sec.items).filter(Boolean);
-        return sec;
-      });
-    }
-    return person;
-  });
-}
 function normalizeArray(val) {
   if (!val) return [];
   if (Array.isArray(val)) return val.filter(Boolean);
   return Object.keys(val).sort(function(a,b){ return parseInt(a)-parseInt(b); }).map(function(k){ return val[k]; }).filter(Boolean);
+}
+function normalizePackingList(val) {
+  if (!val) return null;
+  var persons = normalizeArray(val);
+  return persons.map(function(person) {
+    if (!person) return null;
+    var sections = normalizeArray(person.sections);
+    person.sections = sections.map(function(sec) {
+      if (!sec) return null;
+      sec.items = normalizeArray(sec.items);
+      return sec;
+    }).filter(Boolean);
+    return person;
+  }).filter(Boolean);
 }
 
 // ════════════════════════════════════════
@@ -2794,8 +2795,9 @@ document.addEventListener('click', function(e) {
         const packingList = normalizePackingList(snap.val());
         if (packingList) {
           for (const personObj of packingList) {
-            for (const sec of personObj.sections) {
-              const item = sec.items.find(i => i.id === itemId);
+            for (const sec of (personObj.sections || [])) {
+              if (!sec || !sec.items) continue;
+              const item = sec.items.find(i => i && i.id === itemId);
               if (item) { item.label = newLabel; break; }
             }
           }
@@ -2866,8 +2868,9 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
     if (!packingList) { showToast('No packing list found'); return; }
     // Find and update item
     for (const personObj of packingList) {
-      for (const sec of personObj.sections) {
-        const item = sec.items.find(i => i.id === itemId);
+      for (const sec of (personObj.sections || [])) {
+        if (!sec || !sec.items) continue;
+        const item = sec.items.find(i => i && i.id === itemId);
         if (item) { item.checked = newChecked; break; }
       }
     }
@@ -2892,8 +2895,9 @@ window.deletePackingItem = async function(tripId, itemId) {
     const packingList = normalizePackingList(snap.val());
     if (!packingList) return;
     for (const personObj of packingList) {
-      for (const sec of personObj.sections) {
-        sec.items = sec.items.filter(i => i.id !== itemId);
+      for (const sec of (personObj.sections || [])) {
+        if (!sec || !sec.items) continue;
+        sec.items = sec.items.filter(i => i && i.id !== itemId);
       }
     }
     await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
