@@ -2449,7 +2449,15 @@ const BOOKING_ITEMS = [
 async function renderLogisticsPanel(tripId) {
   const panel = document.getElementById('tripLogisticsPanel');
   panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
+  try {
+    await _renderLogisticsInner(tripId, panel);
+  } catch(err) {
+    panel.innerHTML = '<div style="padding:20px;color:red;font-size:13px;word-break:break-all;">Error: ' + err.message + '<br><br>' + (err.stack||'').slice(0,300) + '</div>';
+    console.error('renderLogisticsPanel failed:', err);
+  }
+}
 
+async function _renderLogisticsInner(tripId, panel) {
   let logistics = {}, avatarUrls = {};
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics'));
@@ -2522,7 +2530,6 @@ async function renderLogisticsPanel(tripId) {
 
     '<div style="height:32px;"></div>';
 }
-
 
 // ── Build packing list HTML from stored data ──
 function buildPackingListHTML(tripId, packingList, avatarUrls) {
