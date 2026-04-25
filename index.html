@@ -2859,8 +2859,9 @@ document.addEventListener('click', function(e) {
 window.togglePackingItem = async function(tripId, itemId, newChecked) {
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
-    const packingList = normalizePackingList(snap.val());
-    if (!packingList) return;
+    const rawVal = snap.val();
+    const packingList = normalizePackingList(rawVal);
+    if (!packingList) { showToast('No packing list found'); return; }
     // Find and update item
     for (const personObj of packingList) {
       for (const sec of personObj.sections) {
@@ -2879,7 +2880,7 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
       // Refresh % badge for this person block
       refreshPackingPct(packingList);
     }
-  } catch(e) { showToast('Could not save'); console.error(e); }
+  } catch(e) { showToast('Save error: ' + e.message); console.error('togglePackingItem error:', e); }
 };
 
 // ── Delete a packing item ──
@@ -2896,7 +2897,7 @@ window.deletePackingItem = async function(tripId, itemId) {
     await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
     const row = document.getElementById('pitem-' + itemId);
     if (row) row.remove();
-  } catch(e) { showToast('Could not delete'); console.error(e); }
+  } catch(e) { showToast('Delete error: ' + e.message); console.error('deletePackingItem error:', e); }
 };
 
 // ── Add a packing item ──
@@ -2933,7 +2934,7 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
     }
     inputEl.value = '';
     inputEl.focus();
-  } catch(e) { showToast('Could not add item'); console.error(e); }
+  } catch(e) { showToast('Add error: ' + e.message); console.error('addPackingItem error:', e); }
 };
 
 // ── Toggle booking checklist item ──
