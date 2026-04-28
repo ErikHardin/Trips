@@ -821,7 +821,7 @@ body {
       <div class="admin-section-title">AI Trip Assistant</div>
       <div class="admin-card">
         <label class="form-label">Trip</label>
-        <select class="form-input" id="aiTripSelect">
+        <select class="form-input" id="aiTripSelect" onchange="updateAIMode()">
           <option value="">— Select a trip —</option>
         </select>
         <!-- Edit mode (trip has days) -->
@@ -1945,7 +1945,7 @@ function populateImportSelect() {
   const ai = document.getElementById('aiTripSelect');
   if (ai) {
     ai.innerHTML = upcomingOpts;
-    ai.onchange = function() { updateAIMode(); };
+    updateAIMode();
   }
 }
 
@@ -3603,6 +3603,13 @@ window.runAIAssistant = async function() {
   const input = document.getElementById('aiInput').value.trim();
   if (!selectedTripId) { showToast('Select a trip first'); return; }
   if (!input) { showToast('Tell me what to change first'); return; }
+  // If trip has no days, redirect to generate mode
+  const selectedTrip = allTrips[selectedTripId];
+  if (selectedTrip && (!selectedTrip.days || !Object.keys(selectedTrip.days).length)) {
+    showToast('This trip has no itinerary yet — use Generate Itinerary below');
+    updateAIMode();
+    return;
+  }
 
   const btn = document.getElementById('aiSubmitBtn');
   btn.disabled = true;
