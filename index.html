@@ -3438,7 +3438,7 @@ window.closeAddTripModal = function() {
 let pendingAIChanges = null;
 
 // ── Switch AI assistant between edit and generate mode ──
-function updateAIMode() {
+async function updateAIMode() {
   const tripId = document.getElementById('aiTripSelect').value;
   const editMode = document.getElementById('aiEditMode');
   const genMode = document.getElementById('aiGenerateMode');
@@ -3449,8 +3449,28 @@ function updateAIMode() {
     genMode.style.display = 'none';
     return;
   }
-  const trip = allTrips[tripId];
-  const hasDays = trip && trip.days && Object.keys(trip.days).length > 0;
+  // Fetch fresh from Firebase to be sure
+  let trip = allTrips[tripId];
+  if (!trip) {
+    try {
+      const snap = await window._get(window._ref(window._db, 'trips/' + tripId));
+      trip = snap.val();
+      if (trip) allTrips[tripId] = trip;
+    } catch(e) { console.warn('updateAIMode fetch failed', e); }
+  }
+  // Check if trip has any actual activities (not just empty day shells)
+  var hasActivities = false;
+  if (trip && trip.days) {
+    var dayVals = Object.values(trip.days);
+    for (var di = 0; di < dayVals.length; di++) {
+      var d = dayVals[di];
+      if (d && d.activities) {
+        var acts = Array.isArray(d.activities) ? d.activities : Object.values(d.activities);
+        if (acts.filter(Boolean).length > 0) { hasActivities = true; break; }
+      }
+    }
+  }
+  var hasDays = hasActivities;
   editMode.style.display = hasDays ? '' : 'none';
   genMode.style.display = hasDays ? 'none' : '';
 }
