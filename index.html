@@ -666,6 +666,13 @@ body {
   border-radius: 3px; transition: width 0.4s ease;
 }
 
+.itinerary-gen-field { margin-bottom: 12px; }
+.itinerary-gen-field label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.itinerary-gen-field textarea { width: 100%; box-sizing: border-box; resize: none; min-height: 60px; }
+.itinerary-preview-day { margin-bottom: 14px; }
+.itinerary-preview-day-header { font-family: 'Cormorant Garamond', serif; font-size: 16px; font-style: italic; color: var(--terracotta); margin-bottom: 4px; }
+.itinerary-preview-activity { font-size: 13px; color: var(--ink); padding: 2px 0 2px 12px; border-left: 2px solid var(--sand-dark); margin-bottom: 3px; }
+
 /* ── WEATHER WIDGET ── */
 .weather-chip {
   display: inline-flex; align-items: center; gap: 4px;
@@ -817,17 +824,45 @@ body {
         <select class="form-input" id="aiTripSelect">
           <option value="">— Select a trip —</option>
         </select>
-        <div style="font-size:12px;color:var(--muted);margin:8px 0 10px;line-height:1.6;">
-          Then just describe what to change. Examples:<br>
-          <em>"Add dinner at Le Bernardin at 7:30pm on day 3"</em><br>
-          <em>"Update outbound flight to UA100 DEN-LIS 8am-10pm"</em><br>
-          <em>"Move the wine tasting on May 26 to 3pm"</em><br>
-          <em>"Change the hotel on day 5 to Park Hyatt"</em>
+        <!-- Edit mode (trip has days) -->
+        <div id="aiEditMode">
+          <div style="font-size:12px;color:var(--muted);margin:8px 0 10px;line-height:1.6;">
+            Describe what to change. Examples:<br>
+            <em>"Add dinner at Le Bernardin at 7:30pm on day 3"</em><br>
+            <em>"Update outbound flight to UA100 DEN-LIS 8am-10pm"</em><br>
+            <em>"Move the wine tasting on May 26 to 3pm"</em>
+          </div>
+          <textarea id="aiInput" class="form-input" style="min-height:80px;resize:none;" placeholder="What would you like to change?"></textarea>
+          <button class="form-btn" id="aiSubmitBtn" onclick="runAIAssistant()" style="margin-top:8px;">✨ Ask Assistant</button>
         </div>
-        <textarea id="aiInput" class="form-input" style="min-height:80px;resize:none;" placeholder="What would you like to change?"></textarea>
-        <button class="form-btn" id="aiSubmitBtn" onclick="runAIAssistant()" style="margin-top:8px;">
-          ✨ Ask Assistant
-        </button>
+
+        <!-- Generate mode (trip has no days) -->
+        <div id="aiGenerateMode" style="display:none;">
+          <div style="font-size:12px;color:var(--muted);margin:4px 0 12px;line-height:1.6;">
+            This trip has no itinerary yet. Tell the AI about your preferences and it will plan the whole trip for you.
+          </div>
+          <div class="itinerary-gen-field">
+            <label>Travel Style & Interests</label>
+            <textarea class="form-input" id="genPreferences" style="min-height:70px;resize:none;" placeholder="e.g. Fine dining, wine, boutique hotels, history and culture, walking tours. We avoid tourist traps and prefer local experiences."></textarea>
+          </div>
+          <div class="itinerary-gen-field">
+            <label>Pace</label>
+            <select class="form-input" id="genPace">
+              <option value="relaxed">Relaxed — 2-3 activities per day</option>
+              <option value="moderate" selected>Moderate — 3-4 activities per day</option>
+              <option value="packed">Packed — 5+ activities per day</option>
+            </select>
+          </div>
+          <div class="itinerary-gen-field">
+            <label>Anything to avoid?</label>
+            <textarea class="form-input" id="genAvoid" style="min-height:50px;resize:none;" placeholder="e.g. Crowded tourist spots, early mornings, budget restaurants…"></textarea>
+          </div>
+          <div class="itinerary-gen-field">
+            <label>Any specific requests?</label>
+            <textarea class="form-input" id="genSpecific" style="min-height:50px;resize:none;" placeholder="e.g. We must visit the Louvre. Include a day trip to Versailles. We have dinner booked at…"></textarea>
+          </div>
+          <button class="form-btn" id="aiGenerateBtn" onclick="runItineraryGenerator()" style="margin-top:4px;">🗺️ Generate Itinerary</button>
+        </div>
       </div>
 
       <!-- AI Preview / Response -->
@@ -1908,7 +1943,10 @@ function populateImportSelect() {
   const imp = document.getElementById('importTripSelect');
   if (imp) imp.innerHTML = allOpts;
   const ai = document.getElementById('aiTripSelect');
-  if (ai) ai.innerHTML = upcomingOpts;
+  if (ai) {
+    ai.innerHTML = upcomingOpts;
+    ai.onchange = function() { updateAIMode(); };
+  }
 }
 
 function renderAdminTripList() {
@@ -3398,6 +3436,167 @@ window.closeAddTripModal = function() {
 //  AI TRIP ASSISTANT
 // ════════════════════════════════════════
 let pendingAIChanges = null;
+
+// ── Switch AI assistant between edit and generate mode ──
+function updateAIMode() {
+  const tripId = document.getElementById('aiTripSelect').value;
+  const editMode = document.getElementById('aiEditMode');
+  const genMode = document.getElementById('aiGenerateMode');
+  const preview = document.getElementById('aiPreview');
+  if (preview) preview.style.display = 'none';
+  if (!tripId) {
+    editMode.style.display = '';
+    genMode.style.display = 'none';
+    return;
+  }
+  const trip = allTrips[tripId];
+  const hasDays = trip && trip.days && Object.keys(trip.days).length > 0;
+  editMode.style.display = hasDays ? '' : 'none';
+  genMode.style.display = hasDays ? 'none' : '';
+}
+
+// ── Generate full itinerary from scratch ──
+window.runItineraryGenerator = async function() {
+  const tripId = document.getElementById('aiTripSelect').value;
+  if (!tripId) { showToast('Select a trip first'); return; }
+
+  const preferences = document.getElementById('genPreferences').value.trim();
+  const pace        = document.getElementById('genPace').value;
+  const avoid       = document.getElementById('genAvoid').value.trim();
+  const specific    = document.getElementById('genSpecific').value.trim();
+
+  if (!preferences) { showToast('Please describe your travel style'); return; }
+
+  const btn = document.getElementById('aiGenerateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loading-spinner"></div> Planning your trip…';
+  document.getElementById('aiPreview').style.display = 'none';
+
+  let trip;
+  try {
+    const snap = await window._get(window._ref(window._db, 'trips/' + tripId));
+    trip = snap.val();
+    if (!trip) throw new Error('Trip not found');
+  } catch(e) {
+    showToast('Could not load trip: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '🗺️ Generate Itinerary';
+    return;
+  }
+
+  const paceDesc = pace === 'relaxed' ? '2-3 activities' : pace === 'packed' ? '5+ activities' : '3-4 activities';
+
+  const systemPrompt = 'You are an expert luxury travel planner. Return ONLY valid JSON, no markdown, no explanation.';
+
+  const userPromptParts = [
+    'Plan a complete day-by-day itinerary for this trip:',
+    'Trip: ' + trip.name,
+    'Duration: ' + (trip.nights || '?') + ' nights, dates: ' + (trip.dates || 'TBD'),
+    'Travel style: ' + preferences,
+    'Pace: ' + paceDesc + ' per day',
+    avoid ? 'Avoid: ' + avoid : null,
+    specific ? 'Special requests: ' + specific : null,
+    '',
+    'Generate a full itinerary with specific real venue/restaurant names that match the travel style.',
+    '',
+    'Return ONLY this JSON (no markdown):',
+    '{"days":[{"dateNum":"1","dateMonth":"Jun","dayName":"Monday","city":"London","region":"London","regionColor":"#c06a3d","sortOrder":0,"activities":[{"text":"...","emoji":"...","time":"..."}]}]}',
+    '',
+    'Rules:',
+    '- dateNum: day number (1,2,3...)',
+    '- dateMonth: 3-letter month abbreviation',
+    '- dayName: day of the week',
+    '- city: city or area name for that day',
+    '- region: groups nearby days (e.g. London, Cotswolds) — same region = same regionColor',
+    '- regionColor order: #c06a3d #6d9b72 #4a7fb5 #8a6aad #b5834a #4a9b8a',
+    '- sortOrder: 0-indexed day number',
+    '- emoji guide: 🍽️ dining, 🍷 wine, ☕ breakfast, 🏛️ sightseeing, 🛍️ shopping, 🚶 walking, 🏨 hotel, ✈️ flight, 🚗 drive, 🍸 bar, 💆 spa, 🎭 show, 🏖️ beach, 🥾 hike',
+    '- time: optional, only for specific reservations',
+    '- Be specific with real venue names — avoid generic descriptions'
+  ].filter(function(x){ return x !== null; }).join('\n');
+
+  const userPrompt = userPromptParts;
+
+  try {
+    const response = await fetch('https://hardin-trips-ai.erikchardin.workers.dev', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+    const raw = data.content?.[0]?.text || '';
+    const clean = raw.replace(/^```json\s*/,'').replace(/\s*```$/,'').trim();
+    const parsed = JSON.parse(clean);
+    if (!parsed.days || !parsed.days.length) throw new Error('No days returned');
+
+    // Store pending and show preview
+    pendingItinerary = { tripId, days: parsed.days };
+
+    // Build readable preview
+    var previewHTML = parsed.days.map(function(day) {
+      var acts = (day.activities || []).map(function(a) {
+        return '<div class="itinerary-preview-activity">' + (a.emoji ? a.emoji + ' ' : '') + a.text + (a.time ? ' <span style="color:var(--muted);font-size:11px;">· ' + a.time + '</span>' : '') + '</div>';
+      }).join('');
+      return '<div class="itinerary-preview-day">' +
+        '<div class="itinerary-preview-day-header">Day ' + day.dateNum + ' · ' + day.dayName + ' · ' + day.city + '</div>' +
+        acts +
+        '</div>';
+    }).join('');
+
+    document.getElementById('aiPreviewText').innerHTML = previewHTML;
+    document.getElementById('aiError').style.display = 'none';
+    document.getElementById('aiConfirmBtns').innerHTML =
+      '<button class="form-btn" onclick="confirmItinerary()" style="flex:1;">✓ Save Itinerary</button>' +
+      '<button class="form-btn secondary" onclick="cancelItinerary()" style="flex:1;">Cancel</button>';
+    document.getElementById('aiPreview').style.display = '';
+
+  } catch(e) {
+    console.error('Itinerary generation failed', e);
+    showToast('Generation failed: ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '🗺️ Generate Itinerary';
+};
+
+var pendingItinerary = null;
+
+window.confirmItinerary = async function() {
+  if (!pendingItinerary) return;
+  const { tripId, days } = pendingItinerary;
+  try {
+    // Write each day to Firebase using push keys
+    for (var i = 0; i < days.length; i++) {
+      var day = days[i];
+      day.sortOrder = i;
+      var newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/days'));
+      await window._set(newRef, day);
+    }
+    pendingItinerary = null;
+    document.getElementById('aiPreview').style.display = 'none';
+    showToast('Itinerary saved! ✓');
+    // Refresh local cache
+    var snap = await window._get(window._ref(window._db, 'trips/' + tripId));
+    allTrips[tripId] = snap.val();
+    // Switch to edit mode now that trip has days
+    updateAIMode();
+  } catch(e) {
+    showToast('Save failed: ' + e.message);
+    console.error(e);
+  }
+};
+
+window.cancelItinerary = function() {
+  pendingItinerary = null;
+  document.getElementById('aiPreview').style.display = 'none';
+};
 
 window.runAIAssistant = async function() {
   const selectedTripId = document.getElementById('aiTripSelect').value;
