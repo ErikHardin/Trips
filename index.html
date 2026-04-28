@@ -3592,7 +3592,9 @@ window.confirmItinerary = async function() {
   if (!pendingItinerary) return;
   const { tripId, days } = pendingItinerary;
   try {
-    // Write each day to Firebase using push keys
+    // Delete all existing days first (empty shells from date picker)
+    await window._set(window._ref(window._db, 'trips/' + tripId + '/days'), null);
+    // Write each AI-generated day using push keys
     for (var i = 0; i < days.length; i++) {
       var day = days[i];
       day.sortOrder = i;
