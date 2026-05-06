@@ -2030,8 +2030,8 @@ function renderEditDaysList(trip) {
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">${day.dateMonth||''}</div>
       </div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${day.city||day.dayName||'Day'}</div>
-        <div style="font-size:11px;color:var(--muted);">${day.region||''} · ${day.hotel||'No hotel'}</div>
+        <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${day.city||'Day'}</div>
+        <div style="font-size:11px;color:var(--muted);">${day.dayName||''} · ${day.region||''} · ${day.hotel||'No hotel'}</div>
       </div>
       <button onclick="openEditDay('${dayId}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">Edit</button>
     </div>`).join('');
@@ -2110,9 +2110,12 @@ window.addActivityRow = function(act) {
   row.innerHTML = `
     <span class="act-drag-handle" title="Drag to reorder">⠿</span>
     <button class="act-emoji-btn" onclick="openEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
-    <input class="act-text-input" placeholder="Activity name" value="${escHtml(text)}">
-    <input class="act-time-input" placeholder="Time" value="${escHtml(time)}">
+    <input class="act-text-input" placeholder="Activity name">
+    <input class="act-time-input" placeholder="Time">
     <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>`;
+  // Set values directly to avoid HTML escaping issues with special characters
+  row.querySelector('.act-text-input').value = text;
+  row.querySelector('.act-time-input').value = time;
 
   // Desktop drag-and-drop
   row.addEventListener('dragstart', onDragStart);
