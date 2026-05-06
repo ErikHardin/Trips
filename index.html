@@ -2031,7 +2031,11 @@ function renderEditDaysList(trip) {
       </div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${day.city||'Day'}</div>
-        <div style="font-size:11px;color:var(--muted);">${day.dayName||''} · ${day.region||''} · ${day.hotel||'No hotel'}</div>
+        <div style="font-size:11px;color:var(--muted);">${(function(){
+          var dn = day.dayName;
+          if (!dn && day.dateISO) { var d=new Date(day.dateISO+'T00:00:00'); dn=d.toLocaleDateString('en-US',{weekday:'long'}); }
+          return [dn, day.region, day.hotel||'No hotel'].filter(Boolean).join(' · ');
+        })()}</div>
       </div>
       <button onclick="openEditDay('${dayId}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">Edit</button>
     </div>`).join('');
