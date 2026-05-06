@@ -1271,8 +1271,6 @@ function renderHome() {
   if (keys.length === 0) {
     list.innerHTML = '';
     empty.style.display = '';
-    // Show add button if admin
-    if (isAdmin) renderAddBtn(list);
     return;
   }
   empty.style.display = 'none';
@@ -1282,19 +1280,18 @@ function renderHome() {
     const t = allTrips[k];
     const card = document.createElement('div');
     card.className = 'trip-card';
-    card.innerHTML = `
-      <div class="trip-card-cover">
-        <span class="trip-card-cover-emoji">${t.emoji||'✈️'}</span>
-      </div>
-      <div class="trip-card-body">
-        <div class="trip-card-name">${t.name||'Untitled Trip'}</div>
-        <div class="trip-card-meta">
-          <span class="trip-pill">${t.year||''}</span>
-          ${t.dates ? `<span class="trip-pill">${t.dates}</span>` : ''}
-          ${t.status==='active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : ''}
-          ${t.status==='upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : ''}
-        </div>
-      </div>`;
+    const datesHTML2    = t.dates ? '<span class="trip-pill">' + t.dates + '</span>' : '';
+    const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : '';
+    const countdownHTML2 = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
+    card.innerHTML =
+      '<div class="trip-card-cover"><span class="trip-card-cover-emoji">' + (t.emoji||'✈️') + '</span></div>' +
+      '<div class="trip-card-body">' +
+        '<div class="trip-card-name">' + (t.name||'Untitled Trip') + '</div>' +
+        '<div class="trip-card-meta">' +
+          '<span class="trip-pill">' + (t.year||'') + '</span>' +
+          datesHTML2 + activeHTML2 + countdownHTML2 +
+        '</div>' +
+      '</div>';
     card.onclick = () => openTrip(k);
     list.appendChild(card);
   });
@@ -2023,22 +2020,31 @@ function renderEditDaysList(trip) {
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:0 0 12px;">No days yet. Import a CSV or add days manually.</p>';
     return;
   }
-  list.innerHTML = days.map(([dayId, day])=>`
-    <div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:8px;">
-      <div style="text-align:center;min-width:36px;">
-        <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;">${day.dateNum||'–'}</div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">${day.dateMonth||''}</div>
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${day.city||'Day'}</div>
-        <div style="font-size:11px;color:var(--muted);">${(function(){
-          var dn = day.dayName;
-          if (!dn && day.dateISO) { var d=new Date(day.dateISO+'T00:00:00'); dn=d.toLocaleDateString('en-US',{weekday:'long'}); }
-          return [dn, day.region, day.hotel||'No hotel'].filter(Boolean).join(' · ');
-        })()}</div>
-      </div>
-      <button onclick="openEditDay('${dayId}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">Edit</button>
-    </div>`).join('');
+  list.innerHTML = days.map(function(entry) {
+    var dayId = entry[0], day = entry[1];
+    var dn = day.dayName;
+    if (!dn && day.dateISO) {
+      var dt = new Date(day.dateISO + 'T00:00:00');
+      dn = dt.toLocaleDateString('en-US', {weekday: 'long'});
+    }
+    var subtitle = [dn, day.region, day.hotel || 'No hotel'].filter(Boolean).join(' · ');
+    var numStyle = 'font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;';
+    var monStyle = 'font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;';
+    var cityStyle = 'font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    var subStyle = 'font-size:11px;color:var(--muted);';
+    var btnStyle = 'background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;';
+    return '<div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:8px;">'
+      + '<div style="text-align:center;min-width:36px;">'
+        + '<div style="' + numStyle + '">' + (day.dateNum||'–') + '</div>'
+        + '<div style="' + monStyle + '">' + (day.dateMonth||'') + '</div>'
+      + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+        + '<div style="' + cityStyle + '">' + (day.city||'Day') + '</div>'
+        + '<div style="' + subStyle + '">' + subtitle + '</div>'
+      + '</div>'
+      + '<button data-edit-day-id="' + dayId + '" style="' + btnStyle + '">Edit</button>'
+    + '</div>';
+  }).join('');
 }
 
 window.addNewDay = async function() {
@@ -2879,6 +2885,10 @@ document.addEventListener('click', function(e) {
     });
     return;
   }
+
+  // Edit day button in admin list
+  const editDayBtn = e.target.closest('[data-edit-day-id]');
+  if (editDayBtn) { openEditDay(editDayBtn.dataset.editDayId); return; }
 
   // Toggle packing item checkbox/label
   const toggleEl = e.target.closest('[data-toggle-trip]');
