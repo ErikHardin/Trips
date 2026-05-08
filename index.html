@@ -1129,6 +1129,16 @@ body {
 </div>
 
 <!-- ══ TOAST ══ -->
+<div id="lightbox">
+  <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+  <button id="lightbox-zoom" onclick="lightboxZoomStep()">⊕</button>
+  <button id="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
+  <div id="lightbox-img-wrap">
+    <img id="lightbox-img" src="" alt="">
+  </div>
+  <button id="lightbox-next" onclick="lightboxNav(1)">›</button>
+  <div id="lightbox-counter"></div>
+</div>
 <div class="toast" id="toast"></div>
 
 <!-- ══ FIREBASE ══ -->
