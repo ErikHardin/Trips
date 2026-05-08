@@ -259,13 +259,17 @@ body {
   transition: opacity 0.2s;
 }
 #lightbox.active { opacity: 1; pointer-events: all; }
+#lightbox-img-wrap {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
 #lightbox img {
   max-width: 100%; max-height: 100%;
   object-fit: contain;
   user-select: none;
-  touch-action: none;
+  touch-action: pinch-zoom pan-x pan-y;
   transform-origin: center center;
-  transition: transform 0.05s linear;
 }
 #lightbox-close {
   position: absolute; top: 16px; right: 16px;
@@ -2568,76 +2572,56 @@ document.addEventListener('DOMContentLoaded', function() {
   var img = document.getElementById('lightbox-img');
   if (!lb || !img) return;
 
-  // ── Pinch-to-zoom + pan state ──
-  var scale = 1, minScale = 1, maxScale = 5;
-  var panX = 0, panY = 0;
-  var lastDist = 0, lastMidX = 0, lastMidY = 0;
-  var isPinching = false;
-  var panStartX = 0, panStartY = 0, panStartPanX = 0, panStartPanY = 0;
+  var scale = 1, startScale = 1;
   var swipeStartX = 0, swipeStartY = 0;
 
-  function applyTransform() {
-    img.style.transform = 'scale(' + scale + ') translate(' + panX/scale + 'px,' + panY/scale + 'px)';
-  }
-
   function resetZoom() {
-    scale = 1; panX = 0; panY = 0;
+    scale = 1;
     img.style.transform = '';
   }
 
-  function dist(t) {
-    var dx = t[0].clientX - t[1].clientX;
-    var dy = t[0].clientY - t[1].clientY;
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-
-  // iOS gesture events fire even with user-scalable=no
-  var startScale = 1;
-  lb.addEventListener('gesturestart', function(e) {
+  // Attach gesture events directly to img for iOS
+  img.addEventListener('gesturestart', function(e) {
     e.preventDefault();
     startScale = scale;
-    isPinching = true;
   }, {passive: false});
 
-  lb.addEventListener('gesturechange', function(e) {
+  img.addEventListener('gesturechange', function(e) {
     e.preventDefault();
-    scale = Math.min(maxScale, Math.max(minScale, startScale * e.scale));
-    applyTransform();
+    scale = Math.min(5, Math.max(1, startScale * e.scale));
+    img.style.transform = 'scale(' + scale + ')';
   }, {passive: false});
 
-  lb.addEventListener('gestureend', function(e) {
-    e.preventDefault();
-    isPinching = false;
-    if (scale < 1.05) resetZoom();
+  img.addEventListener('gestureend', function(e) {
+    if (scale < 1.1) resetZoom();
   }, {passive: false});
 
-  // Single touch for pan and swipe
+  // Double-tap to zoom
+  var lastTap = 0;
+  lb.addEventListener('touchend', function(e) {
+    var now = Date.now();
+    if (now - lastTap < 300 && e.changedTouches.length === 1) {
+      if (scale > 1) resetZoom();
+      else { scale = 2.5; img.style.transform = 'scale(2.5)'; }
+      e.preventDefault();
+    }
+    lastTap = now;
+  }, {passive: false});
+
+  // Swipe to navigate (single touch, not zoomed)
   lb.addEventListener('touchstart', function(e) {
     if (e.touches.length === 1) {
-      isPinching = false;
-      swipeStartX = panStartX = e.touches[0].clientX;
-      swipeStartY = panStartY = e.touches[0].clientY;
-      panStartPanX = panX;
-      panStartPanY = panY;
+      swipeStartX = e.touches[0].clientX;
+      swipeStartY = e.touches[0].clientY;
     }
   }, {passive: true});
 
-  lb.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 1 && scale > 1) {
-      e.preventDefault();
-      panX = panStartPanX + (e.touches[0].clientX - panStartX);
-      panY = panStartPanY + (e.touches[0].clientY - panStartY);
-      applyTransform();
-    }
-  }, {passive: false});
-
   lb.addEventListener('touchend', function(e) {
-    if (isPinching) return;
-    if (scale <= 1 && e.changedTouches.length === 1) {
+    if (scale > 1) return;
+    if (e.changedTouches.length === 1) {
       var dx = e.changedTouches[0].clientX - swipeStartX;
       var dy = e.changedTouches[0].clientY - swipeStartY;
       if (Math.abs(dx) > 50 && Math.abs(dy) < 40) {
-        resetZoom();
         lightboxNav(dx < 0 ? 1 : -1);
         return;
       }
@@ -2647,21 +2631,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }, {passive: true});
 
-  // Double-tap to zoom in/out
-  var lastTap = 0;
-  lb.addEventListener('touchend', function(e) {
-    var now = Date.now();
-    if (now - lastTap < 300 && e.changedTouches.length === 1) {
-      if (scale > 1) { resetZoom(); }
-      else { scale = 2.5; applyTransform(); }
-    }
-    lastTap = now;
-  }, {passive: true});
-
-  // Reset zoom when lightbox closes
   window._resetLightboxZoom = resetZoom;
 
-  // Close on background click (desktop)
   lb.addEventListener('click', function(e) {
     if (e.target === lb) closeLightbox();
   });
