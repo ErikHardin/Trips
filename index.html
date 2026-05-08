@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Hardin Trips</title>
 
 <!-- PWA -->
@@ -2591,38 +2591,39 @@ document.addEventListener('DOMContentLoaded', function() {
     return Math.sqrt(dx*dx + dy*dy);
   }
 
+  // iOS gesture events fire even with user-scalable=no
+  var startScale = 1;
+  lb.addEventListener('gesturestart', function(e) {
+    e.preventDefault();
+    startScale = scale;
+    isPinching = true;
+  }, {passive: false});
+
+  lb.addEventListener('gesturechange', function(e) {
+    e.preventDefault();
+    scale = Math.min(maxScale, Math.max(minScale, startScale * e.scale));
+    applyTransform();
+  }, {passive: false});
+
+  lb.addEventListener('gestureend', function(e) {
+    e.preventDefault();
+    isPinching = false;
+    if (scale < 1.05) resetZoom();
+  }, {passive: false});
+
+  // Single touch for pan and swipe
   lb.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 2) {
-      isPinching = true;
-      lastDist = dist(e.touches);
-      lastMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      lastMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      e.preventDefault();
-    } else if (e.touches.length === 1) {
+    if (e.touches.length === 1) {
       isPinching = false;
       swipeStartX = panStartX = e.touches[0].clientX;
       swipeStartY = panStartY = e.touches[0].clientY;
       panStartPanX = panX;
       panStartPanY = panY;
     }
-  }, {passive: false});
+  }, {passive: true});
 
   lb.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      isPinching = true;
-      var d = dist(e.touches);
-      var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      var newScale = Math.min(maxScale, Math.max(minScale, scale * (d / lastDist)));
-      panX += (midX - lastMidX);
-      panY += (midY - lastMidY);
-      scale = newScale;
-      lastDist = d;
-      lastMidX = midX;
-      lastMidY = midY;
-      applyTransform();
-    } else if (e.touches.length === 1 && scale > 1) {
+    if (e.touches.length === 1 && scale > 1) {
       e.preventDefault();
       panX = panStartPanX + (e.touches[0].clientX - panStartX);
       panY = panStartPanY + (e.touches[0].clientY - panStartY);
@@ -2631,12 +2632,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }, {passive: false});
 
   lb.addEventListener('touchend', function(e) {
-    if (isPinching) {
-      isPinching = false;
-      if (scale < 1.05) resetZoom();
-      return;
-    }
-    // Swipe to navigate only when not zoomed
+    if (isPinching) return;
     if (scale <= 1 && e.changedTouches.length === 1) {
       var dx = e.changedTouches[0].clientX - swipeStartX;
       var dy = e.changedTouches[0].clientY - swipeStartY;
@@ -2645,7 +2641,6 @@ document.addEventListener('DOMContentLoaded', function() {
         lightboxNav(dx < 0 ? 1 : -1);
         return;
       }
-      // Tap background to close
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && e.target === lb) {
         closeLightbox();
       }
