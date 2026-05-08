@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Hardin Trips v2.1 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,6 +9,9 @@
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Hardin Trips">
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
@@ -1133,16 +1137,18 @@ let notesUnsubscribe = null;
 // ════════════════════════════════════════
 function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
-  // Load trips
-  window._onValue(window._ref(window._db, 'trips'), snap => {
-    allTrips = snap.val() || {};
-    renderHome();
-    populateImportSelect();
-    renderAdminTripList();
-    // Refresh edit days list if currently editing
-    if (editingTripId && allTrips[editingTripId]) {
-      renderEditDaysList(allTrips[editingTripId]);
-    }
+  // Sign in anonymously first so Firebase reads work on fresh load
+  window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
+    // Load trips
+    window._onValue(window._ref(window._db, 'trips'), snap => {
+      allTrips = snap.val() || {};
+      renderHome();
+      populateImportSelect();
+      renderAdminTripList();
+      if (editingTripId && allTrips[editingTripId]) {
+        renderEditDaysList(allTrips[editingTripId]);
+      }
+    });
   });
   goHome();
 }
