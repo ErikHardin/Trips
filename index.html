@@ -260,34 +260,15 @@ body {
 }
 #lightbox.active { opacity: 1; pointer-events: all; }
 #lightbox-img-wrap {
-  position: absolute;
-  inset: 0;
-  overflow: scroll;
-  -webkit-overflow-scrolling: touch;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%; height: 100%;
 }
-#lightbox-img-wrap.panning { cursor: grabbing; }
-#lightbox-scroll-inner {
-  min-width: 100%;
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+#lightbox-map {
+  width: 100%; height: 100%;
+  background: #000;
 }
-#lightbox img {
-  max-width: 100%;
-  max-height: 100vh;
-  object-fit: contain;
-  user-select: none;
-  touch-action: pinch-zoom;
-  transform-origin: center center;
-  transition: transform 0.2s ease;
-}
-#lightbox img.no-transition {
-  transition: none;
-}
+/* Hide Leaflet attribution in lightbox */
+#lightbox-map .leaflet-control-attribution { display: none; }
+#lightbox-map .leaflet-control-zoom { display: none; }
 #lightbox-close {
   position: absolute; top: 16px; right: 16px;
   width: 36px; height: 36px; border-radius: 50%;
@@ -1144,9 +1125,7 @@ body {
   <button id="lightbox-zoom" onclick="lightboxZoomStep()">⊕</button>
   <button id="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
   <div id="lightbox-img-wrap">
-    <div id="lightbox-scroll-inner">
-      <img id="lightbox-img" src="" alt="">
-    </div>
+    <div id="lightbox-map"></div>
   </div>
   <button id="lightbox-next" onclick="lightboxNav(1)">›</button>
   <div id="lightbox-counter"></div>
@@ -2570,22 +2549,50 @@ document.addEventListener('click', function(e) {
 //  LIGHTBOX
 // ════════════════════════════════════════
 var _lbPhotos = [], _lbIdx = 0;
+var _lbMap = null, _lbLayer = null;
 
 function openLightbox(photos, idx) {
-  _lbPhotos = photos;
+  _lbPhotos = Array.isArray(photos) ? photos : [photos];
   _lbIdx = idx || 0;
-  _showLightboxPhoto();
   document.getElementById('lightbox').classList.add('active');
   document.body.style.overflow = 'hidden';
+  // Init map after lightbox is visible
+  setTimeout(_showLightboxPhoto, 50);
 }
 
 function _showLightboxPhoto() {
-  var img = document.getElementById('lightbox-img');
-  img.src = _lbPhotos[_lbIdx];
+  var url = _lbPhotos[_lbIdx];
   var counter = document.getElementById('lightbox-counter');
   counter.textContent = _lbPhotos.length > 1 ? (_lbIdx + 1) + ' / ' + _lbPhotos.length : '';
   document.getElementById('lightbox-prev').style.display = _lbPhotos.length > 1 ? '' : 'none';
   document.getElementById('lightbox-next').style.display = _lbPhotos.length > 1 ? '' : 'none';
+
+  var mapEl = document.getElementById('lightbox-map');
+
+  // Load image to get natural dimensions
+  var tmpImg = new Image();
+  tmpImg.onload = function() {
+    var w = tmpImg.naturalWidth;
+    var h = tmpImg.naturalHeight;
+
+    // Destroy previous map instance
+    if (_lbMap) { _lbMap.remove(); _lbMap = null; }
+
+    // Create Leaflet map with image as overlay
+    _lbMap = L.map(mapEl, {
+      crs: L.CRS.Simple,
+      attributionControl: false,
+      zoomControl: false,
+      minZoom: -3,
+      maxZoom: 3,
+      zoomSnap: 0.1
+    });
+
+    var bounds = [[0, 0], [h, w]];
+    L.imageOverlay(url, bounds).addTo(_lbMap);
+    _lbMap.fitBounds(bounds);
+  };
+  tmpImg.src = url;
 }
 
 function lightboxNav(delta) {
@@ -2595,9 +2602,8 @@ function lightboxNav(delta) {
 
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('active');
-  document.getElementById('lightbox-img').src = '';
   document.body.style.overflow = '';
-  if (window._resetLightboxZoom) window._resetLightboxZoom();
+  if (_lbMap) { _lbMap.remove(); _lbMap = null; }
 }
 
 // Wire up lightbox events after DOM ready
