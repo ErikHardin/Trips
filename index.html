@@ -3422,7 +3422,7 @@ function injectWeatherChip(cardId, wx, coords) {
   const chip = document.createElement('div');
   chip.className = 'weather-chip';
   chip.title = (wx.avg ? 'Typical: ' : '') + label;
-  if (coords) chip.dataset.url = 'https://www.windy.com/?' + coords[0] + ',' + coords[1] + ',9';
+  if (coords) chip.dataset.url = 'https://weather.com/weather/tenday/l/' + coords[0] + ',' + coords[1];
   // avg = historical estimate, show ~ prefix on temp
   const prefix = wx.avg ? '~' : '';
   chip.innerHTML = '<span class="wx-icon">' + icon + '</span>' +
