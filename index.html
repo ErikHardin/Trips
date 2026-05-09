@@ -729,6 +729,13 @@ body {
 .weather-chip:hover { opacity: 0.75; }
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
+.wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
+.wx-forecast-row:last-child { border-bottom:none; }
+.wx-forecast-date { width:80px; font-size:12px; color:var(--muted); line-height:1.3; flex-shrink:0; }
+.wx-forecast-icon { font-size:22px; margin:0 12px; flex-shrink:0; }
+.wx-forecast-label { flex:1; font-size:12px; color:var(--muted); }
+.wx-forecast-hi { font-size:14px; font-weight:600; color:var(--ink); }
+.wx-forecast-lo { font-size:12px; color:var(--muted); margin-left:5px; }
 </style>
 </head>
 <body>
@@ -1110,6 +1117,15 @@ body {
     <input type="text" id="emojiSearch" placeholder="Search… (food, wine, beach…)" oninput="filterEmojis(this.value)"
       style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px;background:var(--cream);outline:none;margin-bottom:12px;">
     <div id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;overflow-y:auto;max-height:300px;"></div>
+  </div>
+</div>
+
+<!-- ══ WEATHER FORECAST MODAL ══ -->
+<div class="modal-overlay" id="wxModal" onclick="closeWxModal(event)">
+  <div class="modal-sheet" style="max-height:85vh;overflow-y:auto;">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="wxModalCity"></div>
+    <div id="wxModalContent" style="padding-top:4px;"></div>
   </div>
 </div>
 
@@ -2402,6 +2418,77 @@ window.deleteDay = async function() {
 window.closeEditDayModal = function(e) { if (e.target.id==='editDayModal') closeEditDayModalDirect(); };
 window.closeEditDayModalDirect = function() { document.getElementById('editDayModal').classList.remove('open'); editingDayId = null; };
 
+// ── Weather forecast modal ──
+window.closeWxModal = function(e) {
+  if (e && e.target !== document.getElementById('wxModal')) return;
+  document.getElementById('wxModal').classList.remove('open');
+};
+
+function openWeatherModal(city, coords, isAvg, wx) {
+  const modal   = document.getElementById('wxModal');
+  const titleEl = document.getElementById('wxModalCity');
+  const content = document.getElementById('wxModalContent');
+  titleEl.textContent = city;
+  modal.classList.add('open');
+
+  if (isAvg) {
+    const { icon, label } = wxInfo(wx.code);
+    content.innerHTML =
+      '<div style="text-align:center;padding:20px 0 12px;">' +
+        '<div style="font-size:52px;line-height:1;">' + icon + '</div>' +
+        '<div style="font-size:14px;color:var(--muted);margin-top:10px;">' + label + '</div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:center;gap:32px;padding:16px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:4px 0 14px;">' +
+        '<div style="text-align:center;">' +
+          '<div style="font-size:30px;font-weight:600;color:var(--ink);">~' + wx.hi + '°</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:3px;">Typical High</div>' +
+        '</div>' +
+        '<div style="text-align:center;">' +
+          '<div style="font-size:30px;font-weight:600;color:var(--muted);">~' + wx.lo + '°</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:3px;">Typical Low</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--muted);text-align:center;">Based on historical averages for this month</div>';
+    return;
+  }
+
+  content.innerHTML = '<div style="text-align:center;padding:28px;color:var(--muted);">Loading forecast…</div>';
+  const [lat, lon] = coords;
+  const today = new Date();
+  const end   = new Date(today); end.setDate(end.getDate() + 13);
+  const fmt   = d => d.toISOString().slice(0, 10);
+  fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+    '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + fmt(today) + '&end_date=' + fmt(end))
+    .then(r => r.json())
+    .then(data => {
+      if (!data.daily || !data.daily.time.length) {
+        content.innerHTML = '<div style="text-align:center;padding:28px;color:var(--muted);">No forecast available</div>';
+        return;
+      }
+      const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      let html = '';
+      data.daily.time.forEach((date, i) => {
+        const d    = new Date(date + 'T00:00:00');
+        const label = DOW[d.getDay()] + ', ' + MON[d.getMonth()] + ' ' + d.getDate();
+        const { icon, label: cond } = wxInfo(data.daily.weathercode[i]);
+        const hi = Math.round(data.daily.temperature_2m_max[i]);
+        const lo = Math.round(data.daily.temperature_2m_min[i]);
+        html += '<div class="wx-forecast-row">' +
+          '<div class="wx-forecast-date">' + label + '</div>' +
+          '<div class="wx-forecast-icon">' + icon + '</div>' +
+          '<div class="wx-forecast-label">' + cond + '</div>' +
+          '<span class="wx-forecast-hi">' + hi + '°</span>' +
+          '<span class="wx-forecast-lo">/ ' + lo + '°</span>' +
+          '</div>';
+      });
+      content.innerHTML = html;
+    })
+    .catch(() => {
+      content.innerHTML = '<div style="text-align:center;padding:28px;color:var(--muted);">Could not load forecast</div>';
+    });
+}
+
 // ════════════════════════════════════════
 //  CSV FILE PICKER
 // ════════════════════════════════════════
@@ -3350,7 +3437,7 @@ async function fetchTripWeather(days, tripYear) {
       for (const { dateISO, cardId } of entries) {
         const wx = wxByDate[dateISO];
         if (!wx) continue;
-        injectWeatherChip(cardId, wx, [lat, lon]);
+        injectWeatherChip(cardId, wx, [lat, lon], city);
       }
     } catch(e) { console.warn('Forecast fetch failed for', city, e); }
   }
@@ -3397,14 +3484,14 @@ async function fetchTripWeather(days, tripYear) {
         const wx = { code: typicalCode, hi: avgHi, lo: avgLo, avg: true };
 
         for (const { cardId } of monthEntries) {
-          injectWeatherChip(cardId, wx, [lat, lon]);
+          injectWeatherChip(cardId, wx, [lat, lon], city);
         }
       }
     } catch(e) { console.warn('Climate fetch failed for', city, e); }
   }
 }
 
-function injectWeatherChip(cardId, wx, coords) {
+function injectWeatherChip(cardId, wx, coords, city) {
   const card = document.getElementById(cardId);
   if (!card) return;
   const header = card.querySelector('.day-header');
@@ -3416,10 +3503,9 @@ function injectWeatherChip(cardId, wx, coords) {
   chip.className = 'weather-chip';
   chip.title = (wx.avg ? 'Typical: ' : '') + label;
   if (coords) {
-    const url = 'https://weather.com/weather/tenday/l/' + coords[0] + ',' + coords[1];
     chip.addEventListener('click', function(e) {
       e.stopPropagation();
-      window.open(url, '_blank');
+      openWeatherModal(city || '', coords, wx.avg, wx);
     });
   }
   // avg = historical estimate, show ~ prefix on temp
