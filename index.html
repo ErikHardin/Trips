@@ -724,8 +724,9 @@ body {
   font-size: 11px; color: var(--muted);
   background: var(--blue-light); border-radius: 20px;
   padding: 2px 8px; margin-left: auto; flex-shrink: 0;
-  white-space: nowrap;
+  white-space: nowrap; cursor: pointer; transition: opacity 0.15s;
 }
+.weather-chip:hover { opacity: 0.75; }
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
 </style>
@@ -2517,6 +2518,13 @@ document.addEventListener('change', function(e) {
   }
 });
 document.addEventListener('click', function(e) {
+  // Weather chip → Windy.com forecast
+  const chip = e.target.closest('.weather-chip');
+  if (chip && chip.dataset.url) {
+    e.stopPropagation();
+    window.open(chip.dataset.url, '_blank');
+    return;
+  }
   // Activity text → Google search
   const actText = e.target.closest('.activity-text');
   if (actText) {
@@ -3349,7 +3357,7 @@ async function fetchTripWeather(days, tripYear) {
       for (const { dateISO, cardId } of entries) {
         const wx = wxByDate[dateISO];
         if (!wx) continue;
-        injectWeatherChip(cardId, wx);
+        injectWeatherChip(cardId, wx, [lat, lon]);
       }
     } catch(e) { console.warn('Forecast fetch failed for', city, e); }
   }
@@ -3396,14 +3404,14 @@ async function fetchTripWeather(days, tripYear) {
         const wx = { code: typicalCode, hi: avgHi, lo: avgLo, avg: true };
 
         for (const { cardId } of monthEntries) {
-          injectWeatherChip(cardId, wx);
+          injectWeatherChip(cardId, wx, [lat, lon]);
         }
       }
     } catch(e) { console.warn('Climate fetch failed for', city, e); }
   }
 }
 
-function injectWeatherChip(cardId, wx) {
+function injectWeatherChip(cardId, wx, coords) {
   const card = document.getElementById(cardId);
   if (!card) return;
   const header = card.querySelector('.day-header');
@@ -3414,6 +3422,7 @@ function injectWeatherChip(cardId, wx) {
   const chip = document.createElement('div');
   chip.className = 'weather-chip';
   chip.title = (wx.avg ? 'Typical: ' : '') + label;
+  if (coords) chip.dataset.url = 'https://www.windy.com/?' + coords[0] + ',' + coords[1] + ',9';
   // avg = historical estimate, show ~ prefix on temp
   const prefix = wx.avg ? '~' : '';
   chip.innerHTML = '<span class="wx-icon">' + icon + '</span>' +
