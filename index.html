@@ -277,14 +277,7 @@ body {
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   z-index: 10000;
 }
-#lightbox-zoom {
-  position: absolute; top: 16px; right: 62px;
-  width: 36px; height: 36px; border-radius: 50%;
-  background: rgba(255,255,255,0.15);
-  border: none; color: white; font-size: 22px;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  z-index: 10000;
-}
+
 #lightbox-counter {
   position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
   color: rgba(255,255,255,0.6); font-size: 13px; pointer-events: none;
@@ -1122,7 +1115,6 @@ body {
 <!-- ══ TOAST ══ -->
 <div id="lightbox">
   <button id="lightbox-close" onclick="closeLightbox()">✕</button>
-  <button id="lightbox-zoom" onclick="lightboxZoomStep()">⊕</button>
   <button id="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
   <div id="lightbox-img-wrap">
     <div id="lightbox-map"></div>
