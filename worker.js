@@ -47,8 +47,12 @@ export default {
       }
       const fmt12 = t => {
         if (!t) return '';
-        const timeStr = t.includes(' ') ? t.split(' ')[1] : t;
-        const [h, m] = timeStr.split(':').map(Number);
+        // API may return "2026-06-07 09:50+01:00" — extract first HH:MM match
+        const match = String(t).match(/(\d{1,2}):(\d{2})/);
+        if (!match) return '';
+        const h = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10);
+        if (isNaN(h) || isNaN(m)) return '';
         return `${h % 12 || 12}:${String(m).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`;
       };
       const dep  = f.departure?.airport?.iata || '';
