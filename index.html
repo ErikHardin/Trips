@@ -2147,7 +2147,18 @@ window.saveEditedTrip = async function() {
     flightReturn:     _editFlightsRet.map(f => f.formatted).join('\n'),
   };
   await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
-  logChange(editingTripId, 'Trip info saved', updates.name);
+
+  // Diff outbound + return flights and log each specific change
+  const existing = allTrips[editingTripId];
+  const oldOut = (existing.flightOut || '').split('\n').filter(Boolean);
+  const oldRet = (existing.flightReturn || '').split('\n').filter(Boolean);
+  const newOut = _editFlightsOut.map(f => f.formatted);
+  const newRet = _editFlightsRet.map(f => f.formatted);
+  for (const f of newOut) { if (!oldOut.includes(f)) logChange(editingTripId, 'Outbound flight added', f); }
+  for (const f of oldOut) { if (!newOut.includes(f)) logChange(editingTripId, 'Outbound flight removed', f); }
+  for (const f of newRet) { if (!oldRet.includes(f)) logChange(editingTripId, 'Return flight added', f); }
+  for (const f of oldRet) { if (!newRet.includes(f)) logChange(editingTripId, 'Return flight removed', f); }
+
   showToast('Trip saved! ✓');
   document.getElementById('editTripHeaderName').textContent = updates.name;
 };
@@ -2601,7 +2612,7 @@ window.saveDayEdit = async function() {
   // Diff activities and log each specific change
   const city = dayData.city || dayData.dayName || '';
   const actTxt = a => (a && typeof a === 'object') ? (a.text || '') : (a || '');
-  const actLabel = a => ((a && typeof a === 'object' && a.emoji) ? a.emoji + ' ' : '') + actTxt(a);
+  const actLabel = a => ((a && typeof a === 'object' && a.emoji) ? a.emoji + ' ' : '') + actTxt(a) + (a && typeof a === 'object' && a.time ? ' · ' + a.time : '');
   const oldActs = (existing.activities || []).filter(a => actTxt(a));
   const newActs = activities;
   const oldSet = new Map(oldActs.map(a => [actTxt(a), a]));
