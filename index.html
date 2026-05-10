@@ -723,6 +723,22 @@ body {
   border-radius: 3px; transition: width 0.4s ease;
 }
 
+/* ── CHANGES TAB ── */
+.changes-section-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 20px; font-style: italic;
+  padding: 0 0 10px; color: var(--ink);
+}
+.changes-list {
+  background: var(--warm-white); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.change-row { padding: 11px 14px; border-bottom: 1px solid var(--border); }
+.change-row:last-child { border-bottom: none; }
+.change-action { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.change-detail { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.change-meta { font-size: 11px; color: var(--sand-dark); margin-top: 3px; }
+
 .itinerary-gen-field { margin-bottom: 12px; }
 .itinerary-gen-field label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .itinerary-gen-field textarea { width: 100%; box-sizing: border-box; resize: none; min-height: 60px; }
@@ -837,11 +853,13 @@ body {
     <button class="tab-btn active" onclick="switchTripTab('itinerary',this)">Itinerary</button>
     <button class="tab-btn" onclick="switchTripTab('overview',this)">Overview</button>
     <button class="tab-btn" id="logisticsTabBtn" onclick="switchTripTab('logistics',this)" style="display:none;">Logistics</button>
+    <button class="tab-btn" id="changesTabBtn" onclick="switchTripTab('changes',this)" style="display:none;">Changes</button>
   </div>
   <div class="scroll-content">
     <div id="tripItineraryPanel" class="tab-panel active"></div>
     <div id="tripOverviewPanel" class="tab-panel"></div>
     <div id="tripLogisticsPanel" class="tab-panel"></div>
+    <div id="tripChangesPanel" class="tab-panel"></div>
   </div>
 </div>
 
@@ -1207,6 +1225,7 @@ window.addEventListener('load', () => { initApp(); });
 // PIN is verified server-side via Cloudflare Worker — not stored in client code
 let pinEntry = '';
 let isAdmin = false;
+let adminUser = '';
 let allTrips = {};
 let currentTripId = null;
 let currentActivityKey = null;
@@ -1261,14 +1280,16 @@ window.handleSecretTap = function() {
 
 window.lockApp = function() {
   isAdmin = false;
+  adminUser = '';
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripAdminBtn').style.display = 'none';
   document.getElementById('logisticsTabBtn').style.display = 'none';
+  document.getElementById('changesTabBtn').style.display = 'none';
   document.getElementById('addNoteForm').style.display = 'none';
-  // Switch away from logistics tab if active
-  const logBtn = document.querySelector('.tab-btn.active');
-  if (document.getElementById('tripLogisticsPanel').classList.contains('active')) {
+  // Switch away from admin-only tabs if active
+  if (document.getElementById('tripLogisticsPanel').classList.contains('active') ||
+      document.getElementById('tripChangesPanel').classList.contains('active')) {
     switchTripTab('itinerary', document.querySelector('.tab-btn'));
   }
   renderHome();
@@ -1305,10 +1326,12 @@ window.pinKey = function(digit) {
             console.warn('Auth error:', e);
           }
           isAdmin = true;
+          adminUser = data.user || 'Admin';
           document.getElementById('adminNavBtn').style.display = '';
           document.getElementById('lockBtn').style.display = '';
           document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
           document.getElementById('logisticsTabBtn').style.display = currentTripId ? '' : 'none';
+          document.getElementById('changesTabBtn').style.display = currentTripId ? '' : 'none';
           renderHome();
           goHome();
           showToast('Unlocked ✓');
@@ -1405,6 +1428,7 @@ function openTrip(tripId) {
   document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
   document.getElementById('logisticsTabBtn').style.display = (isAdmin && isUpcomingOrActive) ? '' : 'none';
+  document.getElementById('changesTabBtn').style.display = isAdmin ? '' : 'none';
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -1420,12 +1444,16 @@ function switchTripTab(name, btn) {
   document.getElementById('tripItineraryPanel').classList.toggle('active', name==='itinerary');
   document.getElementById('tripOverviewPanel').classList.toggle('active', name==='overview');
   document.getElementById('tripLogisticsPanel').classList.toggle('active', name==='logistics');
+  document.getElementById('tripChangesPanel').classList.toggle('active', name==='changes');
   if(btn) btn.classList.add('active');
   if (name === 'overview' && currentTripId && allTrips[currentTripId]) {
     setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
   }
   if (name === 'logistics' && currentTripId) {
     renderLogisticsPanel(currentTripId);
+  }
+  if (name === 'changes' && currentTripId) {
+    renderChangesPanel(currentTripId);
   }
 }
 window.switchTripTab = switchTripTab;
@@ -2119,6 +2147,7 @@ window.saveEditedTrip = async function() {
     flightReturn:     _editFlightsRet.map(f => f.formatted).join('\n'),
   };
   await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
+  logChange(editingTripId, 'Trip info saved', updates.name);
   showToast('Trip saved! ✓');
   document.getElementById('editTripHeaderName').textContent = updates.name;
 };
@@ -2240,6 +2269,7 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted) {
     if (!match) { showToast('No trip day found for ' + humanDate); return; }
     const [dayId, day] = match;
     await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: { formatted, date: humanDate } });
+    logChange(editingTripId, 'Flight added', formatted);
     _editFlightsIntrip.push({
       dayId, formatted, date: humanDate, isoDate,
       dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
@@ -2298,6 +2328,7 @@ window.removeIntripFlight = async function(index) {
   const f = _editFlightsIntrip[index];
   if (!f) return;
   await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: null });
+  logChange(editingTripId, 'Flight removed', f.formatted || '');
   _editFlightsIntrip.splice(index, 1);
   renderFlightChips();
 };
@@ -2566,6 +2597,26 @@ window.saveDayEdit = async function() {
     notes: existing.notes || null,
   };
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
+
+  // Diff activities and log each specific change
+  const city = dayData.city || dayData.dayName || '';
+  const actTxt = a => (a && typeof a === 'object') ? (a.text || '') : (a || '');
+  const actLabel = a => ((a && typeof a === 'object' && a.emoji) ? a.emoji + ' ' : '') + actTxt(a);
+  const oldActs = (existing.activities || []).filter(a => actTxt(a));
+  const newActs = activities;
+  const oldSet = new Map(oldActs.map(a => [actTxt(a), a]));
+  const newSet = new Map(newActs.map(a => [actTxt(a), a]));
+  for (const [txt, a] of newSet) {
+    if (!oldSet.has(txt)) logChange(editingTripId, 'Activity added', actLabel(a) + (city ? ' · ' + city : ''));
+  }
+  for (const [txt, a] of oldSet) {
+    if (!newSet.has(txt)) logChange(editingTripId, 'Activity removed', actLabel(a) + (city ? ' · ' + city : ''));
+  }
+  // Log hotel change if it changed
+  if ((existing.hotel || '') !== dayData.hotel) {
+    logChange(editingTripId, 'Hotel updated', (dayData.hotel || '(removed)') + (city ? ' · ' + city : ''));
+  }
+
   closeEditDayModalDirect();
   showToast('Day saved! ✓');
 };
@@ -3039,6 +3090,48 @@ function normalizePackingList(val) {
     }).filter(Boolean);
     return person;
   }).filter(Boolean);
+}
+
+// ════════════════════════════════════════
+//  CHANGES TAB
+// ════════════════════════════════════════
+async function logChange(tripId, action, detail) {
+  if (!tripId) return;
+  try {
+    const r = window._push(window._ref(window._db, 'trips/' + tripId + '/changeLog'));
+    await window._set(r, { ts: Date.now(), action, detail: detail || '', user: adminUser || 'Admin' });
+  } catch(e) { console.warn('logChange failed', e); }
+}
+
+async function renderChangesPanel(tripId) {
+  const panel = document.getElementById('tripChangesPanel');
+  panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
+  try {
+    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/changeLog'));
+    const entries = Object.values(snap.val() || {}).sort((a, b) => b.ts - a.ts).slice(0, 25);
+    if (!entries.length) {
+      panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">No changes recorded yet.</div>';
+      return;
+    }
+    const rows = entries.map(e => {
+      const dt = new Date(e.ts);
+      const dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      return '<div class="change-row">'
+        + '<div class="change-action">' + escHtml(e.action) + '</div>'
+        + (e.detail ? '<div class="change-detail">' + escHtml(e.detail) + '</div>' : '')
+        + '<div class="change-meta">' + dateStr + ' · ' + timeStr + (e.user ? ' · ' + escHtml(e.user) : '') + '</div>'
+        + '</div>';
+    }).join('');
+    panel.innerHTML = '<div style="height:16px;"></div>'
+      + '<div class="logistics-section" style="padding-top:0;">'
+      + '<div class="changes-section-title">Recent Changes</div>'
+      + '<div class="changes-list">' + rows + '</div>'
+      + '</div>'
+      + '<div style="height:32px;"></div>';
+  } catch(err) {
+    panel.innerHTML = '<div style="padding:20px;color:red;font-size:13px;">Error: ' + err.message + '</div>';
+  }
 }
 
 // ════════════════════════════════════════

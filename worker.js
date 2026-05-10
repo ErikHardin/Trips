@@ -13,8 +13,11 @@ export default {
 
     // PIN verification
     if (url.pathname === '/verify-pin') {
-      const valid = body.pin === env.ADMIN_PIN;
-      return new Response(JSON.stringify({ valid }), { headers: {
+      let user = null;
+      if (body.pin === env.ADMIN_PIN)        user = 'Erik';
+      else if (body.pin === env.ADMIN_PIN_2) user = 'Megan';
+      const valid = user !== null;
+      return new Response(JSON.stringify({ valid, user: valid ? user : null }), { headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'
       }});
