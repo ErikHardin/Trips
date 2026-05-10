@@ -2228,7 +2228,15 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted) {
   } else {
     const trip = allTrips[editingTripId];
     const days = trip.days ? Object.entries(trip.days) : [];
-    const match = days.find(([, d]) => d.dateISO === isoDate);
+    let match = days.find(([, d]) => d.dateISO === isoDate);
+    if (!match && isoDate) {
+      // Fallback: match by dateNum + dateMonth for days without dateISO (CSV imports etc.)
+      const _MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const _d = new Date(isoDate + 'T00:00:00');
+      const _num = String(_d.getDate());
+      const _mon = _MONTHS[_d.getMonth()];
+      match = days.find(([, d]) => d.dateNum === _num && d.dateMonth === _mon);
+    }
     if (!match) { showToast('No trip day found for ' + humanDate); return; }
     const [dayId, day] = match;
     await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: { formatted, date: humanDate } });
