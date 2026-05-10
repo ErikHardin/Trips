@@ -2597,7 +2597,26 @@ window.saveDayEdit = async function() {
     notes: existing.notes || null,
   };
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
-  logChange(editingTripId, 'Day updated', (dayData.city || dayData.dayName || 'Unnamed day') + (dayData.hotel ? ' · ' + dayData.hotel : ''));
+
+  // Diff activities and log each specific change
+  const city = dayData.city || dayData.dayName || '';
+  const actTxt = a => (a && typeof a === 'object') ? (a.text || '') : (a || '');
+  const actLabel = a => ((a && typeof a === 'object' && a.emoji) ? a.emoji + ' ' : '') + actTxt(a);
+  const oldActs = (existing.activities || []).filter(a => actTxt(a));
+  const newActs = activities;
+  const oldSet = new Map(oldActs.map(a => [actTxt(a), a]));
+  const newSet = new Map(newActs.map(a => [actTxt(a), a]));
+  for (const [txt, a] of newSet) {
+    if (!oldSet.has(txt)) logChange(editingTripId, 'Activity added', actLabel(a) + (city ? ' · ' + city : ''));
+  }
+  for (const [txt, a] of oldSet) {
+    if (!newSet.has(txt)) logChange(editingTripId, 'Activity removed', actLabel(a) + (city ? ' · ' + city : ''));
+  }
+  // Log hotel change if it changed
+  if ((existing.hotel || '') !== dayData.hotel) {
+    logChange(editingTripId, 'Hotel updated', (dayData.hotel || '(removed)') + (city ? ' · ' + city : ''));
+  }
+
   closeEditDayModalDirect();
   showToast('Day saved! ✓');
 };
