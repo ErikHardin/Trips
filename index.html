@@ -1847,9 +1847,13 @@ window.promoteWishlistItem = function(tripId, id) {
     <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 40px;box-sizing:border-box;">
       <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Add to Itinerary</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${escHtml(item.emoji||'')} ${escHtml(item.text||'')}</div>
-      <select id="promoteDayPicker" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;">
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Day</div>
+      <select id="promoteDayPicker" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;">
         ${options}
       </select>
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Time (optional)</div>
+      <input id="promoteTimePicker" type="text" placeholder="e.g. 7:30pm"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;">
       <div style="display:flex;gap:10px;">
         <button onclick="this.closest('[style*=fixed]').remove()"
           style="flex:1;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;cursor:pointer;">Cancel</button>
@@ -1861,19 +1865,28 @@ window.promoteWishlistItem = function(tripId, id) {
 
   modal.querySelector('#promoteConfirmBtn').onclick = async function() {
     const dayId = modal.querySelector('#promoteDayPicker').value;
+    const time  = modal.querySelector('#promoteTimePicker').value.trim();
     if (!dayId) return;
-    const trip = allTrips[tripId];
-    const day = trip.days[dayId];
-    const acts = day.activities ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities)) : [];
-    acts.push({ emoji: item.emoji || '📌', text: item.text, time: '' });
+    const btn = modal.querySelector('#promoteConfirmBtn');
+    btn.disabled = true; btn.textContent = 'Adding…';
     try {
-      await window._set(window._ref(window._db, 'trips/' + tripId + '/days/' + dayId + '/activities'), acts);
+      // Fetch current activities directly from Firebase to avoid stale in-memory data
+      const actsRef = window._ref(window._db, 'trips/' + tripId + '/days/' + dayId + '/activities');
+      const snap = await window._get(actsRef);
+      const raw = snap.val();
+      const acts = raw ? (Array.isArray(raw) ? [...raw] : Object.values(raw)) : [];
+      acts.push({ emoji: item.emoji || '📌', text: item.text, time: time || '' });
+      await window._set(actsRef, acts);
       await window._set(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), null);
+      const day = trip.days[dayId];
+      const cityLabel = day ? (day.city || day.dayName || '') : '';
+      await logChange(tripId, 'Activity added', item.text + (cityLabel ? ' · ' + cityLabel : '') + ' (from Wishlist)');
       modal.remove();
       showToast('Added to itinerary ✓');
       renderWishlistPanel(tripId);
     } catch(err) {
       showToast('Error — check connection');
+      btn.disabled = false; btn.textContent = 'Add to Day';
     }
   };
 };
