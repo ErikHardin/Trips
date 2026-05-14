@@ -1887,6 +1887,11 @@ window.promoteWishlistItem = function(tripId, id) {
       const day = trip.days[dayId];
       const cityLabel = day ? (day.city || day.dayName || '') : '';
       await logChange(tripId, 'Activity added', item.text + (cityLabel ? ' · ' + cityLabel : '') + ' (from Wishlist)');
+      // Patch in-memory data and re-render itinerary immediately so time shows
+      if (allTrips[tripId] && allTrips[tripId].days && allTrips[tripId].days[dayId]) {
+        allTrips[tripId].days[dayId].activities = acts;
+      }
+      renderTripItinerary(allTrips[tripId]);
       modal.remove();
       showToast('Added to itinerary ✓');
       renderWishlistPanel(tripId);
