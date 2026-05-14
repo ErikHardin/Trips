@@ -854,12 +854,14 @@ body {
     <button class="tab-btn" onclick="switchTripTab('overview',this)">Overview</button>
     <button class="tab-btn" id="logisticsTabBtn" onclick="switchTripTab('logistics',this)" style="display:none;">Logistics</button>
     <button class="tab-btn" id="changesTabBtn" onclick="switchTripTab('changes',this)" style="display:none;">Changes</button>
+    <button class="tab-btn" id="wishlistTabBtn" onclick="switchTripTab('wishlist',this)" style="display:none;">Wishlist</button>
   </div>
   <div class="scroll-content">
     <div id="tripItineraryPanel" class="tab-panel active"></div>
     <div id="tripOverviewPanel" class="tab-panel"></div>
     <div id="tripLogisticsPanel" class="tab-panel"></div>
     <div id="tripChangesPanel" class="tab-panel"></div>
+    <div id="tripWishlistPanel" class="tab-panel"></div>
   </div>
 </div>
 
@@ -1429,6 +1431,7 @@ function openTrip(tripId) {
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
   document.getElementById('logisticsTabBtn').style.display = (isAdmin && isUpcomingOrActive) ? '' : 'none';
   document.getElementById('changesTabBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('wishlistTabBtn').style.display = '';
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -1445,6 +1448,7 @@ function switchTripTab(name, btn) {
   document.getElementById('tripOverviewPanel').classList.toggle('active', name==='overview');
   document.getElementById('tripLogisticsPanel').classList.toggle('active', name==='logistics');
   document.getElementById('tripChangesPanel').classList.toggle('active', name==='changes');
+  document.getElementById('tripWishlistPanel').classList.toggle('active', name==='wishlist');
   if(btn) btn.classList.add('active');
   if (name === 'overview' && currentTripId && allTrips[currentTripId]) {
     setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
@@ -1454,6 +1458,9 @@ function switchTripTab(name, btn) {
   }
   if (name === 'changes' && currentTripId) {
     renderChangesPanel(currentTripId);
+  }
+  if (name === 'wishlist' && currentTripId) {
+    renderWishlistPanel(currentTripId);
   }
 }
 window.switchTripTab = switchTripTab;
@@ -1502,6 +1509,7 @@ function renderTripItinerary(trip) {
       const searchQ = regionClean ? text + ' ' + regionClean : text;
       const countryCode = getCityCountryCode(day.region||day.city||'');
       const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQ) + (countryCode ? '&gl=' + countryCode : '');
+      const mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(text + (day.city ? ', ' + day.city : ''));
       return `
         <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-text="${escAttr(text)}" data-search="${escAttr(searchUrl)}">
           <div class="activity-emoji">${emoji}</div>
@@ -1509,6 +1517,8 @@ function renderTripItinerary(trip) {
             <div class="activity-text" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
             ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
           </div>
+          <a href="${mapsUrl}" target="_blank" rel="noopener" title="Open in Maps"
+            style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;text-decoration:none;display:inline-flex;align-items:center;">📍</a>
           <button class="notes-open-btn" title="Notes & Photos"
             style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.5;">📝</button>
         </div>`; 
@@ -1680,12 +1690,230 @@ function renderTripOverview(trip) {
     });
   }
 
-  panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + memoriesHTML;
+  // ── Journal (past trips only) ──
+  let journalHTML = '';
+  if (trip.status === 'past') {
+    const savedText = trip.journal && trip.journal.text ? trip.journal.text : '';
+    const journalBodyHTML = savedText
+      ? savedText.split('\n\n').map(p => `<p style="margin:0 0 14px;font-family:'Cormorant Garamond',serif;font-size:17px;line-height:1.75;color:var(--ink);">${escHtml(p)}</p>`).join('')
+      : '';
+    journalHTML = `
+      <div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Travel Journal</div>
+      <div style="margin:0 16px 16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:16px 18px;">
+        <div id="journalOutput" style="${savedText ? '' : 'display:none;'}margin-bottom:${savedText ? '14px' : '0'};">${journalBodyHTML}</div>
+        <button id="journalGenerateBtn" onclick="generateTripJournal('${currentTripId}')"
+          style="background:var(--terracotta);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:500;cursor:pointer;width:100%;">
+          ✨ ${savedText ? 'Regenerate' : 'Generate'} Journal
+        </button>
+      </div>`;
+  }
+
+  panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + memoriesHTML + journalHTML;
   // Map is initialized lazily when Overview tab becomes visible (see switchTripTab)
 }
 
 window.toggleDay = function(id) {
   document.getElementById(id).classList.toggle('open');
+};
+
+// ════════════════════════════════════════
+//  WISHLIST TAB
+// ════════════════════════════════════════
+async function renderWishlistPanel(tripId) {
+  const panel = document.getElementById('tripWishlistPanel');
+  panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
+  try {
+    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
+    const raw = snap.val() || {};
+    const items = Object.entries(raw).sort((a,b) => (a[1].createdAt||0) - (b[1].createdAt||0));
+
+    const addFormHTML = isAdmin ? `
+      <div id="wishlistAddForm" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
+        <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Idea</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input id="wishlistEmoji" type="text" placeholder="🍽️" maxlength="4"
+            style="width:52px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:16px;text-align:center;background:var(--sand);">
+          <input id="wishlistText" type="text" placeholder="Place or activity name"
+            style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--sand);">
+        </div>
+        <input id="wishlistNotes" type="text" placeholder="Notes or URL (optional)"
+          style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--sand);margin-bottom:10px;box-sizing:border-box;">
+        <button onclick="addWishlistItem('${tripId}')"
+          style="background:var(--terracotta);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;width:100%;">
+          + Add to Wishlist
+        </button>
+      </div>` : '';
+
+    const itemsHTML = items.length ? items.map(([id, item]) => `
+      <div style="margin:0 16px 10px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:12px 14px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="font-size:22px;flex-shrink:0;">${escHtml(item.emoji||'📌')}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:500;color:var(--ink);">${escHtml(item.text||'')}</div>
+            ${item.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(item.notes)}</div>` : ''}
+            ${item.createdBy ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Added by ${escHtml(item.createdBy)}</div>` : ''}
+          </div>
+          ${isAdmin ? `
+          <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+            <button onclick="promoteWishlistItem('${tripId}','${id}',${JSON.stringify(JSON.stringify(item))})"
+              style="background:var(--sage);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">
+              → Add to Day
+            </button>
+            <button onclick="deleteWishlistItem('${tripId}','${id}')"
+              style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">
+              Remove
+            </button>
+          </div>` : ''}
+        </div>
+      </div>`).join('') :
+      '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;font-style:italic;">No ideas yet' + (isAdmin ? ' — add some above!' : '.') + '</div>';
+
+    panel.innerHTML = '<div style="height:16px;"></div>' + addFormHTML + itemsHTML + '<div style="height:32px;"></div>';
+  } catch(err) {
+    panel.innerHTML = '<div style="padding:20px;color:red;font-size:13px;">Error: ' + err.message + '</div>';
+  }
+}
+
+window.addWishlistItem = async function(tripId) {
+  const emoji = (document.getElementById('wishlistEmoji').value.trim() || '📌');
+  const text = document.getElementById('wishlistText').value.trim();
+  const notes = document.getElementById('wishlistNotes').value.trim();
+  if (!text) { showToast('Enter a place or activity name'); return; }
+  try {
+    const newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
+    await window._set(newRef, { emoji, text, notes: notes || null, createdAt: Date.now(), createdBy: adminUser || null });
+    showToast('Added to wishlist ✓');
+    renderWishlistPanel(tripId);
+  } catch(err) {
+    showToast('Error saving — check connection');
+  }
+};
+
+window.deleteWishlistItem = async function(tripId, id) {
+  try {
+    await window._set(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), null);
+    showToast('Removed from wishlist');
+    renderWishlistPanel(tripId);
+  } catch(err) {
+    showToast('Error removing — check connection');
+  }
+};
+
+window.promoteWishlistItem = function(tripId, id, itemJson) {
+  const item = JSON.parse(itemJson);
+  const trip = allTrips[tripId];
+  if (!trip || !trip.days) { showToast('No days found for this trip'); return; }
+  const days = Object.entries(trip.days).sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0));
+  const options = days.map(([did, d]) =>
+    `<option value="${escAttr(did)}">${escHtml(d.dateNum||'')} ${escHtml(d.dateMonth||'')} — ${escHtml(d.city||d.dayName||'')}</option>`
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;';
+  modal.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 40px;box-sizing:border-box;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Add to Itinerary</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${escHtml(item.emoji||'')} ${escHtml(item.text||'')}</div>
+      <select id="promoteDayPicker" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;">
+        ${options}
+      </select>
+      <div style="display:flex;gap:10px;">
+        <button onclick="this.closest('[style*=fixed]').remove()"
+          style="flex:1;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;cursor:pointer;">Cancel</button>
+        <button id="promoteConfirmBtn"
+          style="flex:1;padding:12px;border:none;border-radius:12px;background:var(--terracotta);color:#fff;font-size:14px;font-weight:500;cursor:pointer;">Add to Day</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  modal.querySelector('#promoteConfirmBtn').onclick = async function() {
+    const dayId = modal.querySelector('#promoteDayPicker').value;
+    if (!dayId) return;
+    const trip = allTrips[tripId];
+    const day = trip.days[dayId];
+    const acts = day.activities ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities)) : [];
+    acts.push({ emoji: item.emoji || '📌', text: item.text, time: '' });
+    try {
+      await window._set(window._ref(window._db, 'trips/' + tripId + '/days/' + dayId + '/activities'), acts);
+      await window._set(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), null);
+      modal.remove();
+      showToast('Added to itinerary ✓');
+      renderWishlistPanel(tripId);
+    } catch(err) {
+      showToast('Error — check connection');
+    }
+  };
+};
+
+// ════════════════════════════════════════
+//  AI TRIP JOURNAL
+// ════════════════════════════════════════
+window.generateTripJournal = async function(tripId) {
+  const btn = document.getElementById('journalGenerateBtn');
+  const output = document.getElementById('journalOutput');
+  if (btn) { btn.disabled = true; btn.textContent = 'Writing your journal…'; }
+
+  const trip = allTrips[tripId];
+  if (!trip) { if (btn) { btn.disabled = false; btn.textContent = '✨ Generate Journal'; } return; }
+
+  const days = trip.days ? Object.entries(trip.days).sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0)) : [];
+  const dayLines = days.map(([, day]) => {
+    const acts = day.activities
+      ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+      : [];
+    const actStr = acts.map(a => typeof a === 'string' ? a : (a.text || '')).filter(Boolean).join(', ');
+
+    const noteTexts = [];
+    if (day.notes) {
+      Object.values(day.notes).forEach(actNotes => {
+        if (actNotes && typeof actNotes === 'object') {
+          Object.values(actNotes).forEach(note => {
+            if (note && note.text) noteTexts.push(note.text);
+          });
+        }
+      });
+    }
+
+    let line = `${day.dateNum||''} ${day.dateMonth||''} (${day.dayName||''}) — ${day.city||''}: ${actStr||'no activities'}`;
+    if (noteTexts.length) line += `\n  Memories: ${noteTexts.join(' | ')}`;
+    return line;
+  }).join('\n');
+
+  const systemPrompt = `You are writing a warm, vivid travel journal for the Hardin family. Write in first-person plural ("we"). Use flowing paragraphs — no bullet points, no markdown headers, no JSON. Group naturally by region or day cluster. Weave in specific places, meals, and any memorable moments from the notes. Make it feel personal, evocative, and joyful to read back years later.`;
+  const userMsg = `Write a travel journal entry for our trip: "${trip.name}" (${trip.dates||trip.year||''}).\n\nDay-by-day itinerary and memories:\n${dayLines}`;
+
+  try {
+    const response = await fetch('https://hardin-trips-ai.erikchardin.workers.dev', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }]
+      })
+    });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+    const text = (data.content?.[0]?.text || '').trim();
+    if (!text) throw new Error('Empty response from API');
+
+    if (output) {
+      output.style.display = '';
+      output.style.marginBottom = '14px';
+      output.innerHTML = text.split('\n\n').map(p =>
+        `<p style="margin:0 0 14px;font-family:'Cormorant Garamond',serif;font-size:17px;line-height:1.75;color:var(--ink);">${escHtml(p.trim())}</p>`
+      ).join('');
+    }
+    if (btn) btn.textContent = '✨ Regenerate Journal';
+    await window._set(window._ref(window._db, 'trips/' + tripId + '/journal'), { text, generatedAt: Date.now() });
+    showToast('Journal saved ✓');
+  } catch(err) {
+    showToast('Journal error: ' + err.message);
+    if (btn) btn.textContent = '✨ Generate Journal';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 };
 
 // ════════════════════════════════════════
