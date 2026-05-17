@@ -4412,6 +4412,12 @@ async function getCityCoords(cityName) {
     }
   } catch(e) { console.warn('Geocode failed:', raw, e); }
 
+  // 5. Retry without region suffix (e.g. "Domaine Tempier, Bandol" → "Domaine Tempier")
+  if (raw.includes(',')) {
+    const base = raw.split(',')[0].trim();
+    if (base && base !== raw) return getCityCoords(base);
+  }
+
   return null;
 }
 
