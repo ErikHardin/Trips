@@ -4234,6 +4234,11 @@ function extractCity(day) {
   return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
 }
 
+function extractHotel(day) {
+  const raw = day.hotel || '';
+  return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim() || null;
+}
+
 function extractPlaceFromActivity(text) {
   let s = text.trim();
   // Strip leading action words ("Lunch in St. Tropez" → "St. Tropez", "Drive along Corniche..." → "Corniche...")
@@ -4308,17 +4313,24 @@ async function fetchTripDriveTimes(days) {
     try {
       const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
       const hasDriveActs = acts.some(a => a && a.drive);
-      const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
+      const prevDay = i > 0 ? days[i-1][1] : day;
+      const prevCity = extractCity(prevDay);
       const curCity = extractCity(day);
+      const prevHotel = extractHotel(prevDay);
+      const curHotel = extractHotel(day);
+      const prevWaypointName = prevHotel || prevCity;
+      const curWaypointName = curHotel || curCity;
+      const prevWaypointQuery = prevHotel ? prevHotel + (prevCity ? ', ' + prevCity : '') : prevCity;
+      const curWaypointQuery = curHotel ? curHotel + (curCity ? ', ' + curCity : '') : curCity;
       const region = day.region || day.city || '';
 
       if (day.flightInfo) {
         const iata = (day.flightInfo.formatted || '').split(' ')[1];
         if (iata && /^[A-Z]{3}$/.test(iata)) {
-          const [from, to] = await Promise.all([resolveCoord(prevCity), resolveCoord(iata + ' airport')]);
+          const [from, to] = await Promise.all([resolveCoord(prevWaypointQuery), resolveCoord(iata + ' airport')]);
           if (from && to && Math.abs(from[0]-to[0]) + Math.abs(from[1]-to[1]) > 0.02) {
             const {duration: dur, legs} = await getRouteDuration([from, to]);
-            if (dur > 600) injectDriveChip('dc-' + dayId, dur, legs.length ? [{from: prevCity, to: iata + ' airport', seconds: legs[0]}] : null);
+            if (dur > 600) injectDriveChip('dc-' + dayId, dur, legs.length ? [{from: prevWaypointName, to: iata + ' airport', seconds: legs[0]}] : null);
           }
         }
         return;
@@ -4336,9 +4348,9 @@ async function fetchTripDriveTimes(days) {
       const activityContext = isTravelDay ? prevCity : region;
 
       // Build parallel name + query arrays so we can label each leg later
-      const driveActNames = []; // just the activity waypoints (not start/end city)
-      const waypointNames = [prevCity];
-      const waypointQueries = [prevCity];
+      const driveActNames = []; // just the activity waypoints (not start/end hotel)
+      const waypointNames = [prevWaypointName];
+      const waypointQueries = [prevWaypointQuery];
       for (const a of acts) {
         if (a && a.drive && a.text) {
           const place = extractPlaceFromActivity(a.text);
@@ -4347,8 +4359,8 @@ async function fetchTripDriveTimes(days) {
           waypointQueries.push(place + (activityContext ? ', ' + activityContext : ''));
         }
       }
-      waypointNames.push(curCity);
-      waypointQueries.push(curCity);
+      waypointNames.push(curWaypointName);
+      waypointQueries.push(curWaypointQuery);
 
       const coordResults = await Promise.all(waypointQueries.map((q, j) => {
         const isActivity = j > 0 && j < waypointQueries.length - 1;
