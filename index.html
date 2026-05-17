@@ -4229,59 +4229,69 @@ async function getRouteDuration(coords) {
 }
 
 async function fetchTripDriveTimes(days) {
+  // Pass 1: build a plan per day and collect all unique geocode queries
+  const plans = [];
+  const queries = new Set();
+
   for (let i = 0; i < days.length; i++) {
-    try {
-      const [dayId, day] = days[i];
-      const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
-      const hasDriveActs = acts.some(a => a && a.drive);
-      const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
-      const curCity = extractCity(day);
-      const hotelChanged = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
+    const [dayId, day] = days[i];
+    const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+    const hasDriveActs = acts.some(a => a && a.drive);
+    const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
+    const curCity = extractCity(day);
 
-      // Flight day: route hotel → departure airport (not hotel-to-hotel)
-      if (day.flightInfo) {
-        const parts = (day.flightInfo.formatted || '').split(' ');
-        const iata = parts[1]; // e.g. "LHR"
-        if (iata && /^[A-Z]{3}$/.test(iata)) {
-          const fromCoord = await getCityCoords(prevCity);
-          const airportCoord = await getCityCoords(iata + ' airport');
-          if (fromCoord && airportCoord) {
-            const d = Math.abs(fromCoord[0] - airportCoord[0]) + Math.abs(fromCoord[1] - airportCoord[1]);
-            if (d > 0.02) {
-              const duration = await getRouteDuration([fromCoord, airportCoord]);
-              if (duration > 600) injectDriveChip('dc-' + dayId, duration);
-            }
-          }
-        }
-        continue; // done with this day regardless
+    if (day.flightInfo) {
+      const parts = (day.flightInfo.formatted || '').split(' ');
+      const iata = parts[1];
+      if (iata && /^[A-Z]{3}$/.test(iata)) {
+        if (prevCity) queries.add(prevCity);
+        queries.add(iata + ' airport');
+        plans.push({ dayId, type: 'flight', prevCity, airportQuery: iata + ' airport' });
       }
+      continue;
+    }
 
-      if (!hasDriveActs && !hotelChanged) continue;
+    const hotelChanged = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
+    if (!hasDriveActs && !hotelChanged) continue;
 
-      const waypointNames = [prevCity];
-      for (const a of acts) {
-        if (a && a.drive && a.text) {
-          const region = day.region || day.city || '';
-          waypointNames.push(a.text + (region ? ', ' + region : ''));
-        }
+    const waypoints = [prevCity];
+    for (const a of acts) {
+      if (a && a.drive && a.text) {
+        const region = day.region || day.city || '';
+        waypoints.push(a.text + (region ? ', ' + region : ''));
       }
-      waypointNames.push(curCity);
-
-      const coords = [];
-      for (const name of waypointNames) {
-        if (!name) continue;
-        const c = await getCityCoords(name);
-        if (c) coords.push(c);
-      }
-
-      // Deduplicate consecutive identical coords
-      const deduped = coords.filter((c, j) => j === 0 || c[0] !== coords[j-1][0] || c[1] !== coords[j-1][1]);
-      if (deduped.length < 2) continue;
-
-      const duration = await getRouteDuration(deduped);
-      if (duration > 600) injectDriveChip('dc-' + dayId, duration);
-    } catch(e) { console.warn('Drive time failed for day', i, e); }
+    }
+    waypoints.push(curCity);
+    waypoints.filter(Boolean).forEach(q => queries.add(q));
+    plans.push({ dayId, type: 'drive', waypoints });
   }
+
+  // Pass 2: geocode all unique queries sequentially (respects Nominatim rate limit,
+  // but each unique place is only looked up once across the whole trip)
+  const coordMap = {};
+  for (const q of queries) {
+    coordMap[q] = await getCityCoords(q);
+  }
+
+  // Pass 3: fire all OSRM route calls in parallel — no rate limit on OSRM
+  await Promise.all(plans.map(async plan => {
+    try {
+      if (plan.type === 'flight') {
+        const from = coordMap[plan.prevCity];
+        const to   = coordMap[plan.airportQuery];
+        if (!from || !to) return;
+        if (Math.abs(from[0]-to[0]) + Math.abs(from[1]-to[1]) < 0.02) return;
+        const duration = await getRouteDuration([from, to]);
+        if (duration > 600) injectDriveChip('dc-' + plan.dayId, duration);
+      } else {
+        const coords = plan.waypoints.filter(Boolean).map(q => coordMap[q]).filter(Boolean);
+        const deduped = coords.filter((c, j) => j === 0 || c[0] !== coords[j-1][0] || c[1] !== coords[j-1][1]);
+        if (deduped.length < 2) return;
+        const duration = await getRouteDuration(deduped);
+        if (duration > 600) injectDriveChip('dc-' + plan.dayId, duration);
+      }
+    } catch(e) { console.warn('Drive time failed', plan.dayId, e); }
+  }));
 }
 
 // ════════════════════════════════════════
@@ -4324,6 +4334,21 @@ const KNOWN_COORDS = {
   'mornington peninsula':[-38.38,145.06],
   // New York / travel
   'new york':[40.71,-74.01],
+  // Airports (IATA — geocoded as "<IATA> airport")
+  'cdg airport':[49.01,2.55],'ory airport':[48.72,2.37],
+  'lys airport':[45.72,5.09],'nce airport':[43.66,7.21],'mrs airport':[43.44,5.22],
+  'lhr airport':[51.48,-0.46],'lgw airport':[51.15,-0.18],'stn airport':[51.89,0.24],
+  'jfk airport':[40.64,-73.78],'ewr airport':[40.69,-74.17],'lga airport':[40.78,-73.87],
+  'syd airport':[-33.95,151.18],'mel airport':[-37.67,144.84],'adl airport':[-34.95,138.53],
+  'hba airport':[-42.84,147.51],'per airport':[-31.94,115.97],
+  'akl airport':[-37.01,174.79],'wlg airport':[-41.33,174.81],'chc airport':[-43.49,172.53],
+  'cpt airport':[-33.97,18.60],'jnb airport':[-26.13,28.24],
+  'lis airport':[38.77,-9.13],'opo airport':[41.24,-8.68],
+  'bkk airport':[13.68,100.75],'dmk airport':[13.91,100.61],
+  'sin airport':[1.36,103.99],'han airport':[21.22,105.81],'sgn airport':[10.82,106.66],
+  'cnx airport':[18.77,98.96],'hkt airport':[8.11,98.30],
+  'dub airport':[53.43,-6.24],'ams airport':[52.31,4.77],'bcn airport':[41.30,2.08],
+  'mad airport':[40.47,-3.57],'fco airport':[41.80,12.25],'mxp airport':[45.63,8.72],
 };
 
 async function getCityCoords(cityName) {
