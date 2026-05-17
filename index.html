@@ -765,6 +765,14 @@ body {
 .weather-chip:hover { opacity: 0.75; }
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
+.drive-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--muted);
+  background: var(--sand); border-radius: 20px;
+  padding: 2px 8px; flex-shrink: 0; white-space: nowrap;
+}
+.act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
+.act-drive-btn.active { opacity: 1; background: var(--sand); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
 .wx-forecast-row:last-child { border-bottom:none; }
 .wx-forecast-date { width:80px; font-size:12px; color:var(--muted); line-height:1.3; flex-shrink:0; }
@@ -1515,6 +1523,7 @@ function renderTripItinerary(trip) {
       const emoji = typeof a==='object' && a.emoji ? a.emoji : getEmoji(text);
       const time = typeof a==='object' && a.time ? a.time : '';
       const michelin = typeof a==='object' && a.michelin;
+      const drive = typeof a==='object' && a.drive;
       // Build search URL using region for cleaner location context
       const regionClean = (day.region||'').trim();
       const searchQ = regionClean ? text + ' ' + regionClean : text;
@@ -1527,6 +1536,7 @@ function renderTripItinerary(trip) {
           <div style="flex:1;min-width:0;">
             <div class="activity-text" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
             ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
+            ${drive?`<div style="font-size:10px;color:var(--muted);opacity:0.6;">🚗 driving</div>`:''}
           </div>
           <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq)" title="Open in Maps"
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
@@ -1567,9 +1577,10 @@ function renderTripItinerary(trip) {
   });
 
 
-  // Fetch weather for upcoming/active trips
+  // Fetch weather and drive times for upcoming/active trips
   if (trip.status === 'upcoming' || trip.status === 'active') {
     setTimeout(() => fetchTripWeather(days, trip.year), 100);
+    setTimeout(() => fetchTripDriveTimes(days), 200);
   }
   // Return flights
   if (trip.flightReturn) {
@@ -2769,6 +2780,7 @@ window.addActivityRow = function(act) {
   const emoji = (act && act.emoji) ? act.emoji : '📍';
   const text  = (act && act.text)  ? act.text  : '';
   const time  = (act && act.time)  ? act.time  : '';
+  const drive = (act && act.drive) ? true : false;
   const row = document.createElement('div');
   row.className = 'act-row';
   row.draggable = true;
@@ -2778,12 +2790,19 @@ window.addActivityRow = function(act) {
     <button class="act-emoji-btn" onclick="openEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
     <input class="act-text-input" placeholder="Activity name">
     <input class="act-time-input" placeholder="Time">
+    <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
     <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>`;
   // Set values directly to avoid HTML escaping issues with special characters
   var textInput = row.querySelector('.act-text-input');
   var timeInput = row.querySelector('.act-time-input');
+  var driveBtn  = row.querySelector('.act-drive-btn');
   textInput.value = text;
   timeInput.value = time;
+  driveBtn.addEventListener('click', function() {
+    const active = this.dataset.drive === 'true';
+    this.dataset.drive = active ? 'false' : 'true';
+    this.classList.toggle('active', !active);
+  });
   // Prevent drag events on inputs so text selection works normally
   [textInput, timeInput].forEach(function(inp) {
     inp.setAttribute('draggable', 'false');
@@ -2914,7 +2933,8 @@ window.saveDayEdit = async function() {
     const emoji = row.querySelector('.act-emoji-btn').textContent.trim();
     const text  = row.querySelector('.act-text-input').value.trim();
     const time  = row.querySelector('.act-time-input').value.trim();
-    return { emoji: emoji||'📍', text, time };
+    const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
+    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }) };
   }).filter(a => a.text);
 
   const dayData = {
@@ -4167,6 +4187,81 @@ function injectWeatherChip(cardId, wx, coords, city) {
   } else {
     const chevron = header.querySelector('.day-chevron');
     header.insertBefore(chip, chevron);
+  }
+}
+
+function injectDriveChip(cardId, seconds) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const header = card.querySelector('.day-header');
+  if (!header) return;
+  const old = header.querySelector('.drive-chip');
+  if (old) old.remove();
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  const label = h > 0 ? '~' + h + 'h ' + m + 'm' : '~' + m + 'm';
+  const chip = document.createElement('div');
+  chip.className = 'drive-chip';
+  chip.title = 'Estimated driving time';
+  chip.textContent = '🚗 ' + label;
+  const rightCol = header.querySelector('.day-right-col');
+  if (rightCol) rightCol.appendChild(chip);
+}
+
+function extractCity(day) {
+  const raw = day.hotel || day.city || day.region || '';
+  return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+}
+
+async function getRouteDuration(coords) {
+  const key = ('dr_' + coords.map(c => c.map(v => v.toFixed(3)).join(',')).join('|')).replace(/[^a-z0-9_,.-]/gi, '_');
+  try {
+    const snap = await window._get(window._ref(window._db, 'drivecache/' + key));
+    if (snap.val() !== null) return snap.val();
+  } catch(e) {}
+  // OSRM expects lon,lat order
+  const coordStr = coords.map(c => c[1] + ',' + c[0]).join(';');
+  const res = await fetch('https://router.project-osrm.org/route/v1/driving/' + coordStr + '?overview=false');
+  const data = await res.json();
+  const duration = (data.routes && data.routes[0]) ? data.routes[0].duration : 0;
+  try { await window._set(window._ref(window._db, 'drivecache/' + key), duration); } catch(e) {}
+  return duration;
+}
+
+async function fetchTripDriveTimes(days) {
+  for (let i = 0; i < days.length; i++) {
+    try {
+      const [dayId, day] = days[i];
+      const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+      const hasDriveActs = acts.some(a => a && a.drive);
+      const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
+      const curCity = extractCity(day);
+      const hotelChanged = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
+      if (!hasDriveActs && !hotelChanged) continue;
+
+      const waypointNames = [prevCity];
+      for (const a of acts) {
+        if (a && a.drive && a.text) {
+          const region = day.region || day.city || '';
+          waypointNames.push(a.text + (region ? ', ' + region : ''));
+        }
+      }
+      waypointNames.push(curCity);
+
+      const coords = [];
+      for (const name of waypointNames) {
+        if (!name) continue;
+        const c = await getCityCoords(name);
+        if (c) coords.push(c);
+      }
+
+      // Deduplicate consecutive identical coords
+      const deduped = coords.filter((c, j) => j === 0 || c[0] !== coords[j-1][0] || c[1] !== coords[j-1][1]);
+      if (deduped.length < 2) continue;
+
+      const duration = await getRouteDuration(deduped);
+      if (duration > 600) injectDriveChip('dc-' + dayId, duration);
+    } catch(e) { console.warn('Drive time failed for day', i, e); }
   }
 }
 
