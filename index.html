@@ -4237,13 +4237,28 @@ async function fetchTripDriveTimes(days) {
       const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
       const curCity = extractCity(day);
       const hotelChanged = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
-      // Skip days with an in-trip flight — the city change is by plane, not car
-      if (day.flightInfo && !hasDriveActs) continue;
-      if (!hasDriveActs && !hotelChanged) continue;
-      // Don't route hotel-to-hotel across a flight day even if there are drive activities
-      const effectivePrevCity = (day.flightInfo && hotelChanged) ? curCity : prevCity;
 
-      const waypointNames = [effectivePrevCity];
+      // Flight day: route hotel → departure airport (not hotel-to-hotel)
+      if (day.flightInfo) {
+        const parts = (day.flightInfo.formatted || '').split(' ');
+        const iata = parts[1]; // e.g. "LHR"
+        if (iata && /^[A-Z]{3}$/.test(iata)) {
+          const fromCoord = await getCityCoords(prevCity);
+          const airportCoord = await getCityCoords(iata + ' airport');
+          if (fromCoord && airportCoord) {
+            const d = Math.abs(fromCoord[0] - airportCoord[0]) + Math.abs(fromCoord[1] - airportCoord[1]);
+            if (d > 0.02) {
+              const duration = await getRouteDuration([fromCoord, airportCoord]);
+              if (duration > 600) injectDriveChip('dc-' + dayId, duration);
+            }
+          }
+        }
+        continue; // done with this day regardless
+      }
+
+      if (!hasDriveActs && !hotelChanged) continue;
+
+      const waypointNames = [prevCity];
       for (const a of acts) {
         if (a && a.drive && a.text) {
           const region = day.region || day.city || '';
