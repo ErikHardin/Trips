@@ -766,11 +766,12 @@ body {
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
 .drive-chip {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px;
   font-size: 11px; color: var(--muted);
-  background: var(--sand); border-radius: 20px;
-  padding: 2px 8px; flex-shrink: 0; white-space: nowrap;
+  background: var(--sand); border-radius: 12px;
+  padding: 3px 8px; flex-shrink: 0;
 }
+.drive-chip-legs { font-size: 10px; opacity: 0.75; line-height: 1.4; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
@@ -4203,12 +4204,15 @@ function injectDriveChip(cardId, seconds, legDetails) {
   const label = seconds > 0 ? (h > 0 ? '~' + h + 'h ' + m + 'm' : '~' + m + 'm') : 'driving';
   const chip = document.createElement('div');
   chip.className = 'drive-chip';
+  const mainRow = document.createElement('span');
+  mainRow.textContent = '🚗 ' + label;
+  chip.appendChild(mainRow);
   if (legDetails && legDetails.length > 0) {
-    chip.title = 'Leg breakdown:\n' + legDetails.map(l => l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds)).join('\n');
-  } else {
-    chip.title = seconds > 0 ? 'Estimated driving time' : 'Driving day';
+    const legsDiv = document.createElement('div');
+    legsDiv.className = 'drive-chip-legs';
+    legsDiv.innerHTML = legDetails.map(l => '<div>' + l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds) + '</div>').join('');
+    chip.appendChild(legsDiv);
   }
-  chip.textContent = '🚗 ' + label;
   const rightCol = header.querySelector('.day-right-col');
   if (rightCol) rightCol.appendChild(chip);
 }
@@ -4234,7 +4238,7 @@ function extractPlaceFromActivity(text) {
 }
 
 async function getRouteDuration(coords) {
-  const key = ('dr_' + coords.map(c => c.map(v => v.toFixed(3)).join(',')).join('|')).replace(/[^a-z0-9_,.-]/gi, '_');
+  const key = ('dr2_' + coords.map(c => c.map(v => v.toFixed(3)).join(',')).join('|')).replace(/[^a-z0-9_,.-]/gi, '_');
   try {
     const snap = await window._get(window._ref(window._db, 'drivecache/' + key));
     const val = snap.val();
@@ -4308,8 +4312,7 @@ async function fetchTripDriveTimes(days) {
         return;
       }
 
-      const hotelChanged = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
-      if (!hasDriveActs && !hotelChanged) return;
+      if (!hasDriveActs) return;
 
       // Region center used as Photon location bias for activity geocoding
       const regionCenter = region ? await resolveCoord(region) : null;
