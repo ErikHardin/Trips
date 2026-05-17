@@ -4193,7 +4193,7 @@ function injectWeatherChip(cardId, wx, coords, city) {
   }
 }
 
-function injectDriveChip(cardId, seconds, legDetails) {
+function injectDriveChip(cardId, seconds, legDetails, notFound) {
   const card = document.getElementById(cardId);
   if (!card) return;
   const header = card.querySelector('.day-header');
