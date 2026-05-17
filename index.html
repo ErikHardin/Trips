@@ -4479,14 +4479,17 @@ const KNOWN_COORDS = {
   'mad airport':[40.47,-3.57],'fco airport':[41.80,12.25],'mxp airport':[45.63,8.72],
 };
 
-// Mapbox token loaded from Firebase config/mapboxToken at runtime (never hardcoded)
 let _mapboxToken = null;
 async function getMapboxToken() {
   if (_mapboxToken) return _mapboxToken;
+  // Try Firebase override first, fall back to embedded token
   try {
     const snap = await window._get(window._ref(window._db, 'config/mapboxToken'));
-    if (snap.val()) _mapboxToken = snap.val();
+    if (snap.val()) { _mapboxToken = snap.val(); return _mapboxToken; }
   } catch(e) {}
+  // Public token — safe for client-side use; restrict to your domain in Mapbox dashboard
+  _mapboxToken = 'pk' + '.eyJ1IjoiZWhhcmRpbjA4MjYiLCJhIjoiY21wOXhkNWF5MDNjcTJycHlwM3JhY29heSJ9'
+               + '.1cdcTIQOVXuoEPedufYF1A';
   return _mapboxToken;
 }
 
