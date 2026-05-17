@@ -4335,10 +4335,10 @@ async function fetchTripDriveTimes(days) {
           }
 
           // Add hotel → first stop and last stop → hotel legs
+          // Use region center as hotel proxy — geocoding the full hotel name is
+          // unreliable ("Thalazur Bandol Île Rousse Hotel" lands in Corsica)
           let hotelLegSecs = 0;
-          const hotelCoord = await resolveCoord(prevCity);
-          if (hotelCoord && timed.length > 0) {
-            // Try to geocode first and last drive activities; fall back to region center
+          if (regionCenter && timed.length > 0) {
             const firstName = extractPlaceFromActivity(timed[0].text);
             const lastName  = extractPlaceFromActivity(timed[timed.length - 1].text);
             const firstQ = firstName + (region ? ', ' + region : '');
@@ -4347,16 +4347,14 @@ async function fetchTripDriveTimes(days) {
               resolveCoord(firstQ, regionCenter),
               resolveCoord(lastQ,  regionCenter)
             ]);
-            const firstPt = firstCoord || regionCenter;
-            const lastPt  = lastCoord  || regionCenter;
             try {
-              if (firstPt) {
-                const d = Math.abs(hotelCoord[0]-firstPt[0]) + Math.abs(hotelCoord[1]-firstPt[1]);
-                if (d > 0.02) hotelLegSecs += await getRouteDuration([hotelCoord, firstPt]);
+              if (firstCoord) {
+                const d = Math.abs(regionCenter[0]-firstCoord[0]) + Math.abs(regionCenter[1]-firstCoord[1]);
+                if (d > 0.02) hotelLegSecs += await getRouteDuration([regionCenter, firstCoord]);
               }
-              if (lastPt) {
-                const d = Math.abs(hotelCoord[0]-lastPt[0]) + Math.abs(hotelCoord[1]-lastPt[1]);
-                if (d > 0.02) hotelLegSecs += await getRouteDuration([lastPt, hotelCoord]);
+              if (lastCoord) {
+                const d = Math.abs(lastCoord[0]-regionCenter[0]) + Math.abs(lastCoord[1]-regionCenter[1]);
+                if (d > 0.02) hotelLegSecs += await getRouteDuration([lastCoord, regionCenter]);
               }
             } catch(e) {}
           }
