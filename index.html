@@ -4479,6 +4479,17 @@ const KNOWN_COORDS = {
   'mad airport':[40.47,-3.57],'fco airport':[41.80,12.25],'mxp airport':[45.63,8.72],
 };
 
+// Mapbox token loaded from Firebase config/mapboxToken at runtime (never hardcoded)
+let _mapboxToken = null;
+async function getMapboxToken() {
+  if (_mapboxToken) return _mapboxToken;
+  try {
+    const snap = await window._get(window._ref(window._db, 'config/mapboxToken'));
+    if (snap.val()) _mapboxToken = snap.val();
+  } catch(e) {}
+  return _mapboxToken;
+}
+
 async function getCityCoords(cityName, biasCoords = null) {
   if (!cityName) return null;
   const raw = cityName.replace(/[🛬🚗✈️🏠]/g,'').trim();
@@ -4570,13 +4581,32 @@ async function getCityCoords(cityName, biasCoords = null) {
     }
   } catch(e) { console.warn('Nominatim failed:', raw, e); }
 
-  // 7. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
+  // 7. Mapbox — better POI coverage than Photon/Nominatim, especially for small venues
+  const mbToken = await getMapboxToken();
+  if (mbToken) {
+    try {
+      let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(raw)}.json?access_token=${mbToken}&limit=1&language=en`;
+      if (biasCoords) url += `&proximity=${biasCoords[1]},${biasCoords[0]}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.features && data.features[0]) {
+        const [lng, lat] = data.features[0].geometry.coordinates;
+        if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
+          localGeoCache[cacheKey] = [lat, lng];
+          try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
+          return [lat, lng];
+        }
+      }
+    } catch(e) { console.warn('Mapbox failed:', raw, e); }
+  }
+
+  // 8. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
   if (raw.includes(',')) {
     const base = raw.split(',')[0].trim();
     if (base && base !== raw) return getCityCoords(base, biasCoords);
   }
 
-  // 8. Google Maps Geocoding via Worker (if endpoint configured)
+  // 9. Google Maps Geocoding via Worker (if endpoint configured)
   try {
     const gmUrl = 'https://hardin-trips-ai.erikchardin.workers.dev/geocode?q=' + encodeURIComponent(raw);
     const res = await fetch(gmUrl);
