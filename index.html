@@ -4333,7 +4333,36 @@ async function fetchTripDriveTimes(days) {
             if (gap < 0) { scheduleOk = false; break; }
             scheduleSecs += gap * 60;
           }
-          injectDriveChip('dc-' + dayId, scheduleOk && scheduleSecs > 300 ? scheduleSecs : 0);
+
+          // Add hotel → first stop and last stop → hotel legs
+          let hotelLegSecs = 0;
+          const hotelCoord = await resolveCoord(prevCity);
+          if (hotelCoord && timed.length > 0) {
+            // Try to geocode first and last drive activities; fall back to region center
+            const firstName = extractPlaceFromActivity(timed[0].text);
+            const lastName  = extractPlaceFromActivity(timed[timed.length - 1].text);
+            const firstQ = firstName + (region ? ', ' + region : '');
+            const lastQ  = lastName  + (region ? ', ' + region : '');
+            const [firstCoord, lastCoord] = await Promise.all([
+              resolveCoord(firstQ, regionCenter),
+              resolveCoord(lastQ,  regionCenter)
+            ]);
+            const firstPt = firstCoord || regionCenter;
+            const lastPt  = lastCoord  || regionCenter;
+            try {
+              if (firstPt) {
+                const d = Math.abs(hotelCoord[0]-firstPt[0]) + Math.abs(hotelCoord[1]-firstPt[1]);
+                if (d > 0.02) hotelLegSecs += await getRouteDuration([hotelCoord, firstPt]);
+              }
+              if (lastPt) {
+                const d = Math.abs(hotelCoord[0]-lastPt[0]) + Math.abs(hotelCoord[1]-lastPt[1]);
+                if (d > 0.02) hotelLegSecs += await getRouteDuration([lastPt, hotelCoord]);
+              }
+            } catch(e) {}
+          }
+
+          const totalSecs = scheduleSecs + hotelLegSecs;
+          injectDriveChip('dc-' + dayId, scheduleOk && totalSecs > 300 ? totalSecs : 0);
         }
         return;
       }
