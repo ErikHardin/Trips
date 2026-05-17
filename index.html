@@ -4506,21 +4506,49 @@ async function getCityCoords(cityName, biasCoords = null) {
   }
 
   const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
+  const GEO_V = 2; // bump to invalidate old cached results
 
   // 2. Check local memory cache
   if (localGeoCache[cacheKey]) return localGeoCache[cacheKey];
 
-  // 3. Check Firebase cache
+  // 3. Check Firebase cache (only accept entries written by current geocoder version)
   try {
     const snap = await window._get(window._ref(window._db, `geocache/${cacheKey}`));
     if (snap.val()) {
       const c = snap.val();
-      localGeoCache[cacheKey] = [c.lat, c.lng];
-      return [c.lat, c.lng];
+      if ((c.v || 0) >= GEO_V) {
+        localGeoCache[cacheKey] = [c.lat, c.lng];
+        return [c.lat, c.lng];
+      }
+      // stale entry — fall through to re-geocode with Mapbox
     }
   } catch(e) {}
 
-  // 4. Photon with optional location bias — try first, faster and better at POIs
+  // helper to cache and return a result
+  const cacheAndReturn = async (lat, lng) => {
+    localGeoCache[cacheKey] = [lat, lng];
+    try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw, v: GEO_V }); } catch(e) {}
+    return [lat, lng];
+  };
+
+  // 4. Mapbox — best POI coverage, runs first so wineries/restaurants are found precisely
+  const mbToken = await getMapboxToken();
+  if (mbToken) {
+    try {
+      let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(raw)}.json?access_token=${mbToken}&limit=1&language=en`;
+      if (biasCoords) url += `&proximity=${biasCoords[1]},${biasCoords[0]}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.features && data.features[0]) {
+        const [lng, lat] = data.features[0].geometry.coordinates;
+        if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
+          return cacheAndReturn(lat, lng);
+        }
+      }
+    } catch(e) { console.warn('Mapbox failed:', raw, e); }
+  }
+
+  // 5. Photon with optional location bias
   try {
     await new Promise(r => setTimeout(r, 400));
     let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(raw)}&limit=1&lang=en`;
@@ -4529,17 +4557,13 @@ async function getCityCoords(cityName, biasCoords = null) {
     const data = await res.json();
     if (data.features && data.features[0]) {
       const [lng, lat] = data.features[0].geometry.coordinates;
-      // If bias given, sanity-check result is within ~220km of bias point
       if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
-        localGeoCache[cacheKey] = [lat, lng];
-        try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
-        return [lat, lng];
+        return cacheAndReturn(lat, lng);
       }
     }
   } catch(e) { console.warn('Photon failed:', raw, e); }
 
-  // 5. Overpass API — searches OSM directly by name within a bounding box
-  //    Much more targeted than Nominatim/Photon for specific named POIs
+  // 6. Overpass API — searches OSM directly by name within a bounding box
   if (biasCoords) {
     try {
       const searchName = raw.includes(',') ? raw.split(',')[0].trim() : raw;
@@ -4557,48 +4581,19 @@ async function getCityCoords(cityName, biasCoords = null) {
         const el = data.elements[0];
         const lat = el.lat ?? el.center?.lat;
         const lng = el.lon ?? el.center?.lon;
-        if (lat && lng) {
-          localGeoCache[cacheKey] = [lat, lng];
-          try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
-          return [lat, lng];
-        }
+        if (lat && lng) return cacheAndReturn(lat, lng);
       }
     } catch(e) { console.warn('Overpass failed:', raw, e); }
   }
 
-  // 6. Nominatim fallback
+  // 7. Nominatim fallback
   try {
     await new Promise(r => setTimeout(r, 1100));
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(raw)}&format=json&limit=1`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'HardinTrips/1.0' } });
     const data = await res.json();
-    if (data && data[0]) {
-      const lat = parseFloat(data[0].lat);
-      const lng = parseFloat(data[0].lon);
-      localGeoCache[cacheKey] = [lat, lng];
-      try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
-      return [lat, lng];
-    }
+    if (data && data[0]) return cacheAndReturn(parseFloat(data[0].lat), parseFloat(data[0].lon));
   } catch(e) { console.warn('Nominatim failed:', raw, e); }
-
-  // 7. Mapbox — better POI coverage than Photon/Nominatim, especially for small venues
-  const mbToken = await getMapboxToken();
-  if (mbToken) {
-    try {
-      let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(raw)}.json?access_token=${mbToken}&limit=1&language=en`;
-      if (biasCoords) url += `&proximity=${biasCoords[1]},${biasCoords[0]}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.features && data.features[0]) {
-        const [lng, lat] = data.features[0].geometry.coordinates;
-        if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
-          localGeoCache[cacheKey] = [lat, lng];
-          try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
-          return [lat, lng];
-        }
-      }
-    } catch(e) { console.warn('Mapbox failed:', raw, e); }
-  }
 
   // 8. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
   if (raw.includes(',')) {
@@ -4614,7 +4609,7 @@ async function getCityCoords(cityName, biasCoords = null) {
       const data = await res.json();
       if (data.lat && data.lng) {
         localGeoCache[cacheKey] = [data.lat, data.lng];
-        try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat: data.lat, lng: data.lng, name: raw }); } catch(e) {}
+        try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat: data.lat, lng: data.lng, name: raw, v: GEO_V }); } catch(e) {}
         return [data.lat, data.lng];
       }
     }
