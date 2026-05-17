@@ -1035,7 +1035,7 @@ body {
 <!-- ══ EDIT TRIP SCREEN ══ -->
 <div id="screen-edit" class="screen">
   <div class="app-header">
-    <button class="back-btn" onclick="showScreen('screen-admin')">‹</button>
+    <button class="back-btn" onclick="showScreen(editTripOrigin)">‹</button>
     <div class="header-titles">
       <div class="header-eyebrow">Edit Trip</div>
       <div class="header-main" id="editTripHeaderName">Trip</div>
@@ -1230,6 +1230,7 @@ let isAdmin = false;
 let adminUser = '';
 let allTrips = {};
 let currentTripId = null;
+let editTripOrigin = 'screen-admin';
 let currentActivityKey = null;
 let currentDayKey = null;
 let selectedPhotoFiles = [];  // multi-photo array
@@ -1439,7 +1440,7 @@ function openTrip(tripId) {
   switchTripTab('itinerary', document.querySelector('.tab-btn'));
   showScreen('screen-trip');
 }
-window.showTripAdmin = function() { showScreen('screen-admin'); };
+window.showTripAdmin = function() { if (currentTripId) openEditTrip(currentTripId, 'screen-trip'); };
 
 function switchTripTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -2400,7 +2401,8 @@ let _editFlightsRet    = [];
 let _editFlightsIntrip = [];
 let _flightRowCount    = 0;
 
-window.openEditTrip = function(tripId) {
+window.openEditTrip = function(tripId, origin = 'screen-admin') {
+  editTripOrigin = origin;
   editingTripId = tripId;
   const trip = allTrips[tripId];
   document.getElementById('editTripHeaderName').textContent = trip.name || 'Trip';
