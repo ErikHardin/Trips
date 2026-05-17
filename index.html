@@ -773,6 +773,7 @@ body {
 }
 .drive-legs { padding: 4px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .drive-leg-row { font-size: 11px; color: var(--muted); padding: 1px 0; }
+.drive-leg-unknown { opacity: 0.6; font-style: italic; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
@@ -4210,14 +4211,19 @@ function injectDriveChip(cardId, seconds, legDetails) {
   const rightCol = header.querySelector('.day-right-col');
   if (rightCol) rightCol.appendChild(chip);
   // Leg breakdown in body, before activity list
-  if (legDetails && legDetails.length > 0) {
+  const hasLegs = legDetails && legDetails.length > 0;
+  const hasMissing = notFound && notFound.length > 0;
+  if (hasLegs || hasMissing) {
     const body = card.querySelector('.day-body');
     if (body) {
       const oldLegs = body.querySelector('.drive-legs');
       if (oldLegs) oldLegs.remove();
       const legsDiv = document.createElement('div');
       legsDiv.className = 'drive-legs';
-      legsDiv.innerHTML = legDetails.map(l => '<div class="drive-leg-row">🚗 ' + l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds) + '</div>').join('');
+      let html = '';
+      if (hasLegs) html += legDetails.map(l => '<div class="drive-leg-row">🚗 ' + l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds) + '</div>').join('');
+      if (hasMissing) html += notFound.map(n => '<div class="drive-leg-row drive-leg-unknown">⚠️ ' + n + ' — location not found</div>').join('');
+      legsDiv.innerHTML = html;
       body.insertBefore(legsDiv, body.firstChild);
     }
   }
@@ -4230,8 +4236,8 @@ function extractCity(day) {
 
 function extractPlaceFromActivity(text) {
   let s = text.trim();
-  // Strip leading action words ("Explore Bonnieux..." → "Bonnieux...")
-  s = s.replace(/^(explore|drive to|drive|visit|hike to|hike|see|walk to|walk|bike to|cycle to|go to|head to|stop at|stop in|lunch at|dinner at|breakfast at)\s+/i, '');
+  // Strip leading action words ("Lunch in St. Tropez" → "St. Tropez", "Drive along Corniche..." → "Corniche...")
+  s = s.replace(/^(explore|drive along|drive to|drive|visit|hike to|hike along|hike|see|walk along|walk to|walk|bike to|bike along|cycle to|cycle along|go to|head to|stop at|stop in|lunch at|lunch in|dinner at|dinner in|breakfast at|breakfast in|brunch at|brunch in|drinks at|cocktails at|swim at|swim in|relax at|pool time at|along|check into|check in at|arrive at|arrive in|tasting at|tasting in)\s+/i, '');
   // Take before em/en dash ("Roussillon – Lunch at Omma" → "Roussillon")
   s = s.split(/\s*[–—]\s*/)[0];
   // Take before opening paren ("Lourmarin (La Cavale...)" → "Lourmarin")
@@ -4324,11 +4330,13 @@ async function fetchTripDriveTimes(days) {
       const regionCenter = region ? await resolveCoord(region) : null;
 
       // Build parallel name + query arrays so we can label each leg later
+      const driveActNames = []; // just the activity waypoints (not start/end city)
       const waypointNames = [prevCity];
       const waypointQueries = [prevCity];
       for (const a of acts) {
         if (a && a.drive && a.text) {
           const place = extractPlaceFromActivity(a.text);
+          driveActNames.push(place);
           waypointNames.push(place);
           waypointQueries.push(place + (region ? ', ' + region : ''));
         }
@@ -4340,6 +4348,10 @@ async function fetchTripDriveTimes(days) {
         const isActivity = j > 0 && j < waypointQueries.length - 1;
         return resolveCoord(q, isActivity ? regionCenter : null);
       }));
+
+      // Track which drive activities couldn't be geocoded
+      const geocodedNames = new Set(waypointNames.filter((_, j) => coordResults[j]));
+      const notFound = driveActNames.filter(n => !geocodedNames.has(n));
 
       // Keep names paired with coords, filter failed geocodes, deduplicate adjacent duplicates
       const paired = waypointNames.map((name, j) => ({name, coord: coordResults[j]})).filter(p => p.coord);
@@ -4392,8 +4404,8 @@ async function fetchTripDriveTimes(days) {
 
       const {duration, legs} = await getRouteDuration(deduped.map(p => p.coord));
       const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs}));
-      if (duration > 600) injectDriveChip('dc-' + dayId, duration, legDetails);
-      else if (hasDriveActs) injectDriveChip('dc-' + dayId, 0);
+      if (duration > 600) injectDriveChip('dc-' + dayId, duration, legDetails, notFound);
+      else if (hasDriveActs) injectDriveChip('dc-' + dayId, 0, null, notFound);
     } catch(e) { console.warn('Drive time failed', dayId, e); }
   }));
 }
