@@ -4347,9 +4347,11 @@ async function fetchTripDriveTimes(days) {
 
       if (!hasDriveActs) return;
 
+      const isTravelDay = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
       const regionCenter = region ? await resolveCoord(region) : null;
-      const activityBias = regionCenter;
-      const activityContext = region;
+      const prevCityCoord = isTravelDay ? await resolveCoord(prevCity) : null;
+      const activityBias = isTravelDay ? prevCityCoord : regionCenter;
+      const activityContext = isTravelDay ? prevCity : region;
 
       // Resolve route endpoints: hotel name for accuracy, city as reliable fallback
       const [prevEndpoint, curEndpoint] = await Promise.all([
