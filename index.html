@@ -4347,14 +4347,13 @@ async function fetchTripDriveTimes(days) {
 
       if (!hasDriveActs) return;
 
-      // For travel days (different start/end city), bias activity geocoding toward
-      // the departure city — stops along the route are near the start, not the end.
-      // For same-city days, bias toward the region center (destination).
+      // For travel days (different start/end city), use no bias and no city context
+      // so activities geocode to their actual location along the route, not pushed
+      // toward either city. For same-city days, bias toward the region center.
       const isTravelDay = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
       const regionCenter = region ? await resolveCoord(region) : null;
-      const prevCityCoord = isTravelDay ? await resolveCoord(prevCity) : null;
-      const activityBias = isTravelDay ? prevCityCoord : regionCenter;
-      const activityContext = isTravelDay ? prevCity : region;
+      const activityBias = isTravelDay ? null : regionCenter;
+      const activityContext = isTravelDay ? '' : region;
 
       // Resolve route endpoints: hotel name for accuracy, city as reliable fallback
       const [prevEndpoint, curEndpoint] = await Promise.all([
