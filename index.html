@@ -4237,9 +4237,13 @@ async function fetchTripDriveTimes(days) {
       const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
       const curCity = extractCity(day);
       const hotelChanged = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
+      // Skip days with an in-trip flight — the city change is by plane, not car
+      if (day.flightInfo && !hasDriveActs) continue;
       if (!hasDriveActs && !hotelChanged) continue;
+      // Don't route hotel-to-hotel across a flight day even if there are drive activities
+      const effectivePrevCity = (day.flightInfo && hotelChanged) ? curCity : prevCity;
 
-      const waypointNames = [prevCity];
+      const waypointNames = [effectivePrevCity];
       for (const a of acts) {
         if (a && a.drive && a.text) {
           const region = day.region || day.city || '';
