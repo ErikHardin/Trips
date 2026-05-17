@@ -1764,7 +1764,7 @@ window.toggleDay = function(id) {
 };
 
 window._pinActivityCoords = async function(inputEl, dayId, actKey) {
-  const parts = inputEl.value.trim().split(',').map(s => parseFloat(s.trim()));
+  const parts = inputEl.value.trim().replace(/[()]/g, '').split(',').map(s => parseFloat(s.trim()));
   if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1]) ||
       parts[0] < -90 || parts[0] > 90 || parts[1] < -180 || parts[1] > 180) {
     inputEl.style.outline = '2px solid red';
@@ -2996,14 +2996,18 @@ window.saveDayEdit = async function() {
   if (!editingTripId || !editingDayId) return;
   const existing = allTrips[editingTripId].days[editingDayId];
   const rows = document.querySelectorAll('#editActivityRows .act-row');
-  const activities = Array.from(rows).map(row => {
+  const existingActs = existing.activities
+    ? (Array.isArray(existing.activities) ? existing.activities : Object.values(existing.activities))
+    : [];
+  const activities = Array.from(rows).map((row, i) => {
     const emoji = row.querySelector('.act-emoji-btn').textContent.trim();
     const text  = row.querySelector('.act-text-input').value.trim();
     const time  = row.querySelector('.act-time-input').value.trim();
     const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
     const activeBooking = row.querySelector('.act-booking-opt.active');
     const bookingStatus = activeBooking ? activeBooking.dataset.status : '';
-    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }) };
+    const coords = existingActs[i] && existingActs[i].coords ? existingActs[i].coords : undefined;
+    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }) };
   }).filter(a => a.text);
 
   const dayData = {
