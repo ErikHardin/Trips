@@ -4426,7 +4426,35 @@ async function getCityCoords(cityName, biasCoords = null) {
     }
   } catch(e) { console.warn('Photon failed:', raw, e); }
 
-  // 5. Nominatim fallback
+  // 5. Overpass API — searches OSM directly by name within a bounding box
+  //    Much more targeted than Nominatim/Photon for specific named POIs
+  if (biasCoords) {
+    try {
+      const searchName = raw.includes(',') ? raw.split(',')[0].trim() : raw;
+      const escaped = searchName.replace(/[[\](){}*+?.,\\^$|#]/g, '\\$&');
+      const [blat, blon] = biasCoords;
+      const d = 0.6; // ~65km radius
+      const bbox = `${blat-d},${blon-d},${blat+d},${blon+d}`;
+      const q = `[out:json][timeout:10];(node["name"~"${escaped}",i](${bbox});way["name"~"${escaped}",i](${bbox}););out center 1;`;
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST', body: q,
+        headers: { 'Content-Type': 'text/plain', 'User-Agent': 'HardinTrips/1.0' }
+      });
+      const data = await res.json();
+      if (data.elements && data.elements[0]) {
+        const el = data.elements[0];
+        const lat = el.lat ?? el.center?.lat;
+        const lng = el.lon ?? el.center?.lon;
+        if (lat && lng) {
+          localGeoCache[cacheKey] = [lat, lng];
+          try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
+          return [lat, lng];
+        }
+      }
+    } catch(e) { console.warn('Overpass failed:', raw, e); }
+  }
+
+  // 6. Nominatim fallback
   try {
     await new Promise(r => setTimeout(r, 1100));
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(raw)}&format=json&limit=1`;
@@ -4441,11 +4469,25 @@ async function getCityCoords(cityName, biasCoords = null) {
     }
   } catch(e) { console.warn('Nominatim failed:', raw, e); }
 
-  // 6. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
+  // 7. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
   if (raw.includes(',')) {
     const base = raw.split(',')[0].trim();
     if (base && base !== raw) return getCityCoords(base, biasCoords);
   }
+
+  // 8. Google Maps Geocoding via Worker (if endpoint configured)
+  try {
+    const gmUrl = 'https://hardin-trips-ai.erikchardin.workers.dev/geocode?q=' + encodeURIComponent(raw);
+    const res = await fetch(gmUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.lat && data.lng) {
+        localGeoCache[cacheKey] = [data.lat, data.lng];
+        try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat: data.lat, lng: data.lng, name: raw }); } catch(e) {}
+        return [data.lat, data.lng];
+      }
+    }
+  } catch(e) {}
 
   return null;
 }
