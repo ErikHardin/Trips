@@ -4439,24 +4439,26 @@ async function fetchTripDriveTimes(days) {
       ]);
 
       // Collect activity waypoints separately so start/end use hotel coords directly
-      const driveActs = acts.filter(a => a && a.drive && a.text);
-      const driveActNames = driveActs.map(a => extractPlaceFromActivity(a.text));
-      const actNames = driveActNames.slice();
-      const actCoords = await Promise.all(driveActs.map(async (a, j) => {
-        // Pinned coords: add { coords: { lat, lng } } to the activity in Firebase to bypass
-        // geocoding entirely — get coords from Google Maps right-click → "What's here?"
-        if (a.coords && typeof a.coords.lat === 'number' && typeof a.coords.lng === 'number') {
-          return [a.coords.lat, a.coords.lng];
+      const driveActNames = [];
+      const actNames = [];
+      const actQueries = [];
+      const actPinnedCoords = [];
+      for (const a of acts) {
+        if (a && a.drive && a.text) {
+          const place = extractPlaceFromActivity(a.text);
+          const locationHint = extractActivityLocation(a.text);
+          const context = locationHint || activityContext;
+          driveActNames.push(place);
+          actNames.push(place);
+          actQueries.push(place + (context ? ', ' + context : ''));
+          actPinnedCoords.push(
+            (a.coords && typeof a.coords.lat === 'number' && typeof a.coords.lng === 'number')
+              ? [a.coords.lat, a.coords.lng] : null
+          );
         }
-        const place = driveActNames[j];
-        const locationHint = extractActivityLocation(a.text);
-        const context = locationHint || activityContext;
-        const query = place + (context ? ', ' + context : '');
-        // Resolve hint city coords for proximity bias — on travel days activityBias is null
-        // but a comma hint like ", Châteauneuf-du-Pape" gives Mapbox a 2° sanity window
-        const bias = locationHint ? ((await resolveCoord(locationHint)) || activityBias) : activityBias;
-        return resolveCoord(query, bias);
-      }));
+      }
+      const actGeoCoords = await Promise.all(actQueries.map(q => resolveCoord(q, activityBias)));
+      const actCoords = actPinnedCoords.map((pinned, j) => pinned || actGeoCoords[j]);
 
       // Assemble full route: [hotel/city start, ...activities, hotel/city end]
       const paired = [
