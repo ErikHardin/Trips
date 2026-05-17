@@ -778,8 +778,8 @@ body {
 .drive-leg-unknown { opacity: 0.6; font-style: italic; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
-.act-booking-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.25; transition: opacity 0.15s; border-radius: 6px; }
-.act-booking-btn.active { opacity: 1; background: var(--sand); }
+.act-booking-opt { background: none; border: none; font-size: 13px; cursor: pointer; padding: 3px 4px; flex-shrink: 0; opacity: 0.2; transition: opacity 0.15s; border-radius: 6px; }
+.act-booking-opt.active { opacity: 1; background: var(--sand); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
 .wx-forecast-row:last-child { border-bottom:none; }
 .wx-forecast-date { width:80px; font-size:12px; color:var(--muted); line-height:1.3; flex-shrink:0; }
@@ -2836,7 +2836,6 @@ window.addActivityRow = function(act) {
   const time    = (act && act.time)  ? act.time  : '';
   const drive   = (act && act.drive) ? true : false;
   const booking = (act && act.bookingStatus) ? act.bookingStatus : '';
-  const bookingEmoji = (BOOKING_STATUSES.find(s => s.key === booking) || {}).emoji || '📆';
   const row = document.createElement('div');
   row.className = 'act-row';
   row.draggable = true;
@@ -2849,15 +2848,14 @@ window.addActivityRow = function(act) {
       <div class="act-sub">
         <input class="act-time-input" placeholder="Time">
         <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
-        <button class="act-booking-btn${booking ? ' active' : ''}" data-booking="${booking}" title="Booking status">${bookingEmoji}</button>
+        ${BOOKING_STATUSES.map(s => `<button class="act-booking-opt${booking === s.key ? ' active' : ''}" data-status="${s.key}" title="${s.label}">${s.emoji}</button>`).join('')}
         <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>
       </div>
     </div>`;
   // Set values directly to avoid HTML escaping issues with special characters
-  var textInput  = row.querySelector('.act-text-input');
-  var timeInput  = row.querySelector('.act-time-input');
-  var driveBtn   = row.querySelector('.act-drive-btn');
-  var bookingBtn = row.querySelector('.act-booking-btn');
+  var textInput = row.querySelector('.act-text-input');
+  var timeInput = row.querySelector('.act-time-input');
+  var driveBtn  = row.querySelector('.act-drive-btn');
   textInput.value = text;
   timeInput.value = time;
   driveBtn.addEventListener('click', function() {
@@ -2865,14 +2863,12 @@ window.addActivityRow = function(act) {
     this.dataset.drive = active ? 'false' : 'true';
     this.classList.toggle('active', !active);
   });
-  bookingBtn.addEventListener('click', function() {
-    const cur = this.dataset.booking;
-    const idx = BOOKING_STATUSES.findIndex(s => s.key === cur);
-    const next = BOOKING_STATUSES[(idx + 1) % BOOKING_STATUSES.length];
-    const isReset = idx === BOOKING_STATUSES.length - 1;
-    this.dataset.booking = isReset ? '' : next.key;
-    this.textContent = isReset ? '📆' : next.emoji;
-    this.classList.toggle('active', !isReset);
+  row.querySelectorAll('.act-booking-opt').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const wasActive = this.classList.contains('active');
+      row.querySelectorAll('.act-booking-opt').forEach(b => b.classList.remove('active'));
+      if (!wasActive) this.classList.add('active');
+    });
   });
   // Prevent drag events on inputs so text selection works normally
   [textInput, timeInput].forEach(function(inp) {
@@ -3005,7 +3001,8 @@ window.saveDayEdit = async function() {
     const text  = row.querySelector('.act-text-input').value.trim();
     const time  = row.querySelector('.act-time-input').value.trim();
     const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
-    const bookingStatus = row.querySelector('.act-booking-btn').dataset.booking || '';
+    const activeBooking = row.querySelector('.act-booking-opt.active');
+    const bookingStatus = activeBooking ? activeBooking.dataset.status : '';
     return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }) };
   }).filter(a => a.text);
 
