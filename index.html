@@ -4503,9 +4503,11 @@ async function getCityCoords(cityName, biasCoords = null) {
   if (lower === 'home' || lower === 'in flight' || lower === 'home!' ) return null;
   if (lower.startsWith('in flight') || lower.startsWith('fly out') || lower.startsWith('home')) return null;
 
-  // 1. Check curated table (fuzzy match)
+  // 1. Check curated table — match only against the place name (before any comma context suffix)
+  // e.g. "Domaine Tempier, Bandol" should NOT hit "bandol" in KNOWN_COORDS
+  const placeOnly = lower.includes(',') ? lower.split(',')[0].trim() : lower;
   for (const [k, v] of Object.entries(KNOWN_COORDS)) {
-    if (lower.includes(k) || k.includes(lower)) return v;
+    if (placeOnly === k || placeOnly.includes(k) || k.includes(placeOnly)) return v;
   }
 
   const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
