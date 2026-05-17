@@ -4327,7 +4327,9 @@ async function fetchTripDriveTimes(days) {
       if (day.flightInfo) {
         const iata = (day.flightInfo.formatted || '').split(' ')[1];
         if (iata && /^[A-Z]{3}$/.test(iata)) {
-          const [from, to] = await Promise.all([resolveCoord(prevWaypointQuery), resolveCoord(iata + ' airport')]);
+          let from = prevHotel ? await resolveCoord(prevWaypointQuery) : null;
+          if (!from) from = await resolveCoord(prevCity);
+          const to = await resolveCoord(iata + ' airport');
           if (from && to && Math.abs(from[0]-to[0]) + Math.abs(from[1]-to[1]) > 0.02) {
             const {duration: dur, legs} = await getRouteDuration([from, to]);
             if (dur > 600) injectDriveChip('dc-' + dayId, dur, legs.length ? [{from: prevWaypointName, to: iata + ' airport', seconds: legs[0]}] : null);
@@ -4362,9 +4364,12 @@ async function fetchTripDriveTimes(days) {
       waypointNames.push(curWaypointName);
       waypointQueries.push(curWaypointQuery);
 
-      const coordResults = await Promise.all(waypointQueries.map((q, j) => {
-        const isActivity = j > 0 && j < waypointQueries.length - 1;
-        return resolveCoord(q, isActivity ? activityBias : null);
+      const lastIdx = waypointQueries.length - 1;
+      const coordResults = await Promise.all(waypointQueries.map(async (q, j) => {
+        if (j > 0 && j < lastIdx) return resolveCoord(q, activityBias);
+        // Start/end: try hotel name query, fall back to city if geocoding fails
+        const c = await resolveCoord(q);
+        return c || resolveCoord(j === 0 ? prevCity : curCity);
       }));
 
       // Keep names paired with coords, filter failed geocodes, deduplicate adjacent duplicates
