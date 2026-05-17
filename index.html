@@ -4308,31 +4308,38 @@ async function fetchTripDriveTimes(days) {
     return inFlight[query];
   }
 
+  // Resolve a route endpoint using hotel name for accuracy.
+  // Falls back to city coords if hotel fails or geocodes > 1° (~100km) away.
+  async function resolveEndpoint(hotelName, cityName) {
+    const cityCoord = await resolveCoord(cityName);
+    if (!hotelName) return { name: cityName, coord: cityCoord };
+    const hotelCoord = await resolveCoord(hotelName + (cityName ? ', ' + cityName : ''));
+    if (hotelCoord && cityCoord) {
+      const dist = Math.abs(hotelCoord[0] - cityCoord[0]) + Math.abs(hotelCoord[1] - cityCoord[1]);
+      if (dist <= 1.0) return { name: hotelName, coord: hotelCoord };
+    }
+    return { name: hotelName || cityName, coord: cityCoord };
+  }
+
   // Process each day concurrently — chips appear as each day's geocoding finishes
   await Promise.all(days.map(async ([dayId, day], i) => {
     try {
       const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
       const hasDriveActs = acts.some(a => a && a.drive);
-      const prevDay = i > 0 ? days[i-1][1] : day;
-      const prevCity = extractCity(prevDay);
+      const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
       const curCity = extractCity(day);
-      const prevHotel = extractHotel(prevDay);
+      const prevHotel = extractHotel(i > 0 ? days[i-1][1] : day);
       const curHotel = extractHotel(day);
-      const prevWaypointName = prevHotel || prevCity;
-      const curWaypointName = curHotel || curCity;
-      const prevWaypointQuery = prevHotel ? prevHotel + (prevCity ? ', ' + prevCity : '') : prevCity;
-      const curWaypointQuery = curHotel ? curHotel + (curCity ? ', ' + curCity : '') : curCity;
       const region = day.region || day.city || '';
 
       if (day.flightInfo) {
         const iata = (day.flightInfo.formatted || '').split(' ')[1];
         if (iata && /^[A-Z]{3}$/.test(iata)) {
-          let from = prevHotel ? await resolveCoord(prevWaypointQuery) : null;
-          if (!from) from = await resolveCoord(prevCity);
+          const prevEndpoint = await resolveEndpoint(prevHotel, prevCity);
           const to = await resolveCoord(iata + ' airport');
-          if (from && to && Math.abs(from[0]-to[0]) + Math.abs(from[1]-to[1]) > 0.02) {
-            const {duration: dur, legs} = await getRouteDuration([from, to]);
-            if (dur > 600) injectDriveChip('dc-' + dayId, dur, legs.length ? [{from: prevWaypointName, to: iata + ' airport', seconds: legs[0]}] : null);
+          if (prevEndpoint.coord && to && Math.abs(prevEndpoint.coord[0]-to[0]) + Math.abs(prevEndpoint.coord[1]-to[1]) > 0.02) {
+            const {duration: dur, legs} = await getRouteDuration([prevEndpoint.coord, to]);
+            if (dur > 600) injectDriveChip('dc-' + dayId, dur, legs.length ? [{from: prevEndpoint.name, to: iata + ' airport', seconds: legs[0]}] : null);
           }
         }
         return;
@@ -4349,35 +4356,34 @@ async function fetchTripDriveTimes(days) {
       const activityBias = isTravelDay ? prevCityCoord : regionCenter;
       const activityContext = isTravelDay ? prevCity : region;
 
-      // Build parallel name + query arrays so we can label each leg later
-      const driveActNames = []; // just the activity waypoints (not start/end hotel)
-      const waypointNames = [prevWaypointName];
-      const waypointQueries = [prevWaypointQuery];
+      // Resolve route endpoints: hotel name for accuracy, city as reliable fallback
+      const [prevEndpoint, curEndpoint] = await Promise.all([
+        resolveEndpoint(prevHotel, prevCity),
+        resolveEndpoint(curHotel, curCity),
+      ]);
+
+      // Collect activity waypoints separately so start/end use hotel coords directly
+      const driveActNames = [];
+      const actNames = [];
+      const actQueries = [];
       for (const a of acts) {
         if (a && a.drive && a.text) {
           const place = extractPlaceFromActivity(a.text);
           driveActNames.push(place);
-          waypointNames.push(place);
-          waypointQueries.push(place + (activityContext ? ', ' + activityContext : ''));
+          actNames.push(place);
+          actQueries.push(place + (activityContext ? ', ' + activityContext : ''));
         }
       }
-      waypointNames.push(curWaypointName);
-      waypointQueries.push(curWaypointQuery);
+      const actCoords = await Promise.all(actQueries.map(q => resolveCoord(q, activityBias)));
 
-      const lastIdx = waypointQueries.length - 1;
-      const coordResults = await Promise.all(waypointQueries.map(async (q, j) => {
-        if (j > 0 && j < lastIdx) return resolveCoord(q, activityBias);
-        // Start/end: try hotel name query, fall back to city if geocoding fails
-        const c = await resolveCoord(q);
-        return c || resolveCoord(j === 0 ? prevCity : curCity);
-      }));
-
-      // Keep names paired with coords, filter failed geocodes, deduplicate adjacent duplicates
-      const paired = waypointNames.map((name, j) => ({name, coord: coordResults[j]})).filter(p => p.coord);
+      // Assemble full route: [hotel/city start, ...activities, hotel/city end]
+      const paired = [
+        ...(prevEndpoint.coord ? [{ name: prevEndpoint.name, coord: prevEndpoint.coord }] : []),
+        ...actNames.map((name, j) => ({ name, coord: actCoords[j] })).filter(p => p.coord),
+        ...(curEndpoint.coord ? [{ name: curEndpoint.name, coord: curEndpoint.coord }] : []),
+      ];
       const deduped = paired.filter((p, j) => j === 0 || p.coord[0] !== paired[j-1].coord[0] || p.coord[1] !== paired[j-1].coord[1]);
 
-      // Track activities missing from the final route — either null from geocoding OR
-      // collapsed into a duplicate of an adjacent waypoint (e.g. geocoded to start city coords)
       const dedupedNames = new Set(deduped.map(p => p.name));
       const notFound = driveActNames.filter(n => !dedupedNames.has(n));
 
