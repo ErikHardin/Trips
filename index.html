@@ -747,11 +747,19 @@ body {
 .itinerary-preview-activity { font-size: 13px; color: var(--ink); padding: 2px 0 2px 12px; border-left: 2px solid var(--sand-dark); margin-bottom: 3px; }
 
 /* ── WEATHER WIDGET ── */
+.day-right-col {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 4px; flex-shrink: 0; margin-left: auto;
+}
+.day-city-label {
+  font-size: 10px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
 .weather-chip {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; color: var(--muted);
   background: var(--blue-light); border-radius: 20px;
-  padding: 2px 8px; margin-left: auto; flex-shrink: 0;
+  padding: 2px 8px; flex-shrink: 0;
   white-space: nowrap; cursor: pointer; transition: opacity 0.15s;
 }
 .weather-chip:hover { opacity: 0.75; }
@@ -1544,6 +1552,9 @@ function renderTripItinerary(trip) {
           <div class="day-info">
             <div class="day-name-text">${(day.description||day.city)||day.dayName||''}</div>
             <div class="day-city-text">${day.hotel||''}</div>
+          </div>
+          <div class="day-right-col">
+            ${day.city ? `<div class="day-city-label">${day.city}</div>` : ''}
           </div>
           <div class="day-chevron">›</div>
         </div>
@@ -4150,8 +4161,13 @@ function injectWeatherChip(cardId, wx, coords, city) {
   chip.innerHTML = '<span class="wx-icon">' + icon + '</span>' +
     '<span class="wx-temp">' + prefix + wx.hi + '°</span>' +
     '<span style="color:var(--muted);font-size:10px;">/' + prefix + wx.lo + '°</span>';
-  const chevron = header.querySelector('.day-chevron');
-  header.insertBefore(chip, chevron);
+  const rightCol = header.querySelector('.day-right-col');
+  if (rightCol) {
+    rightCol.appendChild(chip);
+  } else {
+    const chevron = header.querySelector('.day-chevron');
+    header.insertBefore(chip, chevron);
+  }
 }
 
 // ════════════════════════════════════════
