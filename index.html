@@ -1541,7 +1541,7 @@ function renderTripItinerary(trip) {
             ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
             ${drive?`<div style="font-size:10px;color:var(--muted);opacity:0.6;">🚗 driving</div>`:''}
           </div>
-          <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq)" title="Open in Maps"
+          <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq,this.closest('.activity-item').dataset.day,this.closest('.activity-item').dataset.key)" title="Open in Maps"
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
           <button class="notes-open-btn" title="Notes & Photos"
             style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.5;">📝</button>
@@ -1750,9 +1750,33 @@ window.toggleDay = function(id) {
   document.getElementById(id).classList.toggle('open');
 };
 
-window.openMapsChoice = function(query) {
+window._pinActivityCoords = async function(inputEl, dayId, actKey) {
+  const parts = inputEl.value.trim().split(',').map(s => parseFloat(s.trim()));
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1]) ||
+      parts[0] < -90 || parts[0] > 90 || parts[1] < -180 || parts[1] > 180) {
+    inputEl.style.outline = '2px solid red';
+    return;
+  }
+  const [lat, lng] = parts;
+  const pinBtn = inputEl.nextElementSibling;
+  pinBtn.textContent = '…';
+  pinBtn.disabled = true;
+  try {
+    await window._set(window._ref(window._db, `trips/${currentTripId}/days/${dayId}/activities/${actKey}/coords`), { lat, lng });
+    pinBtn.textContent = 'Pinned ✓';
+    pinBtn.style.cssText += ';background:#4a7c59;';
+    setTimeout(() => inputEl.closest('[style*=fixed]').remove(), 1000);
+  } catch(e) {
+    pinBtn.textContent = 'Pin';
+    pinBtn.disabled = false;
+    inputEl.style.outline = '2px solid red';
+  }
+};
+
+window.openMapsChoice = function(query, dayId, actKey) {
   const googleUrl = 'https://maps.google.com/?q=' + encodeURIComponent(query);
   const wazeUrl   = 'https://waze.com/ul?q=' + encodeURIComponent(query) + '&navigate=yes';
+  const canPin = dayId && actKey != null && typeof currentTripId !== 'undefined' && currentTripId;
 
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
@@ -1769,6 +1793,20 @@ window.openMapsChoice = function(query) {
           🔵 <span>Waze</span>
         </a>
       </div>
+      ${canPin ? `
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
+          Pin exact location: open Google Maps, long-press the spot → tap the address card → copy the coordinates, then paste below.
+        </div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" inputmode="decimal" placeholder="43.9062, 4.8369"
+            style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);outline:none;">
+          <button onclick="window._pinActivityCoords(this.previousElementSibling,'${dayId}','${actKey}')"
+            style="padding:10px 16px;background:var(--terracotta);color:white;border:none;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;">
+            Pin
+          </button>
+        </div>
+      </div>` : ''}
       <button onclick="this.closest('[style*=fixed]').remove()"
         style="margin-top:12px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;color:var(--muted);cursor:pointer;">
         Cancel
