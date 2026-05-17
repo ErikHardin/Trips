@@ -1764,7 +1764,7 @@ window.toggleDay = function(id) {
 };
 
 window._pinActivityCoords = async function(inputEl, dayId, actKey) {
-  const parts = inputEl.value.trim().split(',').map(s => parseFloat(s.trim()));
+  const parts = inputEl.value.trim().replace(/[()]/g, '').split(',').map(s => parseFloat(s.trim()));
   if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1]) ||
       parts[0] < -90 || parts[0] > 90 || parts[1] < -180 || parts[1] > 180) {
     inputEl.style.outline = '2px solid red';
