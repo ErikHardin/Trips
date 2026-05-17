@@ -4243,6 +4243,21 @@ async function getRouteDuration(coords) {
   return duration;
 }
 
+function parseActivityStartMinutes(timeStr) {
+  const m = (timeStr || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]), min = parseInt(m[2]);
+  const ap = m[3].toLowerCase();
+  if (ap === 'pm' && h !== 12) h += 12;
+  if (ap === 'am' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function parseActivityDurationMinutes(timeStr) {
+  const m = (timeStr || '').match(/\((\d+)\s*min/i);
+  return m ? parseInt(m[1]) : null;
+}
+
 async function fetchTripDriveTimes(days) {
   // Shared promise cache — deduplicates concurrent geocoding requests across days
   const coordCache = {};
@@ -4304,8 +4319,22 @@ async function fetchTripDriveTimes(days) {
       const valid = coords.filter(Boolean);
       const deduped = valid.filter((c, j) => j === 0 || c[0] !== valid[j-1][0] || c[1] !== valid[j-1][1]);
       if (deduped.length < 2) {
-        // Couldn't geocode stops — show a plain driving chip for days with drive activities
-        if (hasDriveActs) injectDriveChip('dc-' + dayId, 0);
+        if (hasDriveActs) {
+          // Schedule-based fallback: sum the gaps between consecutive drive activities
+          // e.g. "1:30pm (45 min)" ends 2:15pm, next starts "2:30pm" → 15 min drive
+          const timed = acts.filter(a => a && a.drive && a.time);
+          let scheduleSecs = 0, scheduleOk = timed.length >= 2;
+          for (let j = 0; j < timed.length - 1 && scheduleOk; j++) {
+            const startA = parseActivityStartMinutes(timed[j].time);
+            const durA   = parseActivityDurationMinutes(timed[j].time);
+            const startB = parseActivityStartMinutes(timed[j+1].time);
+            if (startA === null || durA === null || startB === null) { scheduleOk = false; break; }
+            const gap = startB - (startA + durA);
+            if (gap < 0) { scheduleOk = false; break; }
+            scheduleSecs += gap * 60;
+          }
+          injectDriveChip('dc-' + dayId, scheduleOk && scheduleSecs > 300 ? scheduleSecs : 0);
+        }
         return;
       }
 
