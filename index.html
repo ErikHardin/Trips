@@ -4517,8 +4517,8 @@ async function getCityCoords(cityName, biasCoords = null) {
     const data = await res.json();
     if (data.features && data.features[0]) {
       const [lng, lat] = data.features[0].geometry.coordinates;
-      // If bias given, sanity-check result is within ~100km of bias point
-      if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 1 && Math.abs(lng - biasCoords[1]) < 1)) {
+      // If bias given, sanity-check result is within ~220km of bias point
+      if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
         localGeoCache[cacheKey] = [lat, lng];
         try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
         return [lat, lng];
