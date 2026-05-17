@@ -4213,6 +4213,21 @@ function extractCity(day) {
   return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
 }
 
+function extractPlaceFromActivity(text) {
+  let s = text.trim();
+  // Strip leading action words ("Explore Bonnieux..." → "Bonnieux...")
+  s = s.replace(/^(explore|drive to|drive|visit|hike to|hike|see|walk to|walk|bike to|cycle to|go to|head to|stop at|stop in|lunch at|dinner at|breakfast at)\s+/i, '');
+  // Take before em/en dash ("Roussillon – Lunch at Omma" → "Roussillon")
+  s = s.split(/\s*[–—]\s*/)[0];
+  // Take before opening paren ("Lourmarin (La Cavale...)" → "Lourmarin")
+  s = s.split('(')[0].trim();
+  // Take before " and " / " & " ("Cassis and Calanques..." → "Cassis")
+  s = s.split(/\s+(?:and|&)\s+/i)[0].trim();
+  // Take before first comma ("Gordes, Goult" → "Gordes")
+  if (s.includes(',')) s = s.split(',')[0].trim();
+  return s;
+}
+
 async function getRouteDuration(coords) {
   const key = ('dr_' + coords.map(c => c.map(v => v.toFixed(3)).join(',')).join('|')).replace(/[^a-z0-9_,.-]/gi, '_');
   try {
@@ -4258,7 +4273,8 @@ async function fetchTripDriveTimes(days) {
     for (const a of acts) {
       if (a && a.drive && a.text) {
         const region = day.region || day.city || '';
-        waypoints.push(a.text + (region ? ', ' + region : ''));
+        const place = extractPlaceFromActivity(a.text);
+        waypoints.push(place + (region ? ', ' + region : ''));
       }
     }
     waypoints.push(curCity);
