@@ -1541,7 +1541,7 @@ function renderTripItinerary(trip) {
             ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
             ${drive?`<div style="font-size:10px;color:var(--muted);opacity:0.6;">🚗 driving</div>`:''}
           </div>
-          <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq)" title="Open in Maps"
+          <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq,this.closest('.activity-item').dataset.day,this.closest('.activity-item').dataset.key)" title="Open in Maps"
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
           <button class="notes-open-btn" title="Notes & Photos"
             style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.5;">📝</button>
@@ -1750,7 +1750,20 @@ window.toggleDay = function(id) {
   document.getElementById(id).classList.toggle('open');
 };
 
-window.openMapsChoice = function(query) {
+window.openMapsChoice = function(query, dayId, actKey) {
+  // Geocode via Google Worker (most accurate) and pin coords to the activity in Firebase.
+  // This runs in the background — the modal appears immediately without waiting.
+  if (dayId && actKey != null && typeof currentTripId !== 'undefined' && currentTripId) {
+    fetch('https://hardin-trips-ai.erikchardin.workers.dev/geocode?q=' + encodeURIComponent(query))
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && typeof data.lat === 'number' && typeof data.lng === 'number') {
+          window._set(window._ref(window._db, `trips/${currentTripId}/days/${dayId}/activities/${actKey}/coords`), { lat: data.lat, lng: data.lng });
+        }
+      })
+      .catch(() => {});
+  }
+
   const googleUrl = 'https://maps.google.com/?q=' + encodeURIComponent(query);
   const wazeUrl   = 'https://waze.com/ul?q=' + encodeURIComponent(query) + '&navigate=yes';
 
