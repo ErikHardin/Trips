@@ -4355,13 +4355,14 @@ async function fetchTripDriveTimes(days) {
         return resolveCoord(q, isActivity ? activityBias : null);
       }));
 
-      // Track which drive activities couldn't be geocoded
-      const geocodedNames = new Set(waypointNames.filter((_, j) => coordResults[j]));
-      const notFound = driveActNames.filter(n => !geocodedNames.has(n));
-
       // Keep names paired with coords, filter failed geocodes, deduplicate adjacent duplicates
       const paired = waypointNames.map((name, j) => ({name, coord: coordResults[j]})).filter(p => p.coord);
       const deduped = paired.filter((p, j) => j === 0 || p.coord[0] !== paired[j-1].coord[0] || p.coord[1] !== paired[j-1].coord[1]);
+
+      // Track activities missing from the final route — either null from geocoding OR
+      // collapsed into a duplicate of an adjacent waypoint (e.g. geocoded to start city coords)
+      const dedupedNames = new Set(deduped.map(p => p.name));
+      const notFound = driveActNames.filter(n => !dedupedNames.has(n));
 
       if (deduped.length < 2) {
         if (hasDriveActs) {
