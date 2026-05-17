@@ -4350,6 +4350,11 @@ const KNOWN_COORDS = {
   'mornington peninsula':[-38.38,145.06],
   // New York / travel
   'new york':[40.71,-74.01],
+  // France — Provence regions
+  'bandol':[43.13,5.75],'luberon':[43.83,5.38],'gordes':[43.91,5.20],
+  'roussillon':[43.90,5.29],'bonnieux':[43.84,5.31],'lourmarin':[43.76,5.36],
+  'apt':[43.88,5.40],'menerbes':[43.84,5.21],'oppede':[43.84,5.17],
+  'cassis':[43.21,5.54],'marseille':[43.30,5.37],'aix-en-provence':[43.53,5.45],
   // Airports (IATA — geocoded as "<IATA> airport")
   'cdg airport':[49.01,2.55],'ory airport':[48.72,2.37],
   'lys airport':[45.72,5.09],'nce airport':[43.66,7.21],'mrs airport':[43.44,5.22],
@@ -4397,7 +4402,7 @@ async function getCityCoords(cityName) {
     }
   } catch(e) {}
 
-  // 4. Fetch from Nominatim as fallback for unknown cities
+  // 4. Nominatim
   try {
     await new Promise(r => setTimeout(r, 1100));
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(raw)}&format=json&limit=1`;
@@ -4410,9 +4415,23 @@ async function getCityCoords(cityName) {
       try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
       return [lat, lng];
     }
-  } catch(e) { console.warn('Geocode failed:', raw, e); }
+  } catch(e) { console.warn('Nominatim failed:', raw, e); }
 
-  // 5. Retry without region suffix (e.g. "Domaine Tempier, Bandol" → "Domaine Tempier")
+  // 5. Photon (komoot) — better at specific POIs like wineries, venues, restaurants
+  try {
+    await new Promise(r => setTimeout(r, 500));
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(raw)}&limit=1&lang=en`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'HardinTrips/1.0' } });
+    const data = await res.json();
+    if (data.features && data.features[0]) {
+      const [lng, lat] = data.features[0].geometry.coordinates;
+      localGeoCache[cacheKey] = [lat, lng];
+      try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat, lng, name: raw }); } catch(e) {}
+      return [lat, lng];
+    }
+  } catch(e) { console.warn('Photon failed:', raw, e); }
+
+  // 6. Retry without region suffix (e.g. "Domaine Tempier, Bandol" → "Domaine Tempier")
   if (raw.includes(',')) {
     const base = raw.split(',')[0].trim();
     if (base && base !== raw) return getCityCoords(base);
