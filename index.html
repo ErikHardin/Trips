@@ -766,12 +766,13 @@ body {
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
 .drive-chip {
-  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; color: var(--muted);
-  background: var(--sand); border-radius: 12px;
-  padding: 3px 8px; flex-shrink: 0;
+  background: var(--sand); border-radius: 20px;
+  padding: 2px 8px; flex-shrink: 0; white-space: nowrap;
 }
-.drive-chip-legs { font-size: 10px; opacity: 0.75; line-height: 1.4; }
+.drive-legs { padding: 4px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.drive-leg-row { font-size: 11px; color: var(--muted); padding: 1px 0; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
@@ -4202,19 +4203,24 @@ function injectDriveChip(cardId, seconds, legDetails) {
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
   const label = seconds > 0 ? (h > 0 ? '~' + h + 'h ' + m + 'm' : '~' + m + 'm') : 'driving';
+  // Compact chip in header
   const chip = document.createElement('div');
   chip.className = 'drive-chip';
-  const mainRow = document.createElement('span');
-  mainRow.textContent = '🚗 ' + label;
-  chip.appendChild(mainRow);
-  if (legDetails && legDetails.length > 0) {
-    const legsDiv = document.createElement('div');
-    legsDiv.className = 'drive-chip-legs';
-    legsDiv.innerHTML = legDetails.map(l => '<div>' + l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds) + '</div>').join('');
-    chip.appendChild(legsDiv);
-  }
+  chip.textContent = '🚗 ' + label;
   const rightCol = header.querySelector('.day-right-col');
   if (rightCol) rightCol.appendChild(chip);
+  // Leg breakdown in body, before activity list
+  if (legDetails && legDetails.length > 0) {
+    const body = card.querySelector('.day-body');
+    if (body) {
+      const oldLegs = body.querySelector('.drive-legs');
+      if (oldLegs) oldLegs.remove();
+      const legsDiv = document.createElement('div');
+      legsDiv.className = 'drive-legs';
+      legsDiv.innerHTML = legDetails.map(l => '<div class="drive-leg-row">🚗 ' + l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds) + '</div>').join('');
+      body.insertBefore(legsDiv, body.firstChild);
+    }
+  }
 }
 
 function extractCity(day) {
