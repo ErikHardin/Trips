@@ -4326,8 +4326,14 @@ async function fetchTripDriveTimes(days) {
 
       if (!hasDriveActs) return;
 
-      // Region center used as Photon location bias for activity geocoding
+      // For travel days (different start/end city), bias activity geocoding toward
+      // the departure city — stops along the route are near the start, not the end.
+      // For same-city days, bias toward the region center (destination).
+      const isTravelDay = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
       const regionCenter = region ? await resolveCoord(region) : null;
+      const prevCityCoord = isTravelDay ? await resolveCoord(prevCity) : null;
+      const activityBias = isTravelDay ? prevCityCoord : regionCenter;
+      const activityContext = isTravelDay ? prevCity : region;
 
       // Build parallel name + query arrays so we can label each leg later
       const driveActNames = []; // just the activity waypoints (not start/end city)
@@ -4338,7 +4344,7 @@ async function fetchTripDriveTimes(days) {
           const place = extractPlaceFromActivity(a.text);
           driveActNames.push(place);
           waypointNames.push(place);
-          waypointQueries.push(place + (region ? ', ' + region : ''));
+          waypointQueries.push(place + (activityContext ? ', ' + activityContext : ''));
         }
       }
       waypointNames.push(curCity);
@@ -4346,7 +4352,7 @@ async function fetchTripDriveTimes(days) {
 
       const coordResults = await Promise.all(waypointQueries.map((q, j) => {
         const isActivity = j > 0 && j < waypointQueries.length - 1;
-        return resolveCoord(q, isActivity ? regionCenter : null);
+        return resolveCoord(q, isActivity ? activityBias : null);
       }));
 
       // Track which drive activities couldn't be geocoded
