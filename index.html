@@ -1117,12 +1117,14 @@ body {
       <input type="hidden" id="editDayName">
     </div>
 
-    <label class="form-label">City / Description</label>
-    <input class="form-input" id="editDayCity" placeholder="e.g. 🛬 Arrive Lyon">
-    <label class="form-label">Hotel</label>
-    <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon">
     <label class="form-label">Region</label>
     <input class="form-input" id="editDayRegion" placeholder="e.g. Lyon">
+    <label class="form-label">City</label>
+    <input class="form-input" id="editDayCity" placeholder="e.g. Lyon">
+    <label class="form-label">Description</label>
+    <input class="form-input" id="editDayDescription" placeholder="e.g. 🛬 Arrive Lyon">
+    <label class="form-label">Hotel</label>
+    <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon">
     <label class="form-label">Region Color</label>
     <div style="display:flex;gap:10px;margin-bottom:12px;" id="regionColorSwatches">
       <div class="color-swatch" data-color="#c06a3d" style="background:#c06a3d;" onclick="selectRegionColor('#c06a3d',this)" title="Terracotta"></div>
@@ -1540,7 +1542,7 @@ function renderTripItinerary(trip) {
           </div>
           <div class="day-vdivider"></div>
           <div class="day-info">
-            <div class="day-name-text">${day.city||day.dayName||''}</div>
+            <div class="day-name-text">${(day.description||day.city)||day.dayName||''}</div>
             <div class="day-city-text">${day.hotel||''}</div>
           </div>
           <div class="day-chevron">›</div>
@@ -1673,7 +1675,7 @@ function renderTripOverview(trip) {
             </div>
             <div style="width:1px;height:32px;background:var(--border);flex-shrink:0;"></div>
             <div>
-              <div style="font-size:14px;font-weight:500;">${day.city||''}</div>
+              <div style="font-size:14px;font-weight:500;">${day.description||day.city||''}</div>
               <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
             </div>
           </div>
@@ -1886,7 +1888,7 @@ window.promoteWishlistItem = function(tripId, id) {
       await window._set(actsRef, acts);
       await window._set(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), null);
       const day = trip.days[dayId];
-      const cityLabel = day ? (day.city || day.dayName || '') : '';
+      const cityLabel = day ? ((day.description || day.city) || day.dayName || '') : '';
       await logChange(tripId, 'Activity added', item.text + (cityLabel ? ' · ' + cityLabel : '') + ' (from Wishlist)');
       // Patch in-memory data and re-render itinerary immediately so time shows
       if (allTrips[tripId] && allTrips[tripId].days && allTrips[tripId].days[dayId]) {
@@ -1953,7 +1955,7 @@ window.generateTripJournal = async function(tripId) {
       });
     }
 
-    let line = `${day.dateNum||''} ${day.dateMonth||''} (${day.dayName||''}) — ${day.city||''}: ${actStr||'no activities'}`;
+    let line = `${day.dateNum||''} ${day.dateMonth||''} (${day.dayName||''}) — ${day.description||day.city||''}: ${actStr||'no activities'}`;
     if (noteTexts.length) line += `\n  Memories: ${noteTexts.join(' | ')}`;
     return line;
   }).join('\n');
@@ -2680,7 +2682,7 @@ function renderEditDaysList(trip) {
         + '<div style="font-size:9px;font-weight:600;color:var(--terracotta);text-transform:uppercase;letter-spacing:0.5px;">' + (dn ? dn.slice(0,3).toUpperCase() : '') + '</div>'
       + '</div>'
       + '<div style="flex:1;min-width:0;">'
-        + '<div style="' + cityStyle + '">' + (day.city||'Day') + '</div>'
+        + '<div style="' + cityStyle + '">' + (day.description||day.city||'Day') + '</div>'
         + '<div style="' + subStyle + '">' + subtitle + '</div>'
       + '</div>'
       + '<button data-edit-day-id="' + dayId + '" style="' + btnStyle + '">Edit</button>'
@@ -2693,7 +2695,7 @@ window.addNewDay = async function() {
   const days = allTrips[editingTripId].days || {};
   const sortOrder = Object.keys(days).length;
   const newRef = window._push(window._ref(window._db, `trips/${editingTripId}/days`));
-  await window._set(newRef, { dateNum:'', dateMonth:'', dayName:'', city:'', hotel:'', region:'', regionColor:'#c06a3d', activities:[], sortOrder });
+  await window._set(newRef, { dateNum:'', dateMonth:'', dayName:'', city:'', description:'', hotel:'', region:'', regionColor:'#c06a3d', activities:[], sortOrder });
   showToast('New day added — tap Edit to fill it in');
 };
 
@@ -2721,9 +2723,11 @@ window.openEditDay = function(dayId) {
   document.getElementById('editDayMonth').value = dateMonth;
   document.getElementById('editDayName').value  = dayName;
 
-  document.getElementById('editDayCity').value   = day.city   || '';
-  document.getElementById('editDayHotel').value  = day.hotel  || '';
-  document.getElementById('editDayRegion').value = day.region || '';
+  const isMigrated = day.description !== undefined;
+  document.getElementById('editDayCity').value        = isMigrated ? (day.city || '') : '';
+  document.getElementById('editDayDescription').value = isMigrated ? (day.description || '') : (day.city || '');
+  document.getElementById('editDayHotel').value       = day.hotel  || '';
+  document.getElementById('editDayRegion').value      = day.region || '';
 
   // Color swatches
   const color = day.regionColor || '#c06a3d';
@@ -2908,6 +2912,7 @@ window.saveDayEdit = async function() {
     dateISO:      existing.dateISO || null,
     dayName:      document.getElementById('editDayName').value,
     city:         document.getElementById('editDayCity').value.trim(),
+    description:  document.getElementById('editDayDescription').value.trim(),
     hotel:        document.getElementById('editDayHotel').value.trim(),
     region:       document.getElementById('editDayRegion').value.trim(),
     regionColor:  document.getElementById('editDayRegionColor').value || '#c06a3d',
@@ -2918,7 +2923,7 @@ window.saveDayEdit = async function() {
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
 
   // Diff activities and log each specific change
-  const city = dayData.city || dayData.dayName || '';
+  const city = (dayData.description || dayData.city) || dayData.dayName || '';
   const actTxt = a => (a && typeof a === 'object') ? (a.text || '') : (a || '');
   const actLabel = a => ((a && typeof a === 'object' && a.emoji) ? a.emoji + ' ' : '') + actTxt(a) + (a && typeof a === 'object' && a.time ? ' · ' + a.time : '');
   const oldActs = (existing.activities || []).filter(a => actTxt(a));
@@ -4541,7 +4546,7 @@ window.runItineraryGenerator = async function() {
         return '<div class="itinerary-preview-activity">' + (a.emoji ? a.emoji + ' ' : '') + a.text + (a.time ? ' <span style="color:var(--muted);font-size:11px;">· ' + a.time + '</span>' : '') + '</div>';
       }).join('');
       return '<div class="itinerary-preview-day">' +
-        '<div class="itinerary-preview-day-header">Day ' + day.dateNum + ' · ' + day.dayName + ' · ' + day.city + '</div>' +
+        '<div class="itinerary-preview-day-header">Day ' + day.dateNum + ' · ' + day.dayName + ' · ' + (day.description||day.city||'') + '</div>' +
         acts +
         '</div>';
     }).join('');
@@ -4638,7 +4643,7 @@ window.runAIAssistant = async function() {
         ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
         : [];
       const actStr = acts.map((a,i) => `[${i}] ${a.text||a}${a.time?' @'+a.time:''}`).join(' | ');
-      return `DAY_ID="${did}" date="${day.dateNum||''}${day.dateMonth||''}" weekday="${day.dayName||''}" city="${day.city||''}" hotel="${day.hotel||''}"\n    activities: ${actStr||'none'}`;
+      return `DAY_ID="${did}" date="${day.dateNum||''}${day.dateMonth||''}" weekday="${day.dayName||''}" city="${day.city||''}" description="${day.description||''}" hotel="${day.hotel||''}"\n    activities: ${actStr||'none'}`;
     }).join('\n');
 
   const tripContext = `TRIP id:${selectedTripId} "${trip.name}" ${trip.year}
