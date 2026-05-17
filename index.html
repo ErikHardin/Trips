@@ -413,7 +413,7 @@ body {
 
 /* ── ACTIVITY EDITOR ROWS ── */
 .act-row {
-  display:flex; align-items:center; gap:6px;
+  display:flex; align-items:flex-start; gap:6px;
   background:var(--cream); border-radius:10px; padding:8px 10px;
   border:1px solid var(--border);
   transition: opacity 0.15s, box-shadow 0.15s;
@@ -423,30 +423,32 @@ body {
 .act-row.drag-over { box-shadow: 0 0 0 2px var(--terracotta); background: var(--terracotta-light); }
 .act-drag-handle {
   font-size:16px; color:var(--sand-dark); cursor:grab; flex-shrink:0;
-  padding:2px 4px; line-height:1; touch-action:none;
+  padding:2px 4px; line-height:1; touch-action:none; margin-top:2px;
   -webkit-user-select:none; user-select:none;
 }
 .act-drag-handle:active { cursor:grabbing; }
 .act-emoji-btn {
   font-size:20px; background:none; border:none; cursor:pointer;
-  padding:2px 4px; border-radius:6px; flex-shrink:0;
+  padding:2px 4px; border-radius:6px; flex-shrink:0; margin-top:0;
   transition:background 0.15s;
 }
 .act-emoji-btn:active { background:var(--sand); }
+.act-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
 .act-text-input {
-  flex:1; border:none; background:transparent; font-size:13px;
+  width:100%; border:none; background:transparent; font-size:13px;
   font-family:'DM Sans',sans-serif; color:var(--ink); outline:none;
-  min-width:0;
+  padding:1px 0;
 }
+.act-sub { display:flex; align-items:center; gap:4px; }
 .act-time-input {
-  width:80px; border:1px solid var(--border); border-radius:7px;
+  width:72px; border:1px solid var(--border); border-radius:7px;
   background:var(--warm-white); font-size:11px; font-family:'DM Sans',sans-serif;
-  color:var(--muted); padding:5px 7px; outline:none; flex-shrink:0;
+  color:var(--muted); padding:4px 6px; outline:none; flex-shrink:0;
 }
 .act-time-input:focus { border-color:var(--terracotta); }
 .act-delete-btn {
   background:none; border:none; font-size:16px; cursor:pointer;
-  color:var(--muted); padding:2px 4px; flex-shrink:0; line-height:1;
+  color:var(--muted); padding:2px 4px; flex-shrink:0; line-height:1; margin-left:auto;
 }
 
 /* ── EMOJI GRID ── */
@@ -2843,11 +2845,15 @@ window.addActivityRow = function(act) {
   row.innerHTML = `
     <span class="act-drag-handle" title="Drag to reorder">⠿</span>
     <button class="act-emoji-btn" onclick="openEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
-    <input class="act-text-input" placeholder="Activity name">
-    <input class="act-time-input" placeholder="Time">
-    <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
-    <button class="act-booking-btn${booking ? ' active' : ''}" data-booking="${booking}" title="Booking status">${bookingEmoji}</button>
-    <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>`;
+    <div class="act-main">
+      <input class="act-text-input" placeholder="Activity name">
+      <div class="act-sub">
+        <input class="act-time-input" placeholder="Time">
+        <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
+        <button class="act-booking-btn${booking ? ' active' : ''}" data-booking="${booking}" title="Booking status">${bookingEmoji}</button>
+        <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>
+      </div>
+    </div>`;
   // Set values directly to avoid HTML escaping issues with special characters
   var textInput  = row.querySelector('.act-text-input');
   var timeInput  = row.querySelector('.act-time-input');
