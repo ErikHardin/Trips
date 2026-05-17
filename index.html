@@ -1551,9 +1551,8 @@ function renderTripItinerary(trip) {
           <div class="activity-emoji">${emoji}</div>
           <div style="flex:1;min-width:0;">
             <div class="activity-text" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
-            ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
+            ${(time||bookingInfo)?`<div class="activity-time">${time?escHtml(time):''}${bookingInfo?(time?'  ':'')+bookingInfo.emoji:''}</div>`:''}
             ${drive?`<div style="font-size:10px;color:var(--muted);opacity:0.6;">🚗 driving</div>`:''}
-            ${bookingInfo?`<div style="font-size:10px;color:var(--muted);opacity:0.7;">${bookingInfo.emoji} ${bookingInfo.label}</div>`:''}
           </div>
           <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq,this.closest('.activity-item').dataset.day,this.closest('.activity-item').dataset.key)" title="Open in Maps"
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
