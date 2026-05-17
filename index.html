@@ -4199,10 +4199,10 @@ function injectDriveChip(cardId, seconds) {
   if (old) old.remove();
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
-  const label = h > 0 ? '~' + h + 'h ' + m + 'm' : '~' + m + 'm';
+  const label = seconds > 0 ? (h > 0 ? '~' + h + 'h ' + m + 'm' : '~' + m + 'm') : 'driving';
   const chip = document.createElement('div');
   chip.className = 'drive-chip';
-  chip.title = 'Estimated driving time';
+  chip.title = seconds > 0 ? 'Estimated driving time' : 'Driving day';
   chip.textContent = '🚗 ' + label;
   const rightCol = header.querySelector('.day-right-col');
   if (rightCol) rightCol.appendChild(chip);
@@ -4303,10 +4303,15 @@ async function fetchTripDriveTimes(days) {
 
       const valid = coords.filter(Boolean);
       const deduped = valid.filter((c, j) => j === 0 || c[0] !== valid[j-1][0] || c[1] !== valid[j-1][1]);
-      if (deduped.length < 2) return;
+      if (deduped.length < 2) {
+        // Couldn't geocode stops — show a plain driving chip for days with drive activities
+        if (hasDriveActs) injectDriveChip('dc-' + dayId, 0);
+        return;
+      }
 
       const dur = await getRouteDuration(deduped);
       if (dur > 600) injectDriveChip('dc-' + dayId, dur);
+      else if (hasDriveActs) injectDriveChip('dc-' + dayId, 0);
     } catch(e) { console.warn('Drive time failed', dayId, e); }
   }));
 }
