@@ -776,6 +776,8 @@ body {
 .drive-leg-unknown { opacity: 0.6; font-style: italic; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
+.act-booking-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.25; transition: opacity 0.15s; border-radius: 6px; }
+.act-booking-btn.active { opacity: 1; background: var(--sand); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
 .wx-forecast-row:last-child { border-bottom:none; }
 .wx-forecast-date { width:80px; font-size:12px; color:var(--muted); line-height:1.3; flex-shrink:0; }
@@ -1257,6 +1259,13 @@ let currentDayKey = null;
 let selectedPhotoFiles = [];  // multi-photo array
 let notesUnsubscribe = null;
 
+const BOOKING_STATUSES = [
+  { key: 'booked',          emoji: '📆',   label: 'Booked' },
+  { key: 'not_booked',      emoji: '🗓️',  label: 'Not booked' },
+  { key: 'no_reservations', emoji: '🚫',   label: 'No reservations' },
+  { key: 'walking_in',      emoji: '🚶🏼', label: 'Walking in' },
+];
+
 // ════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════
@@ -1527,6 +1536,8 @@ function renderTripItinerary(trip) {
       const time = typeof a==='object' && a.time ? a.time : '';
       const michelin = typeof a==='object' && a.michelin;
       const drive = typeof a==='object' && a.drive;
+      const bookingStatus = typeof a==='object' && a.bookingStatus ? a.bookingStatus : '';
+      const bookingInfo = BOOKING_STATUSES.find(s => s.key === bookingStatus);
       // Build search URL using region for cleaner location context
       const regionClean = (day.region||'').trim();
       const searchQ = regionClean ? text + ' ' + regionClean : text;
@@ -1540,6 +1551,7 @@ function renderTripItinerary(trip) {
             <div class="activity-text" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
             ${time?`<div class="activity-time">${escHtml(time)}</div>`:''}
             ${drive?`<div style="font-size:10px;color:var(--muted);opacity:0.6;">🚗 driving</div>`:''}
+            ${bookingInfo?`<div style="font-size:10px;color:var(--muted);opacity:0.7;">${bookingInfo.emoji} ${bookingInfo.label}</div>`:''}
           </div>
           <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq,this.closest('.activity-item').dataset.day,this.closest('.activity-item').dataset.key)" title="Open in Maps"
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
@@ -2818,10 +2830,12 @@ window.selectRegionColor = function(color, el) {
 window.addActivityRow = function(act) {
   const container = document.getElementById('editActivityRows');
   const idx = container.children.length;
-  const emoji = (act && act.emoji) ? act.emoji : '📍';
-  const text  = (act && act.text)  ? act.text  : '';
-  const time  = (act && act.time)  ? act.time  : '';
-  const drive = (act && act.drive) ? true : false;
+  const emoji   = (act && act.emoji) ? act.emoji : '📍';
+  const text    = (act && act.text)  ? act.text  : '';
+  const time    = (act && act.time)  ? act.time  : '';
+  const drive   = (act && act.drive) ? true : false;
+  const booking = (act && act.bookingStatus) ? act.bookingStatus : '';
+  const bookingEmoji = (BOOKING_STATUSES.find(s => s.key === booking) || {}).emoji || '📆';
   const row = document.createElement('div');
   row.className = 'act-row';
   row.draggable = true;
@@ -2832,17 +2846,28 @@ window.addActivityRow = function(act) {
     <input class="act-text-input" placeholder="Activity name">
     <input class="act-time-input" placeholder="Time">
     <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
+    <button class="act-booking-btn${booking ? ' active' : ''}" data-booking="${booking}" title="Booking status">${bookingEmoji}</button>
     <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>`;
   // Set values directly to avoid HTML escaping issues with special characters
-  var textInput = row.querySelector('.act-text-input');
-  var timeInput = row.querySelector('.act-time-input');
-  var driveBtn  = row.querySelector('.act-drive-btn');
+  var textInput  = row.querySelector('.act-text-input');
+  var timeInput  = row.querySelector('.act-time-input');
+  var driveBtn   = row.querySelector('.act-drive-btn');
+  var bookingBtn = row.querySelector('.act-booking-btn');
   textInput.value = text;
   timeInput.value = time;
   driveBtn.addEventListener('click', function() {
     const active = this.dataset.drive === 'true';
     this.dataset.drive = active ? 'false' : 'true';
     this.classList.toggle('active', !active);
+  });
+  bookingBtn.addEventListener('click', function() {
+    const cur = this.dataset.booking;
+    const idx = BOOKING_STATUSES.findIndex(s => s.key === cur);
+    const next = BOOKING_STATUSES[(idx + 1) % BOOKING_STATUSES.length];
+    const isReset = idx === BOOKING_STATUSES.length - 1;
+    this.dataset.booking = isReset ? '' : next.key;
+    this.textContent = isReset ? '📆' : next.emoji;
+    this.classList.toggle('active', !isReset);
   });
   // Prevent drag events on inputs so text selection works normally
   [textInput, timeInput].forEach(function(inp) {
@@ -2975,7 +3000,8 @@ window.saveDayEdit = async function() {
     const text  = row.querySelector('.act-text-input').value.trim();
     const time  = row.querySelector('.act-time-input').value.trim();
     const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
-    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }) };
+    const bookingStatus = row.querySelector('.act-booking-btn').dataset.booking || '';
+    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }) };
   }).filter(a => a.text);
 
   const dayData = {
