@@ -548,6 +548,25 @@ body {
 .hotel-row-dates { font-size: 12px; color: var(--muted); }
 .hotel-row-nights { margin-left: auto; font-size: 12px; background: var(--sand); padding: 3px 9px; border-radius: 20px; color: var(--muted); white-space: nowrap; }
 
+/* ── SHARE ── */
+.share-bar { display: flex; justify-content: flex-end; padding: 8px 16px 0; }
+.share-bar button { font-size: 13px; padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border); background: white; cursor: pointer; color: var(--ink); }
+.overview-itinerary { margin: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.ov-day-card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow-sm); }
+.ov-day-header { display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: flex-start; }
+.ov-day-date { display: flex; flex-direction: column; align-items: center; min-width: 36px; }
+.ov-day-num { font-family: 'Cormorant Garamond', serif; font-size: 22px; line-height: 1; color: var(--terracotta); font-weight: 600; }
+.ov-day-month { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.ov-day-dow { font-size: 9px; color: var(--terracotta); font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
+.ov-day-info { flex: 1; }
+.ov-day-loc { font-size: 14px; font-weight: 500; color: var(--ink); }
+.ov-day-summary { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 3px; line-height: 1.4; }
+.ov-act-list { list-style: none; margin: 0; padding: 6px 14px 8px; display: flex; flex-direction: column; gap: 4px; }
+.ov-act-item { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
+.ov-act-emoji { font-size: 14px; flex-shrink: 0; }
+.ov-act-text { color: var(--ink); flex: 1; }
+.ov-act-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
 /* ── LOGISTICS TAB ── */
 .logistics-section { padding: 20px 16px 0; }
 .logistics-section-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; margin-bottom: 12px; color: var(--ink); }
@@ -1260,6 +1279,8 @@ let currentActivityKey = null;
 let currentDayKey = null;
 let selectedPhotoFiles = [];  // multi-photo array
 let notesUnsubscribe = null;
+let isShareView = false;
+let shareCheckDone = false;
 
 const BOOKING_STATUSES = [
   { key: 'booked',          emoji: '📆',   label: 'Booked' },
@@ -1289,6 +1310,16 @@ function restoreSession() {
   }
 }
 
+function checkShareLink() {
+  if (shareCheckDone) return;
+  shareCheckDone = true;
+  const tripId = new URLSearchParams(window.location.search).get('trip');
+  if (tripId && allTrips[tripId]) {
+    isShareView = true;
+    openTrip(tripId, 'overview');
+  }
+}
+
 function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
   restoreSession();
@@ -1298,6 +1329,7 @@ function initApp() {
     window._onValue(window._ref(window._db, 'trips'), snap => {
       allTrips = snap.val() || {};
       renderHome();
+      checkShareLink();
       populateImportSelect();
       renderAdminTripList();
       if (editingTripId && allTrips[editingTripId]) {
@@ -1481,7 +1513,7 @@ function renderHome() {
 // ════════════════════════════════════════
 //  TRIP DETAIL
 // ════════════════════════════════════════
-function openTrip(tripId) {
+function openTrip(tripId, defaultTab) {
   currentTripId = tripId;
   const trip = allTrips[tripId];
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
@@ -1494,8 +1526,9 @@ function openTrip(tripId) {
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
-  // Switch to itinerary tab
-  switchTripTab('itinerary', document.querySelector('.tab-btn'));
+  const tabName = defaultTab || 'itinerary';
+  const tabBtn = document.querySelector(`.tab-btn[onclick*="${tabName}"]`) || document.querySelector('.tab-btn');
+  switchTripTab(tabName, tabBtn);
   showScreen('screen-trip');
 }
 window.showTripAdmin = function() { if (currentTripId) openEditTrip(currentTripId, 'screen-trip'); };
@@ -1526,7 +1559,7 @@ window.switchTripTab = switchTripTab;
 
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
-  panel.innerHTML = '';
+  panel.innerHTML = `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>`;
 
   // Outbound flights
   if (trip.flightOut) {
@@ -1637,7 +1670,69 @@ function renderTripItinerary(trip) {
   }
 }
 
-function renderTripOverview(trip) {
+async function shareTrip() {
+  const btn = document.getElementById('shareItineraryBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating…';
+  try {
+    await ensureDaySummaries(currentTripId);
+  } catch(e) { /* proceed even if AI fails */ }
+
+  const url = `${window.location.origin}${window.location.pathname}?trip=${currentTripId}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = '✅ Copied!';
+  } catch {
+    window.prompt('Copy this link:', url);
+    btn.textContent = '🔗 Share';
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = '🔗 Share'; }, 2500);
+}
+window.shareTrip = shareTrip;
+
+async function ensureDaySummaries(tripId) {
+  const trip = allTrips[tripId];
+  const snap = await window._get(window._ref(window._db, `trips/${tripId}/daySummaries`));
+  const existing = snap.val() || {};
+
+  const missing = Object.entries(trip.days || {})
+    .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0))
+    .filter(([id]) => !existing[id]);
+
+  if (!missing.length) return;
+
+  const dayLines = missing.map(([id, day]) => {
+    const acts = Object.values(day.activities || {}).map(a => a.text).filter(Boolean).join(', ');
+    const loc = day.description || day.city || '';
+    return `"${id}": ${day.dateNum} ${day.dateMonth}${loc ? ' in ' + loc : ''} — ${acts || 'travel day'}`;
+  }).join('\n');
+
+  const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{role: 'user', content:
+        `Write a vivid 1-sentence summary (max 15 words) for each day of this trip itinerary. Return ONLY a JSON object mapping each day ID (as provided in quotes) to its summary string.\n\nDays:\n${dayLines}`
+      }]
+    })
+  });
+
+  const data = await res.json();
+  const text = data.content?.[0]?.text || '{}';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return;
+
+  const summaries = JSON.parse(match[0]);
+  const updates = {};
+  for (const [id, summary] of Object.entries(summaries)) {
+    updates[`trips/${tripId}/daySummaries/${id}`] = summary;
+  }
+  await window._update(window._ref(window._db, '/'), updates);
+}
+
+async function renderTripOverview(trip) {
   const panel = document.getElementById('tripOverviewPanel');
   const days = trip.days ? Object.entries(trip.days) : [];
   const dayVals = days.map(([,d]) => d);
@@ -1781,8 +1876,60 @@ function renderTripOverview(trip) {
       </div>`;
   }
 
-  panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + memoriesHTML + journalHTML;
+  const visibleMemories = isShareView ? '' : memoriesHTML;
+  const visibleJournal  = isShareView ? '' : journalHTML;
+
+  // Render synchronously so the map div is in the DOM before switchTripTab's initTripMap call
+  panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + visibleMemories + visibleJournal;
   // Map is initialized lazily when Overview tab becomes visible (see switchTripTab)
+
+  // In share view: fetch summaries and append itinerary section after panel is already in DOM
+  if (isShareView) {
+    const summariesSnap = await window._get(window._ref(window._db, `trips/${currentTripId}/daySummaries`));
+    const daySummaries = summariesSnap.val() || {};
+    const sortedForItinerary = (trip.days ? Object.entries(trip.days) : [])
+      .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
+    if (sortedForItinerary.length) {
+      const itineraryHTML = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Itinerary</div>
+        <div class="overview-itinerary">` +
+        sortedForItinerary.map(([dayId, day]) => {
+          const loc = day.description || day.city || '';
+          const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+          const summary = daySummaries[dayId] || '';
+          const actsHTML = acts.length ? `<ul class="ov-act-list">${acts.map(a => {
+            const text = typeof a === 'object' ? (a.text||'') : a;
+            const emoji = typeof a === 'object' && a.emoji ? a.emoji : '';
+            const time = typeof a === 'object' && a.time ? a.time : '';
+            return `<li class="ov-act-item"><span class="ov-act-emoji">${emoji}</span><span class="ov-act-text">${escHtml(text)}</span>${time ? `<span class="ov-act-time">${escHtml(time)}</span>` : ''}</li>`;
+          }).join('')}</ul>` : '';
+          const dowFull = day.dateISO
+            ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
+            : (day.dayName ? day.dayName.slice(0,3) : '');
+          return `<div class="ov-day-card">
+            <div class="ov-day-header">
+              <div class="ov-day-date">
+                <span class="ov-day-num">${day.dateNum||'–'}</span>
+                <span class="ov-day-month">${day.dateMonth||''}</span>
+                ${dowFull ? `<span class="ov-day-dow">${dowFull}</span>` : ''}
+              </div>
+              <div class="ov-day-info">
+                ${loc ? `<div class="ov-day-loc">${escHtml(loc)}</div>` : ''}
+                ${summary ? `<div class="ov-day-summary">${escHtml(summary)}</div>` : ''}
+              </div>
+            </div>
+            ${actsHTML}
+          </div>`;
+        }).join('') +
+        `</div>`;
+      // Append after map container
+      const mapContainer = panel.querySelector('#tripMapContainer');
+      if (mapContainer) {
+        mapContainer.insertAdjacentHTML('afterend', itineraryHTML);
+      } else {
+        panel.innerHTML += itineraryHTML;
+      }
+    }
+  }
 }
 
 window.toggleDay = function(id) {
