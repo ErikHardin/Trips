@@ -1752,6 +1752,20 @@ async function renderTripOverview(trip) {
         </div>
       </div>`;
   }
+  // In-trip flights (sorted by day order, between outbound and return)
+  const inTripFlights = days
+    .filter(([,d]) => d.flightInfo)
+    .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
+  inTripFlights.forEach(([,day]) => {
+    flightsHTML += `
+      <div class="flight-banner" style="margin:10px 16px 0;">
+        <div class="flight-icon">✈️</div>
+        <div>
+          <div class="flight-label">Flight · ${day.flightInfo.date||''}</div>
+          <div class="flight-row"><span class="flight-code">${day.flightInfo.formatted.split(' ')[0]}</span> ${day.flightInfo.formatted.split(' ').slice(1).join(' ')}</div>
+        </div>
+      </div>`;
+  });
   if (trip.flightReturn) {
     flightsHTML += `
       <div class="flight-banner" style="margin:10px 16px 0;">
@@ -1899,14 +1913,6 @@ async function renderTripOverview(trip) {
           const dowFull = day.dateISO
             ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
             : (day.dayName ? day.dayName.slice(0,3) : '');
-          const flightHTML = day.flightInfo ? `
-            <div class="flight-banner" style="margin:8px 14px 6px;">
-              <div class="flight-icon" style="font-size:16px;">✈️</div>
-              <div>
-                <div class="flight-label">Flight · ${day.flightInfo.date||''}</div>
-                <div class="flight-row"><span class="flight-code">${day.flightInfo.formatted.split(' ')[0]}</span> ${day.flightInfo.formatted.split(' ').slice(1).join(' ')}</div>
-              </div>
-            </div>` : '';
           return `<div class="ov-day-card">
             <div class="ov-day-header">
               <div class="ov-day-date">
@@ -1919,7 +1925,6 @@ async function renderTripOverview(trip) {
                 ${summary ? `<div class="ov-day-summary">${escHtml(summary)}</div>` : ''}
               </div>
             </div>
-            ${flightHTML}
           </div>`;
         }).join('') +
         `</div>`;
