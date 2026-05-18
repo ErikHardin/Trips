@@ -1682,31 +1682,37 @@ async function shareTrip() {
   } catch(e) { /* proceed even if AI fails */ }
 
   const url = `${window.location.origin}${window.location.pathname}?trip=${currentTripId}`;
+  const trip = allTrips[currentTripId];
 
-  let copied = false;
-  try {
-    await navigator.clipboard.writeText(url);
-    copied = true;
-  } catch {
-    // execCommand fallback — works after async awaits where clipboard API is blocked
-    try {
-      const el = document.createElement('textarea');
-      el.value = url;
-      el.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
-      document.body.appendChild(el);
-      el.select();
-      copied = document.execCommand('copy');
-      document.body.removeChild(el);
-    } catch {}
-  }
-
-  if (copied) {
-    btn.textContent = '✅ Copied!';
-    setTimeout(() => { btn.disabled = false; btn.textContent = '🔗 Share'; }, 2500);
-  } else {
+  if (navigator.share) {
     btn.disabled = false;
     btn.textContent = '🔗 Share';
-    window.prompt('Copy this link:', url);
+    await navigator.share({ title: trip.name || 'Trip Itinerary', url });
+  } else {
+    // Desktop fallback: copy to clipboard
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } catch {
+      try {
+        const el = document.createElement('textarea');
+        el.value = url;
+        el.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
+        document.body.appendChild(el);
+        el.select();
+        copied = document.execCommand('copy');
+        document.body.removeChild(el);
+      } catch {}
+    }
+    if (copied) {
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '🔗 Share'; }, 2500);
+    } else {
+      btn.disabled = false;
+      btn.textContent = '🔗 Share';
+      window.prompt('Copy this link:', url);
+    }
   }
 }
 window.shareTrip = shareTrip;
