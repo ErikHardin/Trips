@@ -103,41 +103,27 @@ def draw_icon(size, features):
     draw.rounded_rectangle([0, 0, size - 1, size - 1],
                            radius=size // 5, fill=TERRACOTTA)
 
-    # Pin geometry
-    cx          = size / 2
-    pin_r       = size * 0.28       # pin-head radius
-    pin_cy      = size * 0.385      # pin-head centre y
-    pin_tip_y   = size * 0.775      # tip of pin
+    # Globe centred on icon
+    cx      = size / 2
+    cy      = size / 2
+    globe_r = size * 0.38
+    line_w  = max(1, int(size * 0.016))
 
-    # Pin body
-    body_hw = pin_r * 0.72
-    draw.polygon(
-        [(cx - body_hw, pin_cy + pin_r * 0.55),
-         (cx + body_hw, pin_cy + pin_r * 0.55),
-         (cx, pin_tip_y)],
-        fill=CREAM,
-    )
+    # Rename pin_cy → cy for the helpers below
+    pin_cy = cy
 
-    # Pin head background (cream circle)
-    draw.ellipse([cx - pin_r, pin_cy - pin_r, cx + pin_r, pin_cy + pin_r],
-                 fill=CREAM)
-
-    # --- Globe inside the pin head ---
-    globe_r  = pin_r - max(2, int(size * 0.012))   # slight inset
-    line_w   = max(1, int(size * 0.016))
-
-    # Mask: circle inside the pin head
+    # Globe circle mask
     globe_mask = Image.new("L", (size, size), 0)
     ImageDraw.Draw(globe_mask).ellipse(
-        [cx - globe_r, pin_cy - globe_r, cx + globe_r, pin_cy + globe_r],
+        [cx - globe_r, cy - globe_r, cx + globe_r, cy + globe_r],
         fill=255,
     )
 
-    # Ocean fill layer (terracotta-tinted cream so it reads as water)
+    # Ocean fill
     ocean_col = (210, 165, 130)
     globe_layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(globe_layer).ellipse(
-        [cx - globe_r, pin_cy - globe_r, cx + globe_r, pin_cy + globe_r],
+        [cx - globe_r, cy - globe_r, cx + globe_r, cy + globe_r],
         fill=ocean_col,
     )
     img.alpha_composite(globe_layer)
@@ -148,7 +134,7 @@ def draw_icon(size, features):
 
     land_layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw_land(ImageDraw.Draw(land_layer), features, clat, clon,
-              cx, pin_cy, globe_r, line_w)
+              cx, cy, globe_r, line_w)
 
     # Clip land to globe circle
     land_alpha = land_layer.split()[3]
@@ -158,7 +144,7 @@ def draw_icon(size, features):
     # Globe circle border
     border_w = max(1, int(size * 0.018))
     ImageDraw.Draw(img).ellipse(
-        [cx - globe_r, pin_cy - globe_r, cx + globe_r, pin_cy + globe_r],
+        [cx - globe_r, cy - globe_r, cx + globe_r, cy + globe_r],
         outline=GLOBE_EDGE, width=border_w,
     )
 
