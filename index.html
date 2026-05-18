@@ -560,6 +560,7 @@ body {
 .ov-day-dow { font-size: 9px; color: var(--terracotta); font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
 .ov-day-info { flex: 1; }
 .ov-day-loc { font-size: 14px; font-weight: 500; color: var(--ink); }
+.ov-day-city { font-size: 11px; color: var(--muted); margin-top: 1px; }
 .ov-day-summary { font-size: 13px; color: var(--ink); margin-top: 3px; line-height: 1.4; }
 .ov-act-list { list-style: none; margin: 0; padding: 6px 14px 8px; display: flex; flex-direction: column; gap: 4px; }
 .ov-act-item { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
@@ -1928,16 +1929,24 @@ async function renderTripOverview(trip) {
     const sortedForItinerary = (trip.days ? Object.entries(trip.days) : [])
       .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
     if (sortedForItinerary.length) {
-      const itineraryHTML = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Itinerary</div>
-        <div class="overview-itinerary">` +
-        sortedForItinerary.map(([dayId, day]) => {
+      let shareRegion = null;
+      const dayCardsHTML = sortedForItinerary.map(([dayId, day]) => {
+          let regionHeader = '';
+          if (day.region && day.region !== shareRegion) {
+            shareRegion = day.region;
+            regionHeader = `<div class="region-header">
+              <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
+              <div class="region-name-text">${escHtml(day.region)}</div>
+              <div class="region-nights">${day.regionDates||''}</div>
+            </div>`;
+          }
           const loc = day.description || day.city || '';
-          const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+          const city = day.city && day.city !== loc ? day.city : '';
           const summary = daySummaries[dayId] || '';
           const dowFull = day.dateISO
             ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
             : (day.dayName ? day.dayName.slice(0,3) : '');
-          return `<div class="ov-day-card">
+          return regionHeader + `<div class="ov-day-card">
             <div class="ov-day-header">
               <div class="ov-day-date">
                 <span class="ov-day-num">${day.dateNum||'–'}</span>
@@ -1946,12 +1955,14 @@ async function renderTripOverview(trip) {
               </div>
               <div class="ov-day-info">
                 ${loc ? `<div class="ov-day-loc">${escHtml(loc)}</div>` : ''}
+                ${city ? `<div class="ov-day-city">${escHtml(city)}</div>` : ''}
                 ${summary ? `<div class="ov-day-summary">${escHtml(summary)}</div>` : ''}
               </div>
             </div>
           </div>`;
-        }).join('') +
-        `</div>`;
+        }).join('');
+      const itineraryHTML = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Itinerary</div>
+        <div class="overview-itinerary">${dayCardsHTML}</div>`;
       // Append after map container
       const mapContainer = panel.querySelector('#tripMapContainer');
       if (mapContainer) {
