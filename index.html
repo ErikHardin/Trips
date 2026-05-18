@@ -1271,8 +1271,27 @@ const BOOKING_STATUSES = [
 // ════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════
+function restoreSession() {
+  try {
+    const raw = localStorage.getItem('adminsession');
+    if (!raw) return;
+    const session = JSON.parse(raw);
+    if (!session?.user || !session?.expires || Date.now() > session.expires) {
+      localStorage.removeItem('adminsession');
+      return;
+    }
+    isAdmin = true;
+    adminUser = session.user;
+    document.getElementById('adminNavBtn').style.display = '';
+    document.getElementById('lockBtn').style.display = '';
+  } catch(e) {
+    try { localStorage.removeItem('adminsession'); } catch(_) {}
+  }
+}
+
 function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
+  restoreSession();
   // Sign in anonymously first so Firebase reads work on fresh load
   window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
     // Load trips
@@ -1316,6 +1335,7 @@ window.handleSecretTap = function() {
 window.lockApp = function() {
   isAdmin = false;
   adminUser = '';
+  try { localStorage.removeItem('adminsession'); } catch(e) {}
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripAdminBtn').style.display = 'none';
@@ -1362,6 +1382,12 @@ window.pinKey = function(digit) {
           }
           isAdmin = true;
           adminUser = data.user || 'Admin';
+          try {
+            localStorage.setItem('adminsession', JSON.stringify({
+              user: adminUser,
+              expires: Date.now() + 30 * 24 * 60 * 60 * 1000
+            }));
+          } catch(e) {}
           document.getElementById('adminNavBtn').style.display = '';
           document.getElementById('lockBtn').style.display = '';
           document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
