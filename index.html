@@ -1341,7 +1341,13 @@ function initApp() {
       }
     });
   });
-  goHome();
+  // If opening a share link, keep all screens hidden while Firebase loads
+  // to avoid flashing the home screen before redirecting to the trip
+  if (new URLSearchParams(window.location.search).get('trip')) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  } else {
+    goHome();
+  }
 }
 
 // ════════════════════════════════════════
