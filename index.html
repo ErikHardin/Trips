@@ -1318,6 +1318,8 @@ function checkShareLink() {
     isShareView = true;
     openTrip(tripId, 'overview');
     document.querySelectorAll('.tab-btn').forEach(b => b.style.display = 'none');
+    const tripBackBtn = document.querySelector('#screen-trip .back-btn');
+    if (tripBackBtn) tripBackBtn.style.display = 'none';
   }
 }
 
@@ -1560,7 +1562,7 @@ window.switchTripTab = switchTripTab;
 
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
-  panel.innerHTML = `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>`;
+  panel.innerHTML = isAdmin ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
 
   // Outbound flights
   if (trip.flightOut) {
@@ -1693,12 +1695,9 @@ window.shareTrip = shareTrip;
 
 async function ensureDaySummaries(tripId) {
   const trip = allTrips[tripId];
-  const snap = await window._get(window._ref(window._db, `trips/${tripId}/daySummaries`));
-  const existing = snap.val() || {};
 
   const missing = Object.entries(trip.days || {})
-    .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0))
-    .filter(([id]) => !existing[id]);
+    .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
 
   if (!missing.length) return;
 
