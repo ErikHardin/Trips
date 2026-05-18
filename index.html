@@ -560,7 +560,7 @@ body {
 .ov-day-dow { font-size: 9px; color: var(--terracotta); font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
 .ov-day-info { flex: 1; }
 .ov-day-loc { font-size: 14px; font-weight: 500; color: var(--ink); }
-.ov-day-summary { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 3px; line-height: 1.4; }
+.ov-day-summary { font-size: 13px; color: var(--ink); margin-top: 3px; line-height: 1.4; }
 .ov-act-list { list-style: none; margin: 0; padding: 6px 14px 8px; display: flex; flex-direction: column; gap: 4px; }
 .ov-act-item { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
 .ov-act-emoji { font-size: 14px; flex-shrink: 0; }
@@ -1317,6 +1317,7 @@ function checkShareLink() {
   if (tripId && allTrips[tripId]) {
     isShareView = true;
     openTrip(tripId, 'overview');
+    document.querySelectorAll('.tab-btn').forEach(b => b.style.display = 'none');
   }
 }
 
@@ -1880,7 +1881,7 @@ async function renderTripOverview(trip) {
   const visibleJournal  = isShareView ? '' : journalHTML;
 
   // Render synchronously so the map div is in the DOM before switchTripTab's initTripMap call
-  panel.innerHTML = flightsHTML + statsHTML + hotelsHTML + mapHTML + visibleMemories + visibleJournal;
+  panel.innerHTML = flightsHTML + (isShareView ? '' : statsHTML) + hotelsHTML + mapHTML + visibleMemories + visibleJournal;
   // Map is initialized lazily when Overview tab becomes visible (see switchTripTab)
 
   // In share view: fetch summaries and append itinerary section after panel is already in DOM
@@ -1896,12 +1897,6 @@ async function renderTripOverview(trip) {
           const loc = day.description || day.city || '';
           const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
           const summary = daySummaries[dayId] || '';
-          const actsHTML = acts.length ? `<ul class="ov-act-list">${acts.map(a => {
-            const text = typeof a === 'object' ? (a.text||'') : a;
-            const emoji = typeof a === 'object' && a.emoji ? a.emoji : '';
-            const time = typeof a === 'object' && a.time ? a.time : '';
-            return `<li class="ov-act-item"><span class="ov-act-emoji">${emoji}</span><span class="ov-act-text">${escHtml(text)}</span>${time ? `<span class="ov-act-time">${escHtml(time)}</span>` : ''}</li>`;
-          }).join('')}</ul>` : '';
           const dowFull = day.dateISO
             ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
             : (day.dayName ? day.dayName.slice(0,3) : '');
@@ -1917,7 +1912,6 @@ async function renderTripOverview(trip) {
                 ${summary ? `<div class="ov-day-summary">${escHtml(summary)}</div>` : ''}
               </div>
             </div>
-            ${actsHTML}
           </div>`;
         }).join('') +
         `</div>`;
