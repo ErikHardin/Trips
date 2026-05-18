@@ -1714,7 +1714,7 @@ async function ensureDaySummaries(tripId) {
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{role: 'user', content:
-        `Write a vivid 2-3 sentence summary for each day of this trip itinerary. Capture the spirit of the day — the places, food, or experiences — in a way that would excite someone reading it. Return ONLY a JSON object mapping each day ID (as provided in quotes) to its summary string.\n\nDays:\n${dayLines}`
+        `Write a 2-3 sentence description for each day of this trip itinerary. Write in a casual, natural voice — like a well-traveled friend describing their day, not a travel brochure. Be specific and grounded. Avoid flowery adjectives, superlatives, and clichés like "vibrant", "bustling", "charming", or "nestled". Return ONLY a JSON object mapping each day ID (as provided in quotes) to its summary string.\n\nDays:\n${dayLines}`
       }]
     })
   });
