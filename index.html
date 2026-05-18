@@ -808,6 +808,7 @@ body {
 .wx-forecast-hi { font-size:14px; font-weight:600; color:var(--ink); }
 .wx-forecast-lo { font-size:12px; color:var(--muted); margin-left:5px; }
 </style>
+<script>if(new URLSearchParams(location.search).get('trip')){document.documentElement.style.visibility='hidden';}</script>
 </head>
 <body>
 
@@ -1321,7 +1322,11 @@ function checkShareLink() {
     document.querySelectorAll('.tab-btn').forEach(b => b.style.display = 'none');
     const tripBackBtn = document.querySelector('#screen-trip .back-btn');
     if (tripBackBtn) tripBackBtn.style.display = 'none';
+  } else if (tripId) {
+    // Invalid trip ID — fall back to home screen
+    goHome();
   }
+  document.documentElement.style.visibility = '';
 }
 
 function initApp() {
@@ -1341,11 +1346,7 @@ function initApp() {
       }
     });
   });
-  // If opening a share link, keep all screens hidden while Firebase loads
-  // to avoid flashing the home screen before redirecting to the trip
-  if (new URLSearchParams(window.location.search).get('trip')) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  } else {
+  if (!new URLSearchParams(window.location.search).get('trip')) {
     goHome();
   }
 }
