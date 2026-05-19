@@ -84,6 +84,7 @@ export default {
       const unixSec = Math.floor(Number(fireAt) / 1000).toString();
       const ntfyHeaders = { 'Title': title, 'Delay': unixSec, 'Priority': 'high', 'Tags': 'alarm_clock', 'Content-Type': 'text/plain' };
       if (clickUrl) ntfyHeaders['Click'] = clickUrl;
+      if (env.NTFY_TOKEN) ntfyHeaders['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
       const res = await fetch(`https://ntfy.sh/${env.NTFY_TOPIC}`, {
         method: 'POST',
         headers: ntfyHeaders,
