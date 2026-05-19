@@ -68,6 +68,25 @@ export default {
       });
     }
 
+    // ntfy.sh push notification scheduling
+    if (url.pathname === '/schedule-notification') {
+      const { title, message, fireAt } = body;
+      if (!title || !message || !fireAt || !env.NTFY_TOPIC) {
+        return new Response(JSON.stringify({ error: 'Missing fields or NTFY_TOPIC not configured' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      const unixSec = Math.floor(Number(fireAt) / 1000).toString();
+      const res = await fetch(`https://ntfy.sh/${env.NTFY_TOPIC}`, {
+        method: 'POST',
+        headers: { 'Title': title, 'Delay': unixSec, 'Priority': 'high', 'Tags': 'alarm_clock', 'Content-Type': 'text/plain' },
+        body: message
+      });
+      return new Response(JSON.stringify({ ok: res.ok }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
     // AI proxy (unchanged)
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

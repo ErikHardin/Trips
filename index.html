@@ -223,6 +223,11 @@ body {
 .day-body { display: none; padding: 12px 14px 14px; }
 .day-card.open .day-body { display: block; animation: fadeSlide 0.2s ease; }
 @keyframes fadeSlide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.day-card.today-card > .day-header { border-left: 3px solid var(--accent); background: rgba(188,111,79,0.06); }
+.today-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--accent); text-transform: uppercase; padding: 2px 6px; border: 1px solid currentColor; border-radius: 4px; white-space: nowrap; }
+.act-bell-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px; flex-shrink: 0; opacity: 0.4; transition: opacity 0.2s; line-height: 1; }
+.act-bell-btn:hover { opacity: 1; }
+.act-bell-btn.reminded { opacity: 1; color: var(--accent); }
 
 /* Activities */
 .activity-list { display: flex; flex-direction: column; gap: 6px; }
@@ -1729,7 +1734,7 @@ function renderTripItinerary(trip) {
       const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQ) + (countryCode ? '&gl=' + countryCode : '');
       const mapsQuery = text + (regionClean ? ', ' + regionClean : '');
       return `
-        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-text="${escAttr(text)}" data-search="${escAttr(searchUrl)}">
+        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-text="${escAttr(text)}" data-time="${escAttr(time)}" data-drive="${drive}" data-search="${escAttr(searchUrl)}">
           <div class="activity-emoji">${emoji}</div>
           <div style="flex:1;min-width:0;">
             <div class="activity-text" style="cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--sand-dark);">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
@@ -1740,7 +1745,8 @@ function renderTripItinerary(trip) {
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
           <button class="notes-open-btn" title="Notes & Photos"
             style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.5;">📝</button>
-        </div>`; 
+          ${isAdmin && time && trip.status === 'active' ? `<button class="act-bell-btn" title="Set reminder" onclick="onBellClick(event)">🔔</button>` : ''}
+        </div>`;
     }).join('');
 
     const cardId = 'dc-'+dayId;
@@ -1780,6 +1786,7 @@ function renderTripItinerary(trip) {
     setTimeout(() => fetchTripWeather(days, trip.year), 100);
     setTimeout(() => fetchTripDriveTimes(days), 200);
   }
+  if (trip.status === 'active') setTimeout(() => highlightToday(trip), 50);
   // Return flights
   if (trip.flightReturn) {
     panel.innerHTML += `
@@ -1790,6 +1797,69 @@ function renderTripItinerary(trip) {
           ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
         </div>
       </div>`;
+  }
+}
+
+function highlightToday(trip) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const entry = Object.entries(trip.days || {}).find(([, d]) => d.dateISO === todayISO);
+  if (!entry) return;
+  const card = document.getElementById('dc-' + entry[0]);
+  if (!card) return;
+  card.classList.add('today-card');
+  const dateCol = card.querySelector('.day-num')?.parentElement;
+  if (dateCol && !card.querySelector('.today-badge')) {
+    const badge = Object.assign(document.createElement('div'), { className: 'today-badge', textContent: 'Today' });
+    dateCol.after(badge);
+  }
+  card.classList.add('open');
+  setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+}
+
+async function onBellClick(e) {
+  const btn = e.currentTarget;
+  const item = btn.closest('.activity-item');
+  const dayId = item.dataset.day;
+  const actText = item.dataset.text;
+  const actTime = item.dataset.time;
+  if (!actTime) return;
+
+  const startMin = parseActivityStartMinutes(actTime);
+  if (startMin == null) { alert('Could not parse activity time.'); return; }
+
+  // Use cached drive leg duration if available, otherwise default to 30 min
+  const legs = (window._dayLegs || {})[dayId] || [];
+  let leadMin = 30;
+  if (legs.length) {
+    const card = document.getElementById('dc-' + dayId);
+    const driveItems = card ? Array.from(card.querySelectorAll('.activity-item[data-drive="true"]')) : [];
+    const idx = driveItems.indexOf(item);
+    if (idx >= 0 && idx < legs.length) leadMin = Math.max(15, Math.ceil(legs[idx].seconds / 60) + 10);
+  }
+
+  const today = new Date();
+  const fireDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(),
+    Math.floor(startMin / 60), startMin % 60, 0, 0);
+  fireDate.setMinutes(fireDate.getMinutes() - leadMin);
+
+  if (fireDate - Date.now() < 15 * 60 * 1000) { alert('Reminder must be at least 15 minutes in the future.'); return; }
+
+  const timeStr = fireDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (!confirm(`Schedule a push notification at ${timeStr}?\n"${actText}" starts at ${actTime}`)) return;
+
+  btn.disabled = true; btn.textContent = '⏳';
+  try {
+    const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/schedule-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '⏰ Time to leave!', message: `"${actText}" starts at ${actTime}`, fireAt: fireDate.getTime() })
+    });
+    const data = await res.json();
+    if (data.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
+    else throw new Error('ntfy error');
+  } catch {
+    btn.textContent = '🔔'; btn.disabled = false;
+    alert('Failed to schedule reminder. Ensure NTFY_TOPIC is set in Cloudflare env vars.');
   }
 }
 
@@ -4773,7 +4843,12 @@ async function fetchTripDriveTimes(days) {
           const to = await resolveCoord(iata + ' airport');
           if (prevEndpoint.coord && to && Math.abs(prevEndpoint.coord[0]-to[0]) + Math.abs(prevEndpoint.coord[1]-to[1]) > 0.02) {
             const {duration: dur, legs} = await getRouteDuration([prevEndpoint.coord, to]);
-            if (dur > 600) injectDriveChip('dc-' + dayId, dur, legs.length ? [{from: prevEndpoint.name, to: iata + ' airport', seconds: legs[0]}] : null);
+            if (dur > 600) {
+              const flightLeg = legs.length ? [{from: prevEndpoint.name, to: iata + ' airport', seconds: legs[0]}] : null;
+              window._dayLegs = window._dayLegs || {};
+              if (flightLeg) window._dayLegs[dayId] = flightLeg;
+              injectDriveChip('dc-' + dayId, dur, flightLeg);
+            }
           }
         }
         return;
@@ -4872,8 +4947,11 @@ async function fetchTripDriveTimes(days) {
 
       const {duration, legs} = await getRouteDuration(deduped.map(p => p.coord));
       const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs}));
-      if (duration > 600) injectDriveChip('dc-' + dayId, duration, legDetails, notFound);
-      else if (hasDriveActs) injectDriveChip('dc-' + dayId, 0, null, notFound);
+      if (duration > 600) {
+        window._dayLegs = window._dayLegs || {};
+        window._dayLegs[dayId] = legDetails;
+        injectDriveChip('dc-' + dayId, duration, legDetails, notFound);
+      } else if (hasDriveActs) injectDriveChip('dc-' + dayId, 0, null, notFound);
     } catch(e) { console.warn('Drive time failed', dayId, e); }
   }));
 }
