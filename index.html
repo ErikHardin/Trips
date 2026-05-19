@@ -4806,13 +4806,25 @@ async function getRouteDuration(coords) {
 }
 
 function parseActivityStartMinutes(timeStr) {
-  const m = (timeStr || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
-  if (!m) return null;
-  let h = parseInt(m[1]), min = parseInt(m[2]);
-  const ap = m[3].toLowerCase();
-  if (ap === 'pm' && h !== 12) h += 12;
-  if (ap === 'am' && h === 12) h = 0;
-  return h * 60 + min;
+  const s = (timeStr || '').trim().toLowerCase();
+  // Start token has its own am/pm: "5pm", "1:30pm", "11:30am-3pm", "10am-12pm"
+  let m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if (m) {
+    let h = parseInt(m[1]), min = m[2] ? parseInt(m[2]) : 0;
+    if (m[3] === 'pm' && h !== 12) h += 12;
+    if (m[3] === 'am' && h === 12) h = 0;
+    return h * 60 + min;
+  }
+  // Range where start shares am/pm with end: "10-11am", "10:30-11am"
+  m = s.match(/^(\d{1,2})(?::(\d{2}))?-/);
+  const apEnd = s.match(/(am|pm)\s*$/);
+  if (m && apEnd) {
+    let h = parseInt(m[1]), min = m[2] ? parseInt(m[2]) : 0;
+    if (apEnd[1] === 'pm' && h !== 12) h += 12;
+    if (apEnd[1] === 'am' && h === 12) h = 0;
+    return h * 60 + min;
+  }
+  return null;
 }
 
 function parseActivityDurationMinutes(timeStr) {
