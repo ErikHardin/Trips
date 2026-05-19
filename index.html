@@ -1316,12 +1316,12 @@ function showOfflineBanner(offline) {
   if (!banner) return;
   if (offline) {
     banner.textContent = '📴 Offline — viewing saved data';
-    banner.style.display = '';
+    banner.style.display = 'block';
     document.body.classList.add('is-offline');
   } else {
     if (_offlineWriteQueued) {
       banner.textContent = '🔄 Back online — syncing changes…';
-      banner.style.display = '';
+      banner.style.display = 'block';
       document.body.classList.remove('is-offline');
       setTimeout(() => { banner.style.display = 'none'; _offlineWriteQueued = false; }, 3000);
     } else {
