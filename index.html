@@ -17,6 +17,11 @@
 <link rel="apple-touch-icon" href="icon-180.png?v=4">
 <link rel="icon" type="image/png" href="icon-512.png">
 <meta name="theme-color" content="#c06a3d">
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/Trips/sw.js', { scope: '/Trips/' });
+}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -807,6 +812,8 @@ body {
 .wx-forecast-label { flex:1; font-size:12px; color:var(--muted); }
 .wx-forecast-hi { font-size:14px; font-weight:600; color:var(--ink); }
 .wx-forecast-lo { font-size:12px; color:var(--muted); margin-left:5px; }
+#offlineBanner { position:fixed; top:0; left:0; right:0; z-index:200; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; letter-spacing:.3px; background:#2a2520; color:#faf8f4; display:none; }
+.is-offline .requires-network { opacity:.4; pointer-events:none; }
 </style>
 <script>if(new URLSearchParams(location.search).get('trip')){document.documentElement.style.visibility='hidden';}</script>
 </head>
@@ -921,7 +928,7 @@ body {
   <div class="scroll-content">
     <div class="notes-activity-title" id="notesActivityTitle"></div>
     <div class="notes-list" id="notesList"></div>
-    <div id="addNoteForm" class="add-note-form" style="display:none;">
+    <div id="addNoteForm" class="add-note-form requires-network" style="display:none;">
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
@@ -1221,6 +1228,7 @@ body {
   <button id="lightbox-next" onclick="lightboxNav(1)">›</button>
   <div id="lightbox-counter"></div>
 </div>
+<div id="offlineBanner"></div>
 <div class="toast" id="toast"></div>
 
 <!-- ══ FIREBASE ══ -->
@@ -1264,6 +1272,58 @@ window._signInAnonymously = signInAnonymously;
 
 // ── Bootstrap ──
 window.addEventListener('load', () => { initApp(); });
+</script>
+
+<!-- ══ OFFLINE STORE ══ -->
+<script>
+const OfflineStore = (() => {
+  let _db;
+  function open() {
+    if (_db) return Promise.resolve(_db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('hardinTripsDB', 1);
+      r.onupgradeneeded = e => e.target.result.createObjectStore('trips', { keyPath: '_key' });
+      r.onsuccess = e => { _db = e.target.result; res(_db); };
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  async function save(data) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const r = db.transaction('trips', 'readwrite').objectStore('trips').put({ _key: 'all', data, savedAt: Date.now() });
+      r.onsuccess = () => res();
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  async function load() {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const r = db.transaction('trips', 'readonly').objectStore('trips').get('all');
+      r.onsuccess = e => res(e.target.result || null);
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  return { save, load };
+})();
+
+function showOfflineBanner(offline) {
+  const banner = document.getElementById('offlineBanner');
+  if (!banner) return;
+  if (offline) {
+    banner.textContent = '📴 Offline — viewing saved data';
+    banner.style.display = '';
+    document.body.classList.add('is-offline');
+  } else {
+    banner.style.display = 'none';
+    document.body.classList.remove('is-offline');
+  }
+}
+
+function setupOfflineDetection() {
+  window.addEventListener('offline', () => showOfflineBanner(true));
+  window.addEventListener('online',  () => showOfflineBanner(false));
+  if (!navigator.onLine) showOfflineBanner(true);
+}
 </script>
 
 <script>
@@ -1329,14 +1389,29 @@ function checkShareLink() {
   document.documentElement.style.visibility = '';
 }
 
-function initApp() {
+async function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
   restoreSession();
+  setupOfflineDetection();
+
+  // Load cached snapshot immediately when offline so the app isn't blank
+  if (!navigator.onLine) {
+    const cached = await OfflineStore.load().catch(() => null);
+    if (cached) {
+      allTrips = cached.data;
+      renderHome();
+      checkShareLink();
+      populateImportSelect();
+      renderAdminTripList();
+    }
+  }
+
   // Sign in anonymously first so Firebase reads work on fresh load
   window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
     // Load trips
     window._onValue(window._ref(window._db, 'trips'), snap => {
       allTrips = snap.val() || {};
+      OfflineStore.save(allTrips).catch(() => {});
       renderHome();
       checkShareLink();
       populateImportSelect();
@@ -2067,7 +2142,7 @@ async function renderWishlistPanel(tripId) {
     _wishlistCache[tripId] = raw;
 
     const addFormHTML = isAdmin ? `
-      <div id="wishlistAddForm" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
+      <div id="wishlistAddForm" class="requires-network" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
         <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Idea</div>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
           <input id="wishlistEmoji" type="text" placeholder="🍽️" maxlength="4"
@@ -2315,10 +2390,7 @@ function renderNotesList(dayId, actKey) {
   const list = document.getElementById('notesList');
   list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;">Loading…</div>';
 
-  const path = `trips/${currentTripId}/days/${dayId}/notes/${actKey}`;
-  if (notesUnsubscribe) notesUnsubscribe();
-  notesUnsubscribe = window._onValue(window._ref(window._db, path), snap => {
-    const notes = snap.val() || {};
+  function renderNotesData(notes) {
     const entries = Object.entries(notes).sort((a,b)=>(a[1].ts||0)-(b[1].ts||0));
     if (entries.length === 0) {
       list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet${isAdmin ? ' — be the first to add one!' : '.'}</div>`;
@@ -2344,6 +2416,19 @@ function renderNotesList(dayId, actKey) {
           </div>
         </div>`;
     }).join('');
+  }
+
+  // When offline, fall back to notes already in the cached allTrips snapshot
+  if (!navigator.onLine) {
+    const notes = allTrips[currentTripId]?.days?.[dayId]?.notes?.[actKey] || {};
+    renderNotesData(notes);
+    return;
+  }
+
+  const path = `trips/${currentTripId}/days/${dayId}/notes/${actKey}`;
+  if (notesUnsubscribe) notesUnsubscribe();
+  notesUnsubscribe = window._onValue(window._ref(window._db, path), snap => {
+    renderNotesData(snap.val() || {});
   });
 }
 
