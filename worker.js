@@ -70,16 +70,18 @@ export default {
 
     // ntfy.sh push notification scheduling
     if (url.pathname === '/schedule-notification') {
-      const { title, message, fireAt } = body;
+      const { title, message, fireAt, clickUrl } = body;
       if (!title || !message || !fireAt || !env.NTFY_TOPIC) {
         return new Response(JSON.stringify({ error: 'Missing fields or NTFY_TOPIC not configured' }), {
           status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
       const unixSec = Math.floor(Number(fireAt) / 1000).toString();
+      const ntfyHeaders = { 'Title': title, 'Delay': unixSec, 'Priority': 'high', 'Tags': 'alarm_clock', 'Content-Type': 'text/plain' };
+      if (clickUrl) ntfyHeaders['Click'] = clickUrl;
       const res = await fetch(`https://ntfy.sh/${env.NTFY_TOPIC}`, {
         method: 'POST',
-        headers: { 'Title': title, 'Delay': unixSec, 'Priority': 'high', 'Tags': 'alarm_clock', 'Content-Type': 'text/plain' },
+        headers: ntfyHeaders,
         body: message
       });
       return new Response(JSON.stringify({ ok: res.ok }), {
