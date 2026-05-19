@@ -1332,16 +1332,14 @@ function showOfflineBanner(offline) {
 }
 
 function setupOfflineDetection() {
-  // navigator.onLine is unreliable (true even with no internet if on a network).
-  // Use Firebase's .info/connected which tests actual Firebase reachability.
-  // This fires immediately on load and again on every connectivity change.
+  // Show banner immediately if already offline when app opens
+  if (!navigator.onLine) showOfflineBanner(true);
+  // DOM events catch mid-session transitions
+  window.addEventListener('offline', () => showOfflineBanner(true));
+  // Firebase .info/connected gives accurate reachability (e.g. Wi-Fi with no internet)
+  // and overrides the initial navigator.onLine state once Firebase confirms
   window._onValue(window._ref(window._db, '.info/connected'), snap => {
     showOfflineBanner(snap.val() !== true);
-  });
-  // Keep DOM events as a quick secondary signal
-  window.addEventListener('offline', () => showOfflineBanner(true));
-  window.addEventListener('online',  () => {
-    // Firebase .info/connected will confirm once the connection is truly back
   });
 }
 </script>
@@ -2508,7 +2506,7 @@ window.saveNote = async function() {
     : '<div class="loading-spinner"></div>';
 
   try {
-    if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
+    if (!window._auth.currentUser && !_isOffline) await window._signInAnonymously(window._auth);
 
     const photoUrls = {};
     if (selectedPhotoFiles.length > 0 && !_isOffline) {
