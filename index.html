@@ -1742,11 +1742,13 @@ async function onBellClick(e) {
 
   btn.disabled = true; btn.textContent = '⏳';
   const msgBody = `"${actText}" starts at ${actTime}${driveNote}`;
+  const mapsQuery = item.querySelector('[data-mapsq]')?.dataset.mapsq || '';
+  const clickUrl = mapsQuery ? 'https://maps.google.com/?q=' + encodeURIComponent(mapsQuery) : '';
   try {
     const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/schedule-notification', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '⏰ Time to leave!', message: msgBody, fireAt: fireDate.getTime() })
+      body: JSON.stringify({ title: '⏰ Time to leave!', message: msgBody, fireAt: fireDate.getTime(), clickUrl })
     });
     const data = await res.json();
     if (data.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
