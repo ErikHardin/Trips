@@ -71,8 +71,13 @@ export default {
     // ntfy.sh push notification scheduling
     if (url.pathname === '/schedule-notification') {
       const { title, message, fireAt, clickUrl } = body;
-      if (!title || !message || !fireAt || !env.NTFY_TOPIC) {
-        return new Response(JSON.stringify({ error: 'Missing fields or NTFY_TOPIC not configured' }), {
+      if (!title || !message || !fireAt) {
+        return new Response(JSON.stringify({ ok: false, error: 'Missing fields' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      if (!env.NTFY_TOPIC) {
+        return new Response(JSON.stringify({ ok: false, error: 'NTFY_TOPIC not configured in Cloudflare' }), {
           status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
@@ -84,7 +89,8 @@ export default {
         headers: ntfyHeaders,
         body: message
       });
-      return new Response(JSON.stringify({ ok: res.ok }), {
+      const ntfyBody = await res.text();
+      return new Response(JSON.stringify({ ok: res.ok, status: res.status, ntfyBody }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     }
