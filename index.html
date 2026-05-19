@@ -1870,7 +1870,7 @@ async function onBellClick(e) {
     const cfg = await getNtfyConfig();
     if (!cfg.ok) throw new Error(cfg.error || 'ntfy not configured');
     const ntfyHeaders = {
-      'Title': '⏰ Time to leave!',
+      'Title': 'Time to leave!',
       'Delay': Math.floor(fireDate.getTime() / 1000).toString(),
       'Priority': 'high',
       'Tags': 'alarm_clock',
