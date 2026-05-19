@@ -1331,15 +1331,24 @@ function showOfflineBanner(offline) {
   }
 }
 
+let _firebaseEverConnected = false;
+
 function setupOfflineDetection() {
-  // Show banner immediately if already offline when app opens
+  // Show banner immediately if navigator confirms no network on startup
   if (!navigator.onLine) showOfflineBanner(true);
   // DOM events catch mid-session transitions
   window.addEventListener('offline', () => showOfflineBanner(true));
-  // Firebase .info/connected gives accurate reachability (e.g. Wi-Fi with no internet)
-  // and overrides the initial navigator.onLine state once Firebase confirms
+  // Firebase .info/connected fires false on every startup while the WebSocket
+  // is establishing — only treat that as "offline" once we've had a real
+  // connection first, or if navigator.onLine also agrees there's no network.
   window._onValue(window._ref(window._db, '.info/connected'), snap => {
-    showOfflineBanner(snap.val() !== true);
+    const connected = snap.val() === true;
+    if (connected) {
+      _firebaseEverConnected = true;
+      showOfflineBanner(false);
+    } else if (_firebaseEverConnected || !navigator.onLine) {
+      showOfflineBanner(true);
+    }
   });
 }
 </script>
