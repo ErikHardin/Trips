@@ -68,30 +68,14 @@ export default {
       });
     }
 
-    // ntfy.sh push notification scheduling
-    if (url.pathname === '/schedule-notification') {
-      const { title, message, fireAt, clickUrl } = body;
-      if (!title || !message || !fireAt) {
-        return new Response(JSON.stringify({ ok: false, error: 'Missing fields' }), {
-          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-        });
-      }
+    // Return ntfy config so the browser can call ntfy.sh directly (avoids Cloudflare IP rate limits)
+    if (url.pathname === '/ntfy-config') {
       if (!env.NTFY_TOPIC) {
-        return new Response(JSON.stringify({ ok: false, error: 'NTFY_TOPIC not configured in Cloudflare' }), {
+        return new Response(JSON.stringify({ ok: false, error: 'NTFY_TOPIC not configured' }), {
           status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
-      const unixSec = Math.floor(Number(fireAt) / 1000).toString();
-      const ntfyHeaders = { 'Title': title, 'Delay': unixSec, 'Priority': 'high', 'Tags': 'alarm_clock', 'Content-Type': 'text/plain' };
-      if (clickUrl) ntfyHeaders['Click'] = clickUrl;
-      if (env.NTFY_TOKEN) ntfyHeaders['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
-      const res = await fetch(`https://ntfy.sh/${env.NTFY_TOPIC}`, {
-        method: 'POST',
-        headers: ntfyHeaders,
-        body: message
-      });
-      const ntfyBody = await res.text();
-      return new Response(JSON.stringify({ ok: res.ok, status: res.status, ntfyBody }), {
+      return new Response(JSON.stringify({ ok: true, topic: env.NTFY_TOPIC, token: env.NTFY_TOKEN || null }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     }

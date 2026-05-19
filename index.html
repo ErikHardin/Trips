@@ -1816,6 +1816,16 @@ function highlightToday(trip) {
   setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
 }
 
+let _ntfyCfg = null;
+async function getNtfyConfig() {
+  if (_ntfyCfg) return _ntfyCfg;
+  const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/ntfy-config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+  });
+  _ntfyCfg = await res.json();
+  return _ntfyCfg;
+}
+
 async function onBellClick(e) {
   const btn = e.currentTarget;
   const item = btn.closest('.activity-item');
@@ -1857,14 +1867,21 @@ async function onBellClick(e) {
   const mapsQuery = item.querySelector('[data-mapsq]')?.dataset.mapsq || '';
   const clickUrl = mapsQuery ? 'https://maps.google.com/?q=' + encodeURIComponent(mapsQuery) : '';
   try {
-    const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/schedule-notification', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '⏰ Time to leave!', message: msgBody, fireAt: fireDate.getTime(), clickUrl })
-    });
-    const data = await res.json();
-    if (data.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
-    else throw new Error(data.error || `ntfy status ${data.status}: ${data.ntfyBody}`);
+    const cfg = await getNtfyConfig();
+    if (!cfg.ok) throw new Error(cfg.error || 'ntfy not configured');
+    const ntfyHeaders = {
+      'Title': '⏰ Time to leave!',
+      'Delay': Math.floor(fireDate.getTime() / 1000).toString(),
+      'Priority': 'high',
+      'Tags': 'alarm_clock',
+      'Content-Type': 'text/plain'
+    };
+    if (clickUrl) ntfyHeaders['Click'] = clickUrl;
+    if (cfg.token) ntfyHeaders['Authorization'] = 'Bearer ' + cfg.token;
+    const res = await fetch(`https://ntfy.sh/${cfg.topic}`, { method: 'POST', headers: ntfyHeaders, body: msgBody });
+    const ntfyBody = await res.text();
+    if (res.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
+    else throw new Error(`ntfy ${res.status}: ${ntfyBody}`);
   } catch(err) {
     btn.textContent = '🔔'; btn.disabled = false;
     alert('Failed to schedule reminder: ' + err.message);
