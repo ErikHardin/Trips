@@ -1858,6 +1858,13 @@ async function onBellClick(e) {
   fireDate.setMinutes(fireDate.getMinutes() - leadMin);
 
   if (fireDate <= new Date()) { alert('The "leave by" time for this activity has already passed.'); return; }
+  const msUntil = fireDate - Date.now();
+  if (msUntil > 3 * 24 * 60 * 60 * 1000) {
+    const earliest = new Date(fireDate.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const earliestStr = earliest.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    alert(`ntfy only supports scheduling up to 3 days in advance.\n\nCome back on ${earliestStr} to set this reminder.`);
+    return;
+  }
 
   const timeStr = fireDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = actDateISO ? new Date(actDateISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : null;
