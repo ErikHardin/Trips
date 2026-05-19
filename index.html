@@ -1752,10 +1752,10 @@ async function onBellClick(e) {
     });
     const data = await res.json();
     if (data.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
-    else throw new Error('ntfy error');
-  } catch {
+    else throw new Error(data.error || `ntfy status ${data.status}: ${data.ntfyBody}`);
+  } catch(err) {
     btn.textContent = '🔔'; btn.disabled = false;
-    alert('Failed to schedule reminder. Ensure NTFY_TOPIC is set in Cloudflare env vars.');
+    alert('Failed to schedule reminder: ' + err.message);
   }
 }
 
