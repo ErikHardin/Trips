@@ -1718,11 +1718,15 @@ async function onBellClick(e) {
   // Use cached drive leg duration if available, otherwise default to 30 min
   const legs = (window._dayLegs || {})[dayId] || [];
   let leadMin = 30;
+  let driveMin = null;
   if (legs.length) {
     const card = document.getElementById('dc-' + dayId);
     const driveItems = card ? Array.from(card.querySelectorAll('.activity-item[data-drive="true"]')) : [];
     const idx = driveItems.indexOf(item);
-    if (idx >= 0 && idx < legs.length) leadMin = Math.max(15, Math.ceil(legs[idx].seconds / 60) + 10);
+    if (idx >= 0 && idx < legs.length) {
+      driveMin = Math.ceil(legs[idx].seconds / 60);
+      leadMin = driveMin + 10;
+    }
   }
 
   const today = new Date();
@@ -1730,17 +1734,19 @@ async function onBellClick(e) {
     Math.floor(startMin / 60), startMin % 60, 0, 0);
   fireDate.setMinutes(fireDate.getMinutes() - leadMin);
 
-  if (fireDate - Date.now() < 15 * 60 * 1000) { alert('Reminder must be at least 15 minutes in the future.'); return; }
+  if (fireDate <= new Date()) { alert('The "leave by" time for this activity has already passed.'); return; }
 
   const timeStr = fireDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (!confirm(`Schedule a push notification at ${timeStr}?\n"${actText}" starts at ${actTime}`)) return;
+  const driveNote = driveMin ? ` · 🚗 ${driveMin} min drive` : ` · leave ${leadMin} min early`;
+  if (!confirm(`Send a push notification at ${timeStr}?\n"${actText}" starts at ${actTime}${driveNote}`)) return;
 
   btn.disabled = true; btn.textContent = '⏳';
+  const msgBody = `"${actText}" starts at ${actTime}${driveNote}`;
   try {
     const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/schedule-notification', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '⏰ Time to leave!', message: `"${actText}" starts at ${actTime}`, fireAt: fireDate.getTime() })
+      body: JSON.stringify({ title: '⏰ Time to leave!', message: msgBody, fireAt: fireDate.getTime() })
     });
     const data = await res.json();
     if (data.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
