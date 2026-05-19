@@ -929,11 +929,11 @@ body {
   <div class="scroll-content">
     <div class="notes-activity-title" id="notesActivityTitle"></div>
     <div class="notes-list" id="notesList"></div>
-    <div id="addNoteForm" class="add-note-form requires-network" style="display:none;">
+    <div id="addNoteForm" class="add-note-form" style="display:none;">
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <label class="photo-upload-btn" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos</label>
+        <label class="photo-upload-btn requires-network" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos</label>
       </div>
       <input type="file" id="photoInputMain" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
       <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
@@ -2511,14 +2511,16 @@ window.saveNote = async function() {
     if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
 
     const photoUrls = {};
-    for (let i = 0; i < selectedPhotoFiles.length; i++) {
-      const file = selectedPhotoFiles[i];
-      // Compress to max 1200px, JPEG 80% — drops typical iPhone photo from ~6MB to ~200KB
-      const compressed = await compressImage(file, 1200, 0.8);
-      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
-      const storageRef = window._sRef(window._storage, storePath);
-      const snap = await window._uploadBytes(storageRef, compressed);
-      photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
+    if (selectedPhotoFiles.length > 0 && !_isOffline) {
+      for (let i = 0; i < selectedPhotoFiles.length; i++) {
+        const file = selectedPhotoFiles[i];
+        // Compress to max 1200px, JPEG 80% — drops typical iPhone photo from ~6MB to ~200KB
+        const compressed = await compressImage(file, 1200, 0.8);
+        const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
+        const storageRef = window._sRef(window._storage, storePath);
+        const snap = await window._uploadBytes(storageRef, compressed);
+        photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
+      }
     }
 
     const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}`;
@@ -2531,7 +2533,11 @@ window.saveNote = async function() {
 
     document.getElementById('noteText').value = '';
     clearPhotos();
-    showToast(photoCount > 0 ? `Saved with ${photoCount} photo${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
+    if (_isOffline) {
+      showToast('Memory saved — will sync when back online ✓');
+    } else {
+      showToast(photoCount > 0 ? `Saved with ${photoCount} photo${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
+    }
   } catch(e) {
     showToast('Error saving — check connection');
     console.error('saveNote error:', e);
