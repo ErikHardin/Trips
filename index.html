@@ -812,7 +812,8 @@ body {
 .wx-forecast-label { flex:1; font-size:12px; color:var(--muted); }
 .wx-forecast-hi { font-size:14px; font-weight:600; color:var(--ink); }
 .wx-forecast-lo { font-size:12px; color:var(--muted); margin-left:5px; }
-#offlineBanner { position:fixed; top:0; left:0; right:0; z-index:200; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; letter-spacing:.3px; background:#2a2520; color:#faf8f4; display:none; }
+#offlineBanner { position:fixed; top:0; left:0; right:0; z-index:200; padding:6px 16px; font-size:12px; font-weight:500; text-align:center; letter-spacing:.3px; background:#2a2520; color:#faf8f4; display:none; transition:background .3s; }
+.is-offline #offlineBanner { background:#2a2520; }
 .is-offline .requires-network { opacity:.4; pointer-events:none; }
 </style>
 <script>if(new URLSearchParams(location.search).get('trip')){document.documentElement.style.visibility='hidden';}</script>
@@ -928,11 +929,11 @@ body {
   <div class="scroll-content">
     <div class="notes-activity-title" id="notesActivityTitle"></div>
     <div class="notes-list" id="notesList"></div>
-    <div id="addNoteForm" class="add-note-form requires-network" style="display:none;">
+    <div id="addNoteForm" class="add-note-form" style="display:none;">
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <label class="photo-upload-btn" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos</label>
+        <label class="photo-upload-btn requires-network" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos</label>
       </div>
       <input type="file" id="photoInputMain" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
       <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
@@ -1306,7 +1307,11 @@ const OfflineStore = (() => {
   return { save, load };
 })();
 
+let _isOffline = false;
+let _offlineWriteQueued = false;
+
 function showOfflineBanner(offline) {
+  _isOffline = offline;
   const banner = document.getElementById('offlineBanner');
   if (!banner) return;
   if (offline) {
@@ -1314,15 +1319,30 @@ function showOfflineBanner(offline) {
     banner.style.display = '';
     document.body.classList.add('is-offline');
   } else {
-    banner.style.display = 'none';
-    document.body.classList.remove('is-offline');
+    if (_offlineWriteQueued) {
+      banner.textContent = '🔄 Back online — syncing changes…';
+      banner.style.display = '';
+      document.body.classList.remove('is-offline');
+      setTimeout(() => { banner.style.display = 'none'; _offlineWriteQueued = false; }, 3000);
+    } else {
+      banner.style.display = 'none';
+      document.body.classList.remove('is-offline');
+    }
   }
 }
 
 function setupOfflineDetection() {
+  // navigator.onLine is unreliable (true even with no internet if on a network).
+  // Use Firebase's .info/connected which tests actual Firebase reachability.
+  // This fires immediately on load and again on every connectivity change.
+  window._onValue(window._ref(window._db, '.info/connected'), snap => {
+    showOfflineBanner(snap.val() !== true);
+  });
+  // Keep DOM events as a quick secondary signal
   window.addEventListener('offline', () => showOfflineBanner(true));
-  window.addEventListener('online',  () => showOfflineBanner(false));
-  if (!navigator.onLine) showOfflineBanner(true);
+  window.addEventListener('online',  () => {
+    // Firebase .info/connected will confirm once the connection is truly back
+  });
 }
 </script>
 
@@ -1392,19 +1412,29 @@ function checkShareLink() {
 async function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
   restoreSession();
+
+  // Load cached snapshot immediately — shown while Firebase connects (or if offline)
+  const cached = await OfflineStore.load().catch(() => null);
+  if (cached) {
+    allTrips = cached.data;
+    renderHome();
+    checkShareLink();
+    populateImportSelect();
+    renderAdminTripList();
+  }
+
+  // setupOfflineDetection needs window._ref + window._db, so must run after initApp starts
   setupOfflineDetection();
 
-  // Load cached snapshot immediately when offline so the app isn't blank
-  if (!navigator.onLine) {
-    const cached = await OfflineStore.load().catch(() => null);
-    if (cached) {
-      allTrips = cached.data;
-      renderHome();
-      checkShareLink();
-      populateImportSelect();
-      renderAdminTripList();
-    }
-  }
+  // Wrap write ops to flag that offline changes were queued
+  const _rawSet    = window._set;
+  const _rawUpdate = window._update;
+  const _rawPush   = window._push;
+  const _rawRemove = window._remove;
+  window._set    = function(r, v) { if (_isOffline) _offlineWriteQueued = true; return _rawSet(r, v); };
+  window._update = function(r, v) { if (_isOffline) _offlineWriteQueued = true; return _rawUpdate(r, v); };
+  window._push   = function(r)    { if (_isOffline) _offlineWriteQueued = true; return _rawPush(r); };
+  window._remove = function(r)    { if (_isOffline) _offlineWriteQueued = true; return _rawRemove(r); };
 
   // Sign in anonymously first so Firebase reads work on fresh load
   window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
@@ -2481,14 +2511,16 @@ window.saveNote = async function() {
     if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
 
     const photoUrls = {};
-    for (let i = 0; i < selectedPhotoFiles.length; i++) {
-      const file = selectedPhotoFiles[i];
-      // Compress to max 1200px, JPEG 80% — drops typical iPhone photo from ~6MB to ~200KB
-      const compressed = await compressImage(file, 1200, 0.8);
-      const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
-      const storageRef = window._sRef(window._storage, storePath);
-      const snap = await window._uploadBytes(storageRef, compressed);
-      photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
+    if (selectedPhotoFiles.length > 0 && !_isOffline) {
+      for (let i = 0; i < selectedPhotoFiles.length; i++) {
+        const file = selectedPhotoFiles[i];
+        // Compress to max 1200px, JPEG 80% — drops typical iPhone photo from ~6MB to ~200KB
+        const compressed = await compressImage(file, 1200, 0.8);
+        const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
+        const storageRef = window._sRef(window._storage, storePath);
+        const snap = await window._uploadBytes(storageRef, compressed);
+        photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
+      }
     }
 
     const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}`;
@@ -2501,7 +2533,11 @@ window.saveNote = async function() {
 
     document.getElementById('noteText').value = '';
     clearPhotos();
-    showToast(photoCount > 0 ? `Saved with ${photoCount} photo${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
+    if (_isOffline) {
+      showToast('Memory saved — will sync when back online ✓');
+    } else {
+      showToast(photoCount > 0 ? `Saved with ${photoCount} photo${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
+    }
   } catch(e) {
     showToast('Error saving — check connection');
     console.error('saveNote error:', e);
