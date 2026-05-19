@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hardin-trips-v1';
+const CACHE_NAME = 'hardin-trips-v2';
 
 const SHELL = [
   '/Trips/',
@@ -51,6 +51,7 @@ self.addEventListener('fetch', e => {
   if (BYPASS_PATTERNS.some(p => url.includes(p))) return;
 
   if (CDN_PATTERNS.some(p => url.includes(p))) {
+    // CDN resources are versioned — cache-first is safe
     e.respondWith(
       caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
         const clone = res.clone();
@@ -61,17 +62,14 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App shell: stale-while-revalidate
+  // App shell: network-first so updates deploy immediately; fall back to cache offline
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const networkFetch = fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        }
-        return res;
-      }).catch(() => null);
-      return cached || networkFetch;
-    })
+    fetch(e.request).then(res => {
+      if (res.ok) {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+      }
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
