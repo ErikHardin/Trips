@@ -24,7 +24,7 @@ try {
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(12, 14, 10, 14);
+widget.setPadding(16, 14, 8, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
@@ -99,8 +99,8 @@ function buildCountdownWidget(w, trip) {
     }
   }
 
-  // Flexible spacer pushes countdown to bottom
-  w.addSpacer();
+  // Fixed spacer pulls countdown up from bottom
+  w.addSpacer(10);
 
   // Countdown number — bottom right
   const days = trip.daysUntil ?? 0;
@@ -111,6 +111,7 @@ function buildCountdownWidget(w, trip) {
   const numTxt = numRow.addText(String(days));
   numTxt.font = Font.boldSystemFont(28);
   numTxt.textColor = TERRACOTTA;
+  numRow.addSpacer(22);
 
   const labelRow = w.addStack();
   labelRow.layoutHorizontally();
@@ -118,6 +119,7 @@ function buildCountdownWidget(w, trip) {
   const labelTxt = labelRow.addText(days === 1 ? "day until" : "days until");
   labelTxt.font = Font.systemFont(11);
   labelTxt.textColor = MUTED;
+  labelRow.addSpacer(22);
 }
 
 // ── Active trip: today's location + activities ────────────────────────────────
