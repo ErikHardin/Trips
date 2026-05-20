@@ -1791,7 +1791,7 @@ function renderTripItinerary(trip) {
   if (trip.flightReturn) {
     panel.innerHTML += `
       <div class="flight-banner" style="margin:16px 16px 10px;">
-        <div class="flight-icon">🏠</div>
+        <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return Flights · ${trip.flightReturnDate||''}</div>
           ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
@@ -2025,7 +2025,7 @@ async function renderTripOverview(trip) {
   if (trip.flightReturn) {
     flightsHTML += `
       <div class="flight-banner" style="margin:10px 16px 0;">
-        <div class="flight-icon">🏠</div>
+        <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return · ${trip.flightReturnDate||''}</div>
           ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
