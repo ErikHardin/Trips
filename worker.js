@@ -164,7 +164,10 @@ async function handleWidgetData(env, request) {
   // Find today's day and build sorted activity list
   let todayData = null;
   if (chosen.days) {
-    const dayEntry = Object.values(chosen.days).find(d => d.dateISO === todayISO);
+    const dayEntry = Object.values(chosen.days).find(d => {
+      if (d.dateISO) return d.dateISO === todayISO;
+      return dayDateISO(d, chosen.year) === todayISO;
+    });
     if (dayEntry) {
       const rawActs = dayEntry.activities
         ? (Array.isArray(dayEntry.activities) ? dayEntry.activities : Object.values(dayEntry.activities))
@@ -191,6 +194,16 @@ async function handleWidgetData(env, request) {
   }
 
   return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
+}
+
+const MONTHS = { january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12 };
+
+function dayDateISO(day, tripYear) {
+  const num = parseInt(String(day.dateNum || '').replace(/\D/g, ''), 10);
+  const mon = MONTHS[(day.dateMonth || '').toLowerCase().trim()];
+  const yr  = parseInt(day.year || tripYear || '', 10);
+  if (!num || !mon || !yr) return '';
+  return `${yr}-${String(mon).padStart(2, '0')}-${String(num).padStart(2, '0')}`;
 }
 
 function parseTimeTo24h(time) {
