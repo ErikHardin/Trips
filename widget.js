@@ -119,11 +119,16 @@ function buildItineraryWidget(w, { trip, today }) {
 
   const allActs = today?.activities || [];
 
-  // Find the next timed activity; if none found, fall back to the first timeless one.
-  let nextIdx = allActs.findIndex(a => a.timeSort >= nowSort);
-  if (nextIdx < 0) nextIdx = allActs.findIndex(a => !a.timeSort);
-  const next     = nextIdx >= 0 ? allActs[nextIdx] : (allActs.length ? allActs[allActs.length - 1] : null);
-  const upcoming = nextIdx >= 0 ? allActs.slice(nextIdx + 1, nextIdx + 5) : [];
+  // Anchor on the last timed activity that has already passed; everything
+  // after it is still ahead. Timeless activities are never "passed", so they
+  // stay visible until a later timed activity pushes the anchor forward.
+  let nextIdx = 0;
+  for (let i = 0; i < allActs.length; i++) {
+    if (allActs[i].timeSort && allActs[i].timeSort < nowSort) nextIdx = i + 1;
+  }
+  if (nextIdx >= allActs.length) nextIdx = allActs.length - 1;
+  const next     = allActs[nextIdx] || null;
+  const upcoming = next ? allActs.slice(nextIdx + 1, nextIdx + 5) : [];
 
   if (next?.location) {
     const q = encodeURIComponent(next.location);
