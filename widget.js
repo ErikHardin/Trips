@@ -24,7 +24,7 @@ try {
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(16, 16, 16, 16);
+widget.setPadding(12, 14, 12, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
@@ -56,9 +56,9 @@ function buildCountdownWidget(w, trip) {
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  w.addSpacer(14);
+  w.addSpacer(8);
 
-  // ── Big countdown number ──────────────────────────────────────────────────
+  // ── Countdown number ──────────────────────────────────────────────────────
   const days = trip.daysUntil ?? 0;
   const countStack = w.addStack();
   countStack.layoutHorizontally();
@@ -70,16 +70,16 @@ function buildCountdownWidget(w, trip) {
   numCol.centerAlignContent();
 
   const numTxt = numCol.addText(String(days));
-  numTxt.font = Font.boldSystemFont(52);
+  numTxt.font = Font.boldSystemFont(38);
   numTxt.textColor = TERRACOTTA;
 
   const labelTxt = numCol.addText(days === 1 ? "day until departure" : "days until departure");
-  labelTxt.font = Font.systemFont(12);
+  labelTxt.font = Font.systemFont(11);
   labelTxt.textColor = MUTED;
 
   countStack.addSpacer();
 
-  w.addSpacer(14);
+  w.addSpacer(8);
 
   // ── Outbound flights ──────────────────────────────────────────────────────
   if (trip.flightOut) {
@@ -91,14 +91,14 @@ function buildCountdownWidget(w, trip) {
     ftitle.font = Font.boldSystemFont(11);
     ftitle.textColor = MUTED;
 
-    w.addSpacer(5);
+    w.addSpacer(4);
 
     for (const leg of trip.flightOut.split("\n").filter(Boolean)) {
       const row = w.addStack();
       row.layoutHorizontally();
       row.backgroundColor = SAND;
       row.cornerRadius = 8;
-      row.setPadding(6, 10, 6, 10);
+      row.setPadding(5, 8, 5, 8);
       row.centerAlignContent();
 
       // Bold flight code, then rest of string
@@ -118,7 +118,7 @@ function buildCountdownWidget(w, trip) {
         detTxt.lineLimit = 1;
       }
 
-      w.addSpacer(4);
+      w.addSpacer(3);
     }
   }
 }
