@@ -7,11 +7,11 @@ const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data"
 const NAV_APP    = "google"; // "google" or "waze"
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-const BG         = new Color("#faf8f4");
+const BG         = new Color("#e8ddd0");
 const TERRACOTTA = new Color("#c06a3d");
 const INK        = new Color("#2a2520");
 const MUTED      = new Color("#8a7f76");
-const SAND       = new Color("#ede5d8");
+const SAND       = new Color("#d9cbb8");
 
 // ── Fetch data ────────────────────────────────────────────────────────────────
 let data = null;
