@@ -39,12 +39,9 @@ if (!data || !data.trip) {
 Script.setWidget(widget);
 Script.complete();
 
-// ── Pre-trip: countdown + outbound flights ────────────────────────────────────
-// Layout budget for medium widget (~134pt content height):
-//   Header 20 + gap 4 + countdown row 40 + gap 5 + flight header 13
-//   + gap 3 + (flight row 20 + gap 3) × 3 = 154 → fits with tight rows
+// ── Pre-trip: full-width header, flights, countdown bottom-right ──────────────
 function buildCountdownWidget(w, trip) {
-  // Header: emoji + name
+  // Full-width header: emoji + name
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
@@ -59,34 +56,13 @@ function buildCountdownWidget(w, trip) {
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  w.addSpacer(5);
+  hdr.addSpacer();
 
-  // Countdown: big number left + "days until\ndeparture" right, vertically centered
-  const days = trip.daysUntil ?? 0;
-  const countRow = w.addStack();
-  countRow.layoutHorizontally();
-  countRow.centerAlignContent();
-  countRow.addSpacer();
+  w.addSpacer(6);
 
-  const numTxt = countRow.addText(String(days));
-  numTxt.font = Font.boldSystemFont(40);
-  numTxt.textColor = TERRACOTTA;
-
-  countRow.addSpacer(5);
-
-  const labelTxt = countRow.addText(days === 1 ? "day until\ndeparture" : "days until\ndeparture");
-  labelTxt.font = Font.systemFont(12);
-  labelTxt.textColor = MUTED;
-
-  countRow.addSpacer();
-
-  w.addSpacer(5);
-
-  // Outbound flights
+  // Flights directly under header
   if (trip.flightOut) {
     const fhdr = w.addStack();
-    fhdr.layoutHorizontally();
-
     const ftitle = fhdr.addText("✈️  Outbound" + (trip.flightOutDate ? "  ·  " + trip.flightOutDate : ""));
     ftitle.font = Font.boldSystemFont(10);
     ftitle.textColor = MUTED;
@@ -120,12 +96,29 @@ function buildCountdownWidget(w, trip) {
       w.addSpacer(3);
     }
   }
+
+  // Flexible spacer pushes countdown to bottom
+  w.addSpacer();
+
+  // Countdown number — bottom right
+  const days = trip.daysUntil ?? 0;
+
+  const numRow = w.addStack();
+  numRow.layoutHorizontally();
+  numRow.addSpacer();
+  const numTxt = numRow.addText(String(days));
+  numTxt.font = Font.boldSystemFont(36);
+  numTxt.textColor = TERRACOTTA;
+
+  const labelRow = w.addStack();
+  labelRow.layoutHorizontally();
+  labelRow.addSpacer();
+  const labelTxt = labelRow.addText(days === 1 ? "day until" : "days until");
+  labelTxt.font = Font.systemFont(11);
+  labelTxt.textColor = MUTED;
 }
 
 // ── Active trip: today's location + activities ────────────────────────────────
-// Layout budget for medium widget (~134pt content height):
-//   Header 34 + gap 5 + location 13 + gap 4 + next-activity row 26
-//   + gap 4 + (activity row 14 + gap 3) × 3 = 137 → fits
 function buildItineraryWidget(w, { trip, today }) {
   const now     = new Date();
   const nowSort = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
@@ -142,7 +135,7 @@ function buildItineraryWidget(w, { trip, today }) {
       : `https://maps.google.com/?q=${q}`;
   }
 
-  // Header: emoji + name + status on one row
+  // Header: emoji + name + status
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
