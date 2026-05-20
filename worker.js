@@ -4,11 +4,18 @@ export default {
       return new Response(null, { headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST'
+        'Access-Control-Allow-Methods': 'GET, POST'
       }});
     }
 
     const url = new URL(request.url);
+
+    // Widget data — GET endpoint for Scriptable home screen widget
+    if (url.pathname === '/widget-data') {
+      return handleWidgetData(env);
+    }
+
+    // All other routes expect a JSON POST body
     const body = await request.json();
 
     // PIN verification
@@ -96,4 +103,101 @@ export default {
       'Access-Control-Allow-Origin': '*'
     }});
   }
+}
+
+async function handleWidgetData(env) {
+  const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
+  if (!env.FIREBASE_URL) {
+    return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
+  }
+
+  const fbUrl = env.FIREBASE_URL + '/trips.json' + (env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '');
+  let trips;
+  try {
+    const resp = await fetch(fbUrl);
+    if (!resp.ok) throw new Error('status ' + resp.status);
+    trips = await resp.json();
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
+  }
+
+  if (!trips) {
+    return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
+  }
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // Active trip takes priority; otherwise pick the soonest upcoming trip
+  const entries = Object.values(trips);
+  let chosen = entries.find(t => t.status === 'active');
+  if (!chosen) {
+    const upcoming = entries
+      .filter(t => t.status === 'upcoming' && t.startDateISO)
+      .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO));
+    chosen = upcoming[0] || null;
+  }
+
+  if (!chosen) {
+    return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
+  }
+
+  let daysUntil = null;
+  if (chosen.startDateISO) {
+    const msPerDay = 86400000;
+    daysUntil = Math.max(0, Math.ceil((new Date(chosen.startDateISO + 'T00:00:00Z') - Date.now()) / msPerDay));
+  }
+
+  const tripInfo = {
+    name:          chosen.name || '',
+    emoji:         chosen.emoji || '✈️',
+    status:        chosen.status,
+    startDateISO:  chosen.startDateISO || null,
+    daysUntil,
+    flightOut:     chosen.flightOut     || null,
+    flightOutDate: chosen.flightOutDate || null,
+  };
+
+  // Find today's day and build sorted activity list
+  let todayData = null;
+  if (chosen.days) {
+    const dayEntry = Object.values(chosen.days).find(d => d.dateISO === todayISO);
+    if (dayEntry) {
+      const rawActs = dayEntry.activities
+        ? (Array.isArray(dayEntry.activities) ? dayEntry.activities : Object.values(dayEntry.activities))
+        : [];
+
+      const city = dayEntry.description || dayEntry.city || '';
+      const activities = rawActs
+        .filter(a => a && (a.text || a.description))
+        .map(a => ({
+          time:     a.time || '',
+          timeSort: parseTimeTo24h(a.time || ''),
+          emoji:    a.emoji || '📌',
+          text:     a.text || a.description || '',
+          location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
+        }))
+        .sort((a, b) => a.timeSort.localeCompare(b.timeSort));
+
+      todayData = {
+        city:        dayEntry.city || '',
+        description: city,
+        activities,
+      };
+    }
+  }
+
+  return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
+}
+
+function parseTimeTo24h(time) {
+  if (!time) return '';
+  const m = String(time).match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const ampm = (m[3] || '').toLowerCase();
+  if (ampm === 'pm' && h !== 12) h += 12;
+  if (ampm === 'am' && h === 12) h = 0;
+  return String(h).padStart(2, '0') + ':' + min;
 }
