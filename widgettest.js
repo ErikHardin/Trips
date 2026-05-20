@@ -51,8 +51,7 @@ function buildItineraryWidget(w, { trip, today }) {
 
   const allActs = today?.activities || [];
 
-  // Find the next timed activity; if all timed ones have passed, fall back to
-  // the first timeless activity (timeless entries sort to the end of allActs).
+  // Find the next timed activity; if none found, fall back to the first timeless one.
   let nextIdx = allActs.findIndex(a => a.timeSort >= nowSort);
   if (nextIdx < 0) nextIdx = allActs.findIndex(a => !a.timeSort);
   const next     = nextIdx >= 0 ? allActs[nextIdx] : (allActs.length ? allActs[allActs.length - 1] : null);
