@@ -1,5 +1,5 @@
 // Hardin Trips — Driving Overview · Scriptable medium widget
-// Shows each day of the active trip with its drive activities and times.
+// Shows only days with drives, with computed duration per drive.
 // Install: paste into a new Scriptable script, add a Medium widget to your
 // home screen, and select this script.
 
@@ -11,7 +11,6 @@ const BG         = new Color("#e8ddd0");
 const TERRACOTTA = new Color("#c06a3d");
 const INK        = new Color("#2a2520");
 const MUTED      = new Color("#8a7f76");
-const SAND       = new Color("#d9cbb8");
 
 // ── Fetch data ────────────────────────────────────────────────────────────────
 let data = null;
@@ -37,47 +36,38 @@ if (!data || !data.trip) {
 Script.setWidget(widget);
 Script.complete();
 
-// ── Driving overview by day ───────────────────────────────────────────────────
+// ── Drive days list ───────────────────────────────────────────────────────────
 function buildDrivingWidget(w, { trip, days }) {
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // Header: emoji + trip name
-  const hdr = w.addStack();
-  hdr.layoutHorizontally();
-  hdr.centerAlignContent();
+  // Title
+  const titleTxt = w.addText("Drive Times 🚗");
+  titleTxt.font = Font.boldSystemFont(13);
+  titleTxt.textColor = INK;
 
-  const emojiTxt = hdr.addText(trip.emoji || "✈️");
-  emojiTxt.font = Font.systemFont(16);
+  w.addSpacer(7);
 
-  hdr.addSpacer(6);
+  // Only days that have at least one drive activity
+  let driveDays = days.filter(d => d.drives.length > 0);
+  if (trip.status === "active") {
+    driveDays = driveDays.filter(d => d.dateISO >= todayISO);
+  }
+  driveDays = driveDays.slice(0, 7);
 
-  const nameTxt = hdr.addText(trip.name);
-  nameTxt.font = Font.boldSystemFont(13);
-  nameTxt.textColor = INK;
-  nameTxt.lineLimit = 1;
-
-  w.addSpacer(6);
-
-  // For active trips show from today onward; for upcoming show all days
-  let visible = trip.status === "active"
-    ? days.filter(d => d.dateISO >= todayISO)
-    : days;
-  visible = visible.slice(0, 5);
-
-  if (visible.length === 0) {
-    const t = w.addText("Trip complete");
+  if (driveDays.length === 0) {
+    const t = w.addText("No upcoming drives");
     t.font = Font.systemFont(12);
     t.textColor = MUTED;
     return;
   }
 
-  for (const day of visible) {
+  for (const day of driveDays) {
     const isToday = day.dateISO === todayISO;
     const row = w.addStack();
     row.layoutHorizontally();
     row.centerAlignContent();
 
-    // Date label
+    // Date label — terracotta if today
     const dateTxt = row.addText(day.dateLabel);
     dateTxt.font = isToday ? Font.boldSystemFont(11) : Font.systemFont(11);
     dateTxt.textColor = isToday ? TERRACOTTA : MUTED;
@@ -85,39 +75,61 @@ function buildDrivingWidget(w, { trip, days }) {
 
     row.addSpacer(10);
 
-    if (day.drives.length > 0) {
-      const drive = day.drives[0];
+    // Drive description
+    const drive = day.drives[0];
+    const driveTxt = row.addText(drive.text || "Drive");
+    driveTxt.font = Font.systemFont(11);
+    driveTxt.textColor = INK;
+    driveTxt.lineLimit = 1;
 
-      const contentRow = row.addStack();
-      contentRow.layoutHorizontally();
-      contentRow.centerAlignContent();
-
-      const driveTxt = contentRow.addText("🚗  " + (drive.text || "Drive"));
-      driveTxt.font = Font.systemFont(11);
-      driveTxt.textColor = INK;
-      driveTxt.lineLimit = 1;
-
-      if (drive.time) {
-        contentRow.addSpacer(6);
-        const timeTxt = contentRow.addText(drive.time);
-        timeTxt.font = Font.systemFont(10);
-        timeTxt.textColor = TERRACOTTA;
-        timeTxt.lineLimit = 1;
-      }
-    } else {
-      // No drive activity — show the day's city/location dimmed
-      const cityTxt = row.addText(cleanCity(day.city) || "—");
-      cityTxt.font = Font.systemFont(11);
-      cityTxt.textColor = MUTED;
-      cityTxt.lineLimit = 1;
+    // Duration right-aligned
+    const dur = toDuration(drive.time);
+    if (dur) {
+      row.addSpacer();
+      const durTxt = row.addText(dur);
+      durTxt.font = Font.boldSystemFont(11);
+      durTxt.textColor = TERRACOTTA;
+      durTxt.lineLimit = 1;
     }
 
     w.addSpacer(4);
   }
 }
 
-function cleanCity(str) {
-  if (!str) return "";
-  // Strip leading emoji characters
-  return str.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+/gu, "").trim();
+// Convert a time string to a duration string.
+// "10:00am–11:30am" → "1h 30m"   "9am–12pm" → "3h"   "45 min" → "45m"
+function toDuration(time) {
+  if (!time) return "";
+  const t = String(time).trim();
+
+  // Already formatted as duration
+  if (/^\d+h(\s*\d+m)?$/.test(t) || /^\d+m(in)?$/.test(t)) return t.replace("min", "m");
+
+  // Range like "10:00am–11:30am" or "9am-12:30pm"
+  const rng = t.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)[\s–\-]+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+  if (!rng) return "";
+
+  const toMin = s => {
+    const m = String(s).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if (!m) return null;
+    let h = parseInt(m[1], 10);
+    const min = parseInt(m[2] || "0", 10);
+    const ap = (m[3] || "").toLowerCase();
+    if (ap === "pm" && h !== 12) h += 12;
+    if (ap === "am" && h === 12) h = 0;
+    return h * 60 + min;
+  };
+
+  let start = toMin(rng[1]);
+  let end   = toMin(rng[2]);
+  if (start === null || end === null) return "";
+  if (end < start) end += 12 * 60;
+  const diff = end - start;
+  if (diff <= 0) return "";
+
+  const h = Math.floor(diff / 60);
+  const m = diff % 60;
+  if (h === 0) return m + "m";
+  if (m === 0) return h + "h";
+  return h + "h " + m + "m";
 }
