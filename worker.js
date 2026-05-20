@@ -15,6 +15,11 @@ export default {
       return handleWidgetData(env, request);
     }
 
+    // Driving overview widget — day-by-day drive list for active trip
+    if (url.pathname === '/widget-driving') {
+      return handleWidgetDriving(env, request);
+    }
+
     // All other routes expect a JSON POST body
     const body = await request.json();
 
@@ -193,6 +198,78 @@ async function handleWidgetData(env, request) {
   }
 
   return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
+}
+
+async function handleWidgetDriving(env, request) {
+  const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  const dateParam = new URL(request.url).searchParams.get('date');
+
+  if (!env.FIREBASE_URL) {
+    return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
+  }
+
+  const fbUrl = env.FIREBASE_URL + '/trips.json' + (env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '');
+  let trips;
+  try {
+    const resp = await fetch(fbUrl);
+    if (!resp.ok) throw new Error('status ' + resp.status);
+    trips = await resp.json();
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
+  }
+
+  if (!trips) {
+    return new Response(JSON.stringify({ trip: null, days: [] }), { headers: CORS });
+  }
+
+  const entries = Object.values(trips);
+  let chosen = entries.find(t => t.status === 'active');
+  if (!chosen) {
+    const upcoming = entries
+      .filter(t => t.status === 'upcoming' && t.startDateISO)
+      .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO));
+    chosen = upcoming[0] || null;
+  }
+
+  if (!chosen) {
+    return new Response(JSON.stringify({ trip: null, days: [] }), { headers: CORS });
+  }
+
+  const tripInfo = {
+    name:   chosen.name   || '',
+    emoji:  chosen.emoji  || '✈️',
+    status: chosen.status,
+  };
+
+  const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const days = [];
+  if (chosen.days) {
+    for (const day of Object.values(chosen.days)) {
+      const iso = day.dateISO || dayDateISO(day, chosen.year);
+      if (!iso) continue;
+
+      const rawActs = day.activities
+        ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+        : [];
+
+      const drives = rawActs
+        .filter(a => a && a.drive)
+        .map(a => ({ time: a.time || '', text: a.text || a.description || '' }));
+
+      const d = new Date(iso + 'T00:00:00Z');
+      days.push({
+        dateISO:   iso,
+        dateLabel: WEEKDAYS[d.getUTCDay()] + ' ' + d.getUTCDate(),
+        city:      day.city || '',
+        drives,
+      });
+    }
+  }
+
+  days.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+  return new Response(JSON.stringify({ trip: tripInfo, days }), { headers: CORS });
 }
 
 const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12, january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12 };
