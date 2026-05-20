@@ -30,15 +30,101 @@ if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
   t.font = Font.mediumSystemFont(16);
   t.textColor = INK;
+} else if (data.trip.status === "upcoming") {
+  buildCountdownWidget(widget, data.trip);
 } else {
-  buildWidget(widget, data);
+  buildItineraryWidget(widget, data);
 }
 
 Script.setWidget(widget);
 Script.complete();
 
-// ── Widget builder ────────────────────────────────────────────────────────────
-function buildWidget(w, { trip, today }) {
+// ── Pre-trip: countdown + outbound flights ────────────────────────────────────
+function buildCountdownWidget(w, trip) {
+  // ── Header: emoji + name ──────────────────────────────────────────────────
+  const hdr = w.addStack();
+  hdr.layoutHorizontally();
+  hdr.centerAlignContent();
+
+  const emojiTxt = hdr.addText(trip.emoji || "✈️");
+  emojiTxt.font = Font.systemFont(26);
+
+  hdr.addSpacer(10);
+
+  const nameTxt = hdr.addText(trip.name);
+  nameTxt.font = Font.boldSystemFont(15);
+  nameTxt.textColor = INK;
+  nameTxt.lineLimit = 1;
+
+  w.addSpacer(14);
+
+  // ── Big countdown number ──────────────────────────────────────────────────
+  const days = trip.daysUntil ?? 0;
+  const countStack = w.addStack();
+  countStack.layoutHorizontally();
+  countStack.centerAlignContent();
+  countStack.addSpacer();
+
+  const numCol = countStack.addStack();
+  numCol.layoutVertically();
+  numCol.centerAlignContent();
+
+  const numTxt = numCol.addText(String(days));
+  numTxt.font = Font.boldSystemFont(52);
+  numTxt.textColor = TERRACOTTA;
+
+  const labelTxt = numCol.addText(days === 1 ? "day until departure" : "days until departure");
+  labelTxt.font = Font.systemFont(12);
+  labelTxt.textColor = MUTED;
+
+  countStack.addSpacer();
+
+  w.addSpacer(14);
+
+  // ── Outbound flights ──────────────────────────────────────────────────────
+  if (trip.flightOut) {
+    const flightHeader = w.addStack();
+    flightHeader.layoutHorizontally();
+    flightHeader.centerAlignContent();
+
+    const ftitle = flightHeader.addText("✈️  Outbound" + (trip.flightOutDate ? "  ·  " + trip.flightOutDate : ""));
+    ftitle.font = Font.boldSystemFont(11);
+    ftitle.textColor = MUTED;
+
+    w.addSpacer(5);
+
+    for (const leg of trip.flightOut.split("\n").filter(Boolean)) {
+      const row = w.addStack();
+      row.layoutHorizontally();
+      row.backgroundColor = SAND;
+      row.cornerRadius = 8;
+      row.setPadding(6, 10, 6, 10);
+      row.centerAlignContent();
+
+      // Bold flight code, then rest of string
+      const spaceIdx = leg.indexOf(" ");
+      const code = spaceIdx > -1 ? leg.slice(0, spaceIdx) : leg;
+      const detail = spaceIdx > -1 ? leg.slice(spaceIdx + 1) : "";
+
+      const codeTxt = row.addText(code);
+      codeTxt.font = Font.boldSystemFont(12);
+      codeTxt.textColor = TERRACOTTA;
+
+      if (detail) {
+        row.addSpacer(6);
+        const detTxt = row.addText(detail);
+        detTxt.font = Font.systemFont(12);
+        detTxt.textColor = INK;
+        detTxt.lineLimit = 1;
+      }
+
+      w.addSpacer(4);
+    }
+  }
+}
+
+// ── Active trip: today's location + activities ────────────────────────────────
+function buildItineraryWidget(w, { trip, today }) {
   // Use device local time to pick "next" activity
   const now = new Date();
   const nowSort = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
@@ -74,9 +160,9 @@ function buildWidget(w, { trip, today }) {
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  const statusStr = statusLabel(trip);
-  if (statusStr) {
-    const sTxt = nameCol.addText(statusStr);
+  const sLabel = statusLabel(trip);
+  if (sLabel) {
+    const sTxt = nameCol.addText(sLabel);
     sTxt.font = Font.systemFont(11);
     sTxt.textColor = TERRACOTTA;
   }

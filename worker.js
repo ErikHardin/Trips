@@ -149,11 +149,13 @@ async function handleWidgetData(env) {
   }
 
   const tripInfo = {
-    name:         chosen.name || '',
-    emoji:        chosen.emoji || '✈️',
-    status:       chosen.status,
-    startDateISO: chosen.startDateISO || null,
+    name:          chosen.name || '',
+    emoji:         chosen.emoji || '✈️',
+    status:        chosen.status,
+    startDateISO:  chosen.startDateISO || null,
     daysUntil,
+    flightOut:     chosen.flightOut     || null,
+    flightOutDate: chosen.flightOutDate || null,
   };
 
   // Find today's day and build sorted activity list
