@@ -12,7 +12,7 @@ export default {
 
     // Widget data — GET endpoint for Scriptable home screen widget
     if (url.pathname === '/widget-data') {
-      return handleWidgetData(env);
+      return handleWidgetData(env, request);
     }
 
     // All other routes expect a JSON POST body
@@ -105,8 +105,9 @@ export default {
   }
 }
 
-async function handleWidgetData(env) {
+async function handleWidgetData(env, request) {
   const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  const dateParam = new URL(request.url).searchParams.get('date');
 
   if (!env.FIREBASE_URL) {
     return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
@@ -126,7 +127,9 @@ async function handleWidgetData(env) {
     return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
   }
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam))
+    ? dateParam
+    : new Date().toISOString().slice(0, 10);
 
   // Active trip takes priority; otherwise pick the soonest upcoming trip
   const entries = Object.values(trips);
