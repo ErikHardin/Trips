@@ -46,6 +46,8 @@ function buildCountdownWidget(w, trip) {
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
 
+  hdr.addSpacer();
+
   const emojiTxt = hdr.addText(trip.emoji || "✈️");
   emojiTxt.font = Font.systemFont(18);
 
@@ -58,7 +60,7 @@ function buildCountdownWidget(w, trip) {
 
   hdr.addSpacer();
 
-  w.addSpacer(6);
+  w.addSpacer(10);
 
   // Flights directly under header
   if (trip.flightOut) {
@@ -107,7 +109,7 @@ function buildCountdownWidget(w, trip) {
   numRow.layoutHorizontally();
   numRow.addSpacer();
   const numTxt = numRow.addText(String(days));
-  numTxt.font = Font.boldSystemFont(36);
+  numTxt.font = Font.boldSystemFont(28);
   numTxt.textColor = TERRACOTTA;
 
   const labelRow = w.addStack();
