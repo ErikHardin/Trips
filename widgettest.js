@@ -2,7 +2,9 @@
 // Paste into Scriptable as a separate script to preview the in-trip itinerary view.
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const NAV_APP = "google"; // "google" or "waze"
+const WORKER_URL   = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data";
+const SIMULATE_DATE = "2026-05-28"; // date to fetch data for
+const NAV_APP      = "google"; // "google" or "waze"
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const BG         = new Color("#e8ddd0");
@@ -11,27 +13,13 @@ const INK        = new Color("#2a2520");
 const MUTED      = new Color("#8a7f76");
 const SAND       = new Color("#d9cbb8");
 
-// ── Simulated data — May 28, 2026, 9:00am ────────────────────────────────────
-const data = {
-  trip: {
-    name:   "France 2026",
-    emoji:  "🇫🇷🍷🌸",
-    status: "active",
-  },
-  today: {
-    city:        "Lyon",
-    description: "Lyon",
-    activities: [
-      { time: "8:00am",  timeSort: "08:00", emoji: "☕", text: "Breakfast at hotel",           location: "Breakfast at hotel, Lyon" },
-      { time: "9:30am",  timeSort: "09:30", emoji: "🚗", text: "Drive to Beaune",              location: "Beaune, France" },
-      { time: "11:00am", timeSort: "11:00", emoji: "🍷", text: "Wine tasting at Bouchard",     location: "Bouchard Père et Fils, Beaune" },
-      { time: "1:00pm",  timeSort: "13:00", emoji: "🍽️", text: "Lunch in Beaune",             location: "Beaune, France" },
-      { time: "3:00pm",  timeSort: "15:00", emoji: "🏰", text: "Visit Hospices de Beaune",     location: "Hospices de Beaune, Beaune" },
-      { time: "5:30pm",  timeSort: "17:30", emoji: "🚗", text: "Drive back to Lyon",           location: "Lyon, France" },
-      { time: "7:30pm",  timeSort: "19:30", emoji: "🍽️", text: "Dinner at Paul Bocuse",       location: "Auberge du Pont de Collonges, Lyon" },
-    ],
-  },
-};
+// ── Fetch real data for the simulated date ────────────────────────────────────
+let data = null;
+try {
+  data = await new Request(`${WORKER_URL}?date=${SIMULATE_DATE}`).loadJSON();
+} catch (e) {
+  data = null;
+}
 
 // Simulated current time: 9:00am
 const SIMULATED_NOW = "09:00";
@@ -41,7 +29,13 @@ const widget = new ListWidget();
 widget.backgroundColor = BG;
 widget.setPadding(12, 14, 14, 14);
 
-buildItineraryWidget(widget, data);
+if (!data || !data.trip) {
+  const t = widget.addText("No data — check worker URL or Firebase rules");
+  t.font = Font.systemFont(12);
+  t.textColor = MUTED;
+} else {
+  buildItineraryWidget(widget, data);
+}
 
 Script.setWidget(widget);
 Script.complete();
