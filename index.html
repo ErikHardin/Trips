@@ -1773,7 +1773,7 @@ function renderTripItinerary(trip) {
           <div class="day-chevron">›</div>
         </div>
         <div class="day-body">
-          ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight</div><div class="flight-row"><span class="flight-code">${day.flightInfo.formatted.split(' ')[0]}</span> ${day.flightInfo.formatted.split(' ').slice(1).join(' ')}</div></div></div>` : ''}
+          ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight${Array.isArray(day.flightInfo) && day.flightInfo.length > 1 ? 's' : ''}</div>${(Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}</div></div>` : ''}
           <div class="activity-list">${activitiesHTML}</div>
           ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
         </div>
@@ -1791,7 +1791,7 @@ function renderTripItinerary(trip) {
   if (trip.flightReturn) {
     panel.innerHTML += `
       <div class="flight-banner" style="margin:16px 16px 10px;">
-        <div class="flight-icon">🏠</div>
+        <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return Flights · ${trip.flightReturnDate||''}</div>
           ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
@@ -2012,19 +2012,20 @@ async function renderTripOverview(trip) {
     .filter(([,d]) => d.flightInfo)
     .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
   inTripFlights.forEach(([,day]) => {
+    const _flights = Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo];
     flightsHTML += `
       <div class="flight-banner" style="margin:10px 16px 0;">
         <div class="flight-icon">✈️</div>
         <div>
-          <div class="flight-label">Flight · ${day.flightInfo.date||''}</div>
-          <div class="flight-row"><span class="flight-code">${day.flightInfo.formatted.split(' ')[0]}</span> ${day.flightInfo.formatted.split(' ').slice(1).join(' ')}</div>
+          <div class="flight-label">Flight${_flights.length > 1 ? 's' : ''} · ${_flights[0]?.date||''}</div>
+          ${_flights.map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}
         </div>
       </div>`;
   });
   if (trip.flightReturn) {
     flightsHTML += `
       <div class="flight-banner" style="margin:10px 16px 0;">
-        <div class="flight-icon">🏠</div>
+        <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return · ${trip.flightReturnDate||''}</div>
           ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
@@ -2961,12 +2962,15 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   _sortedDays.sort((a,b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
   _sortedDays.forEach(([dayId, day]) => {
     if (day.flightInfo) {
-      _editFlightsIntrip.push({
-        dayId,
-        formatted: day.flightInfo.formatted,
-        date: day.flightInfo.date || '',
-        isoDate: day.dateISO || '',
-        dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
+      const flights = Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo];
+      flights.forEach(fi => {
+        _editFlightsIntrip.push({
+          dayId,
+          formatted: fi.formatted,
+          date: fi.date || '',
+          isoDate: day.dateISO || '',
+          dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
+        });
       });
     }
   });
@@ -3126,7 +3130,9 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted) {
     }
     if (!match) { showToast('No trip day found for ' + humanDate); return; }
     const [dayId, day] = match;
-    await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: { formatted, date: humanDate } });
+    const existingForDay = _editFlightsIntrip.filter(f => f.dayId === dayId).map(f => ({ formatted: f.formatted, date: f.date }));
+    const newFlightInfo = [...existingForDay, { formatted, date: humanDate }];
+    await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: newFlightInfo });
     logChange(editingTripId, 'Flight added', formatted);
     _editFlightsIntrip.push({
       dayId, formatted, date: humanDate, isoDate,
@@ -3185,9 +3191,10 @@ window.removeFlightChip = function(dir, index) {
 window.removeIntripFlight = async function(index) {
   const f = _editFlightsIntrip[index];
   if (!f) return;
-  await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: null });
-  logChange(editingTripId, 'Flight removed', f.formatted || '');
   _editFlightsIntrip.splice(index, 1);
+  const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date }));
+  await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining.length > 0 ? remaining : null });
+  logChange(editingTripId, 'Flight removed', f.formatted || '');
   renderFlightChips();
 };
 
