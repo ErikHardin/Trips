@@ -47,39 +47,37 @@ function buildCountdownWidget(w, trip) {
   hdr.centerAlignContent();
 
   const emojiTxt = hdr.addText(trip.emoji || "✈️");
-  emojiTxt.font = Font.systemFont(26);
+  emojiTxt.font = Font.systemFont(20);
 
-  hdr.addSpacer(10);
+  hdr.addSpacer(8);
 
   const nameTxt = hdr.addText(trip.name);
-  nameTxt.font = Font.boldSystemFont(15);
+  nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  w.addSpacer(8);
+  w.addSpacer(6);
 
-  // ── Countdown number ──────────────────────────────────────────────────────
+  // ── Countdown: number + label on one line ─────────────────────────────────
   const days = trip.daysUntil ?? 0;
-  const countStack = w.addStack();
-  countStack.layoutHorizontally();
-  countStack.centerAlignContent();
-  countStack.addSpacer();
+  const countRow = w.addStack();
+  countRow.layoutHorizontally();
+  countRow.centerAlignContent();
+  countRow.addSpacer();
 
-  const numCol = countStack.addStack();
-  numCol.layoutVertically();
-  numCol.centerAlignContent();
-
-  const numTxt = numCol.addText(String(days));
-  numTxt.font = Font.boldSystemFont(38);
+  const numTxt = countRow.addText(String(days));
+  numTxt.font = Font.boldSystemFont(42);
   numTxt.textColor = TERRACOTTA;
 
-  const labelTxt = numCol.addText(days === 1 ? "day until departure" : "days until departure");
-  labelTxt.font = Font.systemFont(11);
+  countRow.addSpacer(6);
+
+  const labelTxt = countRow.addText(days === 1 ? "day until\ndeparture" : "days until\ndeparture");
+  labelTxt.font = Font.systemFont(12);
   labelTxt.textColor = MUTED;
 
-  countStack.addSpacer();
+  countRow.addSpacer();
 
-  w.addSpacer(8);
+  w.addSpacer(6);
 
   // ── Outbound flights ──────────────────────────────────────────────────────
   if (trip.flightOut) {
@@ -98,7 +96,7 @@ function buildCountdownWidget(w, trip) {
       row.layoutHorizontally();
       row.backgroundColor = SAND;
       row.cornerRadius = 8;
-      row.setPadding(5, 8, 5, 8);
+      row.setPadding(4, 8, 4, 8);
       row.centerAlignContent();
 
       // Bold flight code, then rest of string
