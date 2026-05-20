@@ -27,7 +27,7 @@ const SIMULATED_NOW = "09:00";
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(12, 14, 14, 14);
+widget.setPadding(8, 14, 10, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("No data — check worker URL or Firebase rules");
@@ -47,7 +47,7 @@ function buildItineraryWidget(w, { trip, today }) {
   const allActs = today?.activities || [];
   const nextIdx  = allActs.findIndex(a => a.timeSort >= nowSort);
   const next     = nextIdx >= 0 ? allActs[nextIdx] : (allActs.length ? allActs[allActs.length - 1] : null);
-  const upcoming = nextIdx >= 0 ? allActs.slice(nextIdx + 1, nextIdx + 3) : [];
+  const upcoming = nextIdx >= 0 ? allActs.slice(nextIdx + 1, nextIdx + 5) : [];
 
   if (next?.location) {
     const q = encodeURIComponent(next.location);
@@ -74,11 +74,7 @@ function buildItineraryWidget(w, { trip, today }) {
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  const sTxt = nameCol.addText("🟢  In Progress");
-  sTxt.font = Font.systemFont(10);
-  sTxt.textColor = TERRACOTTA;
-
-  w.addSpacer(5);
+  w.addSpacer(3);
 
   // Today's location
   if (today?.description) {
@@ -86,7 +82,7 @@ function buildItineraryWidget(w, { trip, today }) {
     locTxt.font = Font.mediumSystemFont(11);
     locTxt.textColor = MUTED;
     locTxt.lineLimit = 1;
-    w.addSpacer(4);
+    w.addSpacer(3);
   }
 
   // Next activity — highlighted
@@ -116,10 +112,10 @@ function buildItineraryWidget(w, { trip, today }) {
     arrow.font = Font.boldSystemFont(12);
     arrow.textColor = TERRACOTTA;
 
-    w.addSpacer(4);
+    w.addSpacer(3);
   }
 
-  // Remaining activities (up to 2)
+  // Remaining activities (up to 4)
   for (const act of upcoming) {
     const row = w.addStack();
     row.layoutHorizontally();
@@ -130,6 +126,6 @@ function buildItineraryWidget(w, { trip, today }) {
     txt.textColor = MUTED;
     txt.lineLimit = 1;
 
-    w.addSpacer(3);
+    w.addSpacer(2);
   }
 }
