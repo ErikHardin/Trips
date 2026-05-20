@@ -24,7 +24,7 @@ try {
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(28, 14, 14, 14);
+widget.setPadding(12, 14, 14, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
