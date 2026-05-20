@@ -52,7 +52,6 @@ function buildDrivingWidget(w, { trip, days }) {
   if (trip.status === "active") {
     driveDays = driveDays.filter(d => d.dateISO >= todayISO);
   }
-  driveDays = driveDays.slice(0, 7);
 
   if (driveDays.length === 0) {
     const t = w.addText("No upcoming drives");
@@ -61,75 +60,46 @@ function buildDrivingWidget(w, { trip, days }) {
     return;
   }
 
+  // Flatten all drives across days into individual rows; date shown only on
+  // the first drive of each day.
+  let rowCount = 0;
   for (const day of driveDays) {
+    if (rowCount >= 7) break;
     const isToday = day.dateISO === todayISO;
-    const row = w.addStack();
-    row.layoutHorizontally();
-    row.centerAlignContent();
 
-    // Date label — terracotta if today
-    const dateTxt = row.addText(day.dateLabel);
-    dateTxt.font = isToday ? Font.boldSystemFont(11) : Font.systemFont(11);
-    dateTxt.textColor = isToday ? TERRACOTTA : MUTED;
-    dateTxt.lineLimit = 1;
+    for (let i = 0; i < day.drives.length; i++) {
+      if (rowCount >= 7) break;
+      const drive = day.drives[i];
+      const row = w.addStack();
+      row.layoutHorizontally();
+      row.centerAlignContent();
 
-    row.addSpacer(10);
+      // Date label only on the first drive of the day
+      const dateStr = i === 0 ? day.dateLabel : "";
+      const dateTxt = row.addText(dateStr);
+      dateTxt.font = isToday ? Font.boldSystemFont(11) : Font.systemFont(11);
+      dateTxt.textColor = isToday ? TERRACOTTA : MUTED;
+      dateTxt.minimumScaleFactor = 1.0;
 
-    // Drive description
-    const drive = day.drives[0];
-    const driveTxt = row.addText(drive.text || "Drive");
-    driveTxt.font = Font.systemFont(11);
-    driveTxt.textColor = INK;
-    driveTxt.lineLimit = 1;
+      row.addSpacer(10);
 
-    // Duration right-aligned
-    const dur = toDuration(drive.time);
-    if (dur) {
-      row.addSpacer();
-      const durTxt = row.addText(dur);
-      durTxt.font = Font.boldSystemFont(11);
-      durTxt.textColor = TERRACOTTA;
-      durTxt.lineLimit = 1;
+      // Drive description
+      const driveTxt = row.addText(drive.text || "Drive");
+      driveTxt.font = Font.systemFont(11);
+      driveTxt.textColor = INK;
+      driveTxt.lineLimit = 1;
+
+      // Time right-aligned
+      if (drive.time) {
+        row.addSpacer();
+        const timeTxt = row.addText(drive.time);
+        timeTxt.font = Font.boldSystemFont(10);
+        timeTxt.textColor = TERRACOTTA;
+        timeTxt.lineLimit = 1;
+      }
+
+      w.addSpacer(4);
+      rowCount++;
     }
-
-    w.addSpacer(4);
   }
-}
-
-// Convert a time string to a duration string.
-// "10:00am–11:30am" → "1h 30m"   "9am–12pm" → "3h"   "45 min" → "45m"
-function toDuration(time) {
-  if (!time) return "";
-  const t = String(time).trim();
-
-  // Already formatted as duration
-  if (/^\d+h(\s*\d+m)?$/.test(t) || /^\d+m(in)?$/.test(t)) return t.replace("min", "m");
-
-  // Range like "10:00am–11:30am" or "9am-12:30pm"
-  const rng = t.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)[\s–\-]+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
-  if (!rng) return "";
-
-  const toMin = s => {
-    const m = String(s).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-    if (!m) return null;
-    let h = parseInt(m[1], 10);
-    const min = parseInt(m[2] || "0", 10);
-    const ap = (m[3] || "").toLowerCase();
-    if (ap === "pm" && h !== 12) h += 12;
-    if (ap === "am" && h === 12) h = 0;
-    return h * 60 + min;
-  };
-
-  let start = toMin(rng[1]);
-  let end   = toMin(rng[2]);
-  if (start === null || end === null) return "";
-  if (end < start) end += 12 * 60;
-  const diff = end - start;
-  if (diff <= 0) return "";
-
-  const h = Math.floor(diff / 60);
-  const m = diff % 60;
-  if (h === 0) return m + "m";
-  if (m === 0) return h + "h";
-  return h + "h " + m + "m";
 }
