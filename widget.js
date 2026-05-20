@@ -1,5 +1,5 @@
 // Hardin Trips — Scriptable home screen widget
-// Install: paste this into a new Scriptable script, then add a Large widget
+// Install: paste this into a new Scriptable script, then add a Medium widget
 // to your home screen and select this script.
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -24,11 +24,11 @@ try {
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(12, 14, 12, 14);
+widget.setPadding(12, 14, 10, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
-  t.font = Font.mediumSystemFont(16);
+  t.font = Font.mediumSystemFont(15);
   t.textColor = INK;
 } else if (data.trip.status === "upcoming") {
   buildCountdownWidget(widget, data.trip);
@@ -40,80 +40,79 @@ Script.setWidget(widget);
 Script.complete();
 
 // ── Pre-trip: countdown + outbound flights ────────────────────────────────────
+// Layout budget for medium widget (~134pt content height):
+//   Header 20 + gap 4 + countdown row 40 + gap 5 + flight header 13
+//   + gap 3 + (flight row 20 + gap 3) × 3 = 154 → fits with tight rows
 function buildCountdownWidget(w, trip) {
-  // ── Header: emoji + name ──────────────────────────────────────────────────
+  // Header: emoji + name
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
 
   const emojiTxt = hdr.addText(trip.emoji || "✈️");
-  emojiTxt.font = Font.systemFont(26);
+  emojiTxt.font = Font.systemFont(18);
 
-  hdr.addSpacer(10);
+  hdr.addSpacer(7);
 
   const nameTxt = hdr.addText(trip.name);
-  nameTxt.font = Font.boldSystemFont(15);
+  nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  w.addSpacer(8);
+  w.addSpacer(5);
 
-  // ── Countdown number ──────────────────────────────────────────────────────
+  // Countdown: big number left + "days until\ndeparture" right, vertically centered
   const days = trip.daysUntil ?? 0;
-  const countStack = w.addStack();
-  countStack.layoutHorizontally();
-  countStack.centerAlignContent();
-  countStack.addSpacer();
+  const countRow = w.addStack();
+  countRow.layoutHorizontally();
+  countRow.centerAlignContent();
+  countRow.addSpacer();
 
-  const numCol = countStack.addStack();
-  numCol.layoutVertically();
-  numCol.centerAlignContent();
-
-  const numTxt = numCol.addText(String(days));
-  numTxt.font = Font.boldSystemFont(38);
+  const numTxt = countRow.addText(String(days));
+  numTxt.font = Font.boldSystemFont(40);
   numTxt.textColor = TERRACOTTA;
 
-  const labelTxt = numCol.addText(days === 1 ? "day until departure" : "days until departure");
-  labelTxt.font = Font.systemFont(11);
+  countRow.addSpacer(5);
+
+  const labelTxt = countRow.addText(days === 1 ? "day until\ndeparture" : "days until\ndeparture");
+  labelTxt.font = Font.systemFont(12);
   labelTxt.textColor = MUTED;
 
-  countStack.addSpacer();
+  countRow.addSpacer();
 
-  w.addSpacer(8);
+  w.addSpacer(5);
 
-  // ── Outbound flights ──────────────────────────────────────────────────────
+  // Outbound flights
   if (trip.flightOut) {
-    const flightHeader = w.addStack();
-    flightHeader.layoutHorizontally();
-    flightHeader.centerAlignContent();
+    const fhdr = w.addStack();
+    fhdr.layoutHorizontally();
 
-    const ftitle = flightHeader.addText("✈️  Outbound" + (trip.flightOutDate ? "  ·  " + trip.flightOutDate : ""));
-    ftitle.font = Font.boldSystemFont(11);
+    const ftitle = fhdr.addText("✈️  Outbound" + (trip.flightOutDate ? "  ·  " + trip.flightOutDate : ""));
+    ftitle.font = Font.boldSystemFont(10);
     ftitle.textColor = MUTED;
 
-    w.addSpacer(4);
+    w.addSpacer(3);
 
     for (const leg of trip.flightOut.split("\n").filter(Boolean)) {
       const row = w.addStack();
       row.layoutHorizontally();
       row.backgroundColor = SAND;
-      row.cornerRadius = 8;
-      row.setPadding(5, 8, 5, 8);
+      row.cornerRadius = 7;
+      row.setPadding(4, 8, 4, 8);
       row.centerAlignContent();
 
-      // Bold flight code, then rest of string
       const spaceIdx = leg.indexOf(" ");
-      const code = spaceIdx > -1 ? leg.slice(0, spaceIdx) : leg;
+      const code   = spaceIdx > -1 ? leg.slice(0, spaceIdx) : leg;
       const detail = spaceIdx > -1 ? leg.slice(spaceIdx + 1) : "";
 
       const codeTxt = row.addText(code);
-      codeTxt.font = Font.boldSystemFont(12);
+      codeTxt.font = Font.boldSystemFont(11);
       codeTxt.textColor = TERRACOTTA;
 
       if (detail) {
-        row.addSpacer(6);
+        row.addSpacer(5);
         const detTxt = row.addText(detail);
-        detTxt.font = Font.systemFont(12);
+        detTxt.font = Font.systemFont(11);
         detTxt.textColor = INK;
         detTxt.lineLimit = 1;
       }
@@ -124,17 +123,18 @@ function buildCountdownWidget(w, trip) {
 }
 
 // ── Active trip: today's location + activities ────────────────────────────────
+// Layout budget for medium widget (~134pt content height):
+//   Header 34 + gap 5 + location 13 + gap 4 + next-activity row 26
+//   + gap 4 + (activity row 14 + gap 3) × 3 = 137 → fits
 function buildItineraryWidget(w, { trip, today }) {
-  // Use device local time to pick "next" activity
-  const now = new Date();
+  const now     = new Date();
   const nowSort = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
 
   const allActs = today?.activities || [];
   const nextIdx  = allActs.findIndex(a => a.timeSort >= nowSort);
   const next     = nextIdx >= 0 ? allActs[nextIdx] : (allActs.length ? allActs[allActs.length - 1] : null);
-  const upcoming = nextIdx >= 0 ? allActs.slice(nextIdx + 1, nextIdx + 4) : [];
+  const upcoming = nextIdx >= 0 ? allActs.slice(nextIdx + 1, nextIdx + 3) : [];
 
-  // Tapping the widget opens directions to the next activity
   if (next?.location) {
     const q = encodeURIComponent(next.location);
     w.url = NAV_APP === "waze"
@@ -142,84 +142,84 @@ function buildItineraryWidget(w, { trip, today }) {
       : `https://maps.google.com/?q=${q}`;
   }
 
-  // ── Header: emoji  name  status ───────────────────────────────────────────
+  // Header: emoji + name + status on one row
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
 
   const emojiTxt = hdr.addText(trip.emoji || "✈️");
-  emojiTxt.font = Font.systemFont(26);
+  emojiTxt.font = Font.systemFont(20);
 
-  hdr.addSpacer(10);
+  hdr.addSpacer(7);
 
   const nameCol = hdr.addStack();
   nameCol.layoutVertically();
 
   const nameTxt = nameCol.addText(trip.name);
-  nameTxt.font = Font.boldSystemFont(15);
+  nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
   const sLabel = statusLabel(trip);
   if (sLabel) {
     const sTxt = nameCol.addText(sLabel);
-    sTxt.font = Font.systemFont(11);
+    sTxt.font = Font.systemFont(10);
     sTxt.textColor = TERRACOTTA;
   }
 
-  w.addSpacer(10);
+  w.addSpacer(5);
 
-  // ── Today's location ───────────────────────────────────────────────────────
+  // Today's location
   if (today?.description) {
     const locTxt = w.addText("📍  " + today.description);
-    locTxt.font = Font.mediumSystemFont(12);
+    locTxt.font = Font.mediumSystemFont(11);
     locTxt.textColor = MUTED;
     locTxt.lineLimit = 1;
-    w.addSpacer(8);
+    w.addSpacer(4);
   }
 
-  // ── Next activity (highlighted row) ───────────────────────────────────────
+  // Next activity — highlighted
   if (next) {
     const row = w.addStack();
     row.layoutHorizontally();
     row.backgroundColor = SAND;
-    row.cornerRadius = 10;
-    row.setPadding(8, 10, 8, 10);
+    row.cornerRadius = 8;
+    row.setPadding(6, 10, 6, 10);
     row.centerAlignContent();
 
     const timeTxt = row.addText(next.time || "");
-    timeTxt.font = Font.boldSystemFont(12);
+    timeTxt.font = Font.boldSystemFont(11);
     timeTxt.textColor = TERRACOTTA;
     timeTxt.lineLimit = 1;
 
-    row.addSpacer(6);
+    row.addSpacer(5);
 
     const actTxt = row.addText((next.emoji || "📌") + "  " + next.text);
-    actTxt.font = Font.mediumSystemFont(13);
+    actTxt.font = Font.mediumSystemFont(12);
     actTxt.textColor = INK;
     actTxt.lineLimit = 1;
 
     row.addSpacer();
 
     const arrow = row.addText("→");
-    arrow.font = Font.boldSystemFont(14);
+    arrow.font = Font.boldSystemFont(12);
     arrow.textColor = TERRACOTTA;
 
-    w.addSpacer(6);
+    w.addSpacer(4);
   }
 
-  // ── Remaining activities (up to 3) ────────────────────────────────────────
+  // Remaining activities (up to 2 for medium)
   for (const act of upcoming) {
     const row = w.addStack();
     row.layoutHorizontally();
     row.centerAlignContent();
 
     const txt = row.addText(act.time + "   " + (act.emoji || "📌") + "  " + act.text);
-    txt.font = Font.systemFont(12);
+    txt.font = Font.systemFont(11);
     txt.textColor = MUTED;
     txt.lineLimit = 1;
 
-    w.addSpacer(4);
+    w.addSpacer(3);
   }
 }
 
