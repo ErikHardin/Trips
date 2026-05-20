@@ -50,7 +50,11 @@ function buildItineraryWidget(w, { trip, today }) {
   const nowSort = SIMULATED_NOW;
 
   const allActs = today?.activities || [];
-  const nextIdx  = allActs.findIndex(a => a.timeSort >= nowSort);
+
+  // Find the next timed activity; if all timed ones have passed, fall back to
+  // the first timeless activity (timeless entries sort to the end of allActs).
+  let nextIdx = allActs.findIndex(a => a.timeSort >= nowSort);
+  if (nextIdx < 0) nextIdx = allActs.findIndex(a => !a.timeSort);
   const next     = nextIdx >= 0 ? allActs[nextIdx] : (allActs.length ? allActs[allActs.length - 1] : null);
   const upcoming = nextIdx >= 0 ? allActs.slice(nextIdx + 1, nextIdx + 5) : [];
 
@@ -61,7 +65,7 @@ function buildItineraryWidget(w, { trip, today }) {
       : `https://maps.google.com/?q=${q}`;
   }
 
-  // Header: emoji + name + status
+  // Header: emoji + name
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
@@ -71,10 +75,7 @@ function buildItineraryWidget(w, { trip, today }) {
 
   hdr.addSpacer(7);
 
-  const nameCol = hdr.addStack();
-  nameCol.layoutVertically();
-
-  const nameTxt = nameCol.addText(trip.name);
+  const nameTxt = hdr.addText(trip.name);
   nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;

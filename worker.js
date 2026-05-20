@@ -183,7 +183,12 @@ async function handleWidgetData(env, request) {
           text:     a.text || a.description || '',
           location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
         }))
-        .sort((a, b) => a.timeSort.localeCompare(b.timeSort));
+        .sort((a, b) => {
+          if (!a.timeSort && !b.timeSort) return 0; // preserve Firebase order for timeless
+          if (!a.timeSort) return 1;                // timeless → after all timed
+          if (!b.timeSort) return -1;               // timed → before timeless
+          return a.timeSort.localeCompare(b.timeSort);
+        });
 
       todayData = {
         city:        dayEntry.city || '',
