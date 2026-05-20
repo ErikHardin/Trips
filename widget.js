@@ -24,7 +24,7 @@ try {
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(16, 14, 8, 14);
+widget.setPadding(24, 14, 18, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
@@ -99,8 +99,8 @@ function buildCountdownWidget(w, trip) {
     }
   }
 
-  // Fixed spacer pulls countdown up from bottom
-  w.addSpacer(10);
+  // Flexible spacer — countdown floats to bottom, top padding pushes content down
+  w.addSpacer();
 
   // Countdown number — bottom right
   const days = trip.daysUntil ?? 0;
