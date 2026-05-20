@@ -33,6 +33,11 @@ if (!data || !data.trip) {
   const t = widget.addText("No data — check worker URL or Firebase rules");
   t.font = Font.systemFont(12);
   t.textColor = MUTED;
+} else if (!data.today) {
+  buildItineraryWidget(widget, data);
+  const hint = widget.addText("No itinerary for " + SIMULATE_DATE + " — try a date that has days added in the app");
+  hint.font = Font.systemFont(10);
+  hint.textColor = MUTED;
 } else {
   buildItineraryWidget(widget, data);
 }
