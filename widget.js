@@ -24,7 +24,7 @@ try {
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
-widget.setPadding(24, 14, 18, 14);
+widget.setPadding(28, 14, 14, 14);
 
 if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
@@ -39,30 +39,42 @@ if (!data || !data.trip) {
 Script.setWidget(widget);
 Script.complete();
 
-// ── Pre-trip: full-width header, flights, countdown bottom-right ──────────────
+// ── Pre-trip: header row with countdown top-right, flights below ──────────────
 function buildCountdownWidget(w, trip) {
-  // Full-width header: emoji + name
-  const hdr = w.addStack();
-  hdr.layoutHorizontally();
-  hdr.centerAlignContent();
+  const days = trip.daysUntil ?? 0;
 
-  hdr.addSpacer();
+  // Top row: emoji + name on left, countdown on right
+  const topRow = w.addStack();
+  topRow.layoutHorizontally();
+  topRow.centerAlignContent();
 
-  const emojiTxt = hdr.addText(trip.emoji || "✈️");
+  const emojiTxt = topRow.addText(trip.emoji || "✈️");
   emojiTxt.font = Font.systemFont(18);
 
-  hdr.addSpacer(7);
+  topRow.addSpacer(7);
 
-  const nameTxt = hdr.addText(trip.name);
+  const nameTxt = topRow.addText(trip.name);
   nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
 
-  hdr.addSpacer();
+  topRow.addSpacer();
+
+  // Countdown column — right side of header row
+  const countCol = topRow.addStack();
+  countCol.layoutVertically();
+
+  const numTxt = countCol.addText(String(days));
+  numTxt.font = Font.boldSystemFont(28);
+  numTxt.textColor = TERRACOTTA;
+
+  const labelTxt = countCol.addText(days === 1 ? "day until" : "days until");
+  labelTxt.font = Font.systemFont(10);
+  labelTxt.textColor = MUTED;
 
   w.addSpacer(10);
 
-  // Flights directly under header
+  // Flights below the header row
   if (trip.flightOut) {
     const fhdr = w.addStack();
     const ftitle = fhdr.addText("✈️  Outbound" + (trip.flightOutDate ? "  ·  " + trip.flightOutDate : ""));
@@ -98,28 +110,6 @@ function buildCountdownWidget(w, trip) {
       w.addSpacer(3);
     }
   }
-
-  // Flexible spacer — countdown floats to bottom, top padding pushes content down
-  w.addSpacer();
-
-  // Countdown number — bottom right
-  const days = trip.daysUntil ?? 0;
-
-  const numRow = w.addStack();
-  numRow.layoutHorizontally();
-  numRow.addSpacer();
-  const numTxt = numRow.addText(String(days));
-  numTxt.font = Font.boldSystemFont(28);
-  numTxt.textColor = TERRACOTTA;
-  numRow.addSpacer(22);
-
-  const labelRow = w.addStack();
-  labelRow.layoutHorizontally();
-  labelRow.addSpacer();
-  const labelTxt = labelRow.addText(days === 1 ? "day until" : "days until");
-  labelTxt.font = Font.systemFont(11);
-  labelTxt.textColor = MUTED;
-  labelRow.addSpacer(22);
 }
 
 // ── Active trip: today's location + activities ────────────────────────────────
