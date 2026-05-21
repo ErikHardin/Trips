@@ -797,6 +797,7 @@ body {
 .weather-chip:hover { opacity: 0.75; }
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
+.day-chips-row { display: flex; flex-direction: row; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .translation-chip {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 11px; color: var(--sage);
@@ -1808,6 +1809,7 @@ function renderTripItinerary(trip) {
           </div>
           <div class="day-right-col">
             ${day.city ? `<div class="day-city-label">${day.city}</div>` : ''}
+            <div class="day-chips-row"></div>
           </div>
           <div class="day-chevron">›</div>
         </div>
@@ -1818,18 +1820,22 @@ function renderTripItinerary(trip) {
         </div>
       </div>`;
 
-    // Inject translation chip synchronously (no fetch needed until modal opens)
-    const txCC = getCityCountryCode(day.region || day.city || '');
-    if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
-      const txCity = day.city || day.region || '';
-      const txActs = (Array.isArray(day.activities)
-        ? day.activities
-        : Object.values(day.activities || {}))
-        .map(a => (typeof a === 'object' ? (a.text || '') : String(a))).filter(Boolean);
-      injectTranslationChip(cardId, txCity, txCC, txActs);
-    }
   });
 
+  // Inject translation chips after the loop so innerHTML+= doesn't strip event listeners
+  setTimeout(() => {
+    days.forEach(([dayId, day]) => {
+      const txCC = getCityCountryCode(day.region || day.city || '');
+      if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
+        const txCity = day.city || day.region || '';
+        const txActs = (Array.isArray(day.activities)
+          ? day.activities
+          : Object.values(day.activities || {}))
+          .map(a => (typeof a === 'object' ? (a.text || '') : String(a))).filter(Boolean);
+        injectTranslationChip('dc-' + dayId, txCity, txCC, txActs);
+      }
+    });
+  }, 50);
 
   // Fetch weather and drive times for upcoming/active trips
   if (trip.status === 'upcoming' || trip.status === 'active') {
@@ -4911,17 +4917,18 @@ function injectTranslationChip(cardId, city, countryCode, activityTexts) {
   const chip = document.createElement('div');
   chip.className = 'translation-chip';
   chip.title = 'Local phrases';
-  chip.innerHTML = '🌍 <span style="font-weight:600;font-size:10px;">ABC</span>';
+  chip.textContent = '🌍';
   chip.addEventListener('click', function(e) {
     e.stopPropagation();
     openTranslationModal(city, countryCode, activityTexts);
   });
-  const rightCol = header.querySelector('.day-right-col');
-  if (rightCol) {
-    rightCol.appendChild(chip);
+  const chipsRow = header.querySelector('.day-chips-row');
+  if (chipsRow) {
+    chipsRow.appendChild(chip);
   } else {
-    const chevron = header.querySelector('.day-chevron');
-    header.insertBefore(chip, chevron);
+    const rightCol = header.querySelector('.day-right-col');
+    if (rightCol) rightCol.appendChild(chip);
+    else { const chevron = header.querySelector('.day-chevron'); header.insertBefore(chip, chevron); }
   }
 }
 
@@ -4947,12 +4954,13 @@ function injectWeatherChip(cardId, wx, coords, city) {
   chip.innerHTML = '<span class="wx-icon">' + icon + '</span>' +
     '<span class="wx-temp">' + prefix + wx.hi + '°</span>' +
     '<span style="color:var(--muted);font-size:10px;">/' + prefix + wx.lo + '°</span>';
-  const rightCol = header.querySelector('.day-right-col');
-  if (rightCol) {
-    rightCol.appendChild(chip);
+  const chipsRow = header.querySelector('.day-chips-row');
+  if (chipsRow) {
+    chipsRow.appendChild(chip);
   } else {
-    const chevron = header.querySelector('.day-chevron');
-    header.insertBefore(chip, chevron);
+    const rightCol = header.querySelector('.day-right-col');
+    if (rightCol) rightCol.appendChild(chip);
+    else { const chevron = header.querySelector('.day-chevron'); header.insertBefore(chip, chevron); }
   }
 }
 
