@@ -4944,7 +4944,7 @@ function injectTranslationChip(cardId, city, countryCode, activityTexts) {
   const chip = document.createElement('div');
   chip.className = 'translation-chip';
   chip.title = 'Local phrases';
-  chip.textContent = '🌍';
+  chip.textContent = '🗣';
   chip.addEventListener('click', function(e) {
     e.stopPropagation();
     openTranslationModal(city, countryCode, activityTexts);
