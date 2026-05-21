@@ -1839,7 +1839,17 @@ function renderTripItinerary(trip) {
             if (!t) return false;
             const stripped = t.replace(/^\p{Emoji}\s*/u, '').trim();
             return stripped !== txCityLow && stripped !== txRegionLow;
-          });
+          })
+          .map(text => {
+            let t = text;
+            [...new Set([txCity, day.region].filter(Boolean))].forEach(loc => {
+              const esc = loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              t = t.replace(new RegExp(esc + "'s\\b", 'gi'), '');
+              t = t.replace(new RegExp('\\b' + esc + ',?\\b', 'gi'), '');
+            });
+            return t.replace(/\s+/g, ' ').trim();
+          })
+          .filter(Boolean);
         injectTranslationChip('dc-' + dayId, txCity, txCC, txActs);
       }
     });
