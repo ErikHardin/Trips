@@ -797,6 +797,35 @@ body {
 .weather-chip:hover { opacity: 0.75; }
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
+.translation-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; color: var(--sage);
+  background: var(--sage-light); border-radius: 20px;
+  padding: 2px 8px; flex-shrink: 0;
+  white-space: nowrap; cursor: pointer; transition: opacity 0.15s;
+}
+.translation-chip:hover { opacity: 0.75; }
+.translation-section-header {
+  font-size: 10px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted);
+  margin: 16px 0 6px;
+}
+.translation-section-header:first-child { margin-top: 4px; }
+.translation-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.translation-row:last-child { border-bottom: none; }
+.translation-native { font-size: 17px; font-weight: 600; color: var(--ink); line-height: 1.25; }
+.translation-phonetic { font-size: 12px; color: var(--terracotta); font-style: italic; margin-top: 2px; }
+.translation-english { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.translation-speak-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; padding: 4px; flex-shrink: 0;
+  opacity: 0.45; transition: opacity 0.15s; line-height: 1;
+  border-radius: 8px; margin-top: 2px;
+}
+.translation-speak-btn:hover { opacity: 1; background: var(--sage-light); }
 .drive-chip {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11px; color: var(--muted);
@@ -1221,6 +1250,16 @@ body {
     <div class="modal-handle"></div>
     <div class="modal-title" id="wxModalCity"></div>
     <div id="wxModalContent" style="padding-top:4px;"></div>
+  </div>
+</div>
+
+<!-- ══ TRANSLATION MODAL ══ -->
+<div class="modal-overlay" id="translationModal" onclick="closeTranslationModal(event)">
+  <div class="modal-sheet" style="max-height:85vh;overflow-y:auto;">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="translationModalTitle"></div>
+    <div id="translationModalSubtitle" style="font-size:12px;color:var(--muted);margin-top:-10px;margin-bottom:16px;"></div>
+    <div id="translationModalContent" style="padding-top:4px;"></div>
   </div>
 </div>
 
@@ -1778,6 +1817,17 @@ function renderTripItinerary(trip) {
           ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
         </div>
       </div>`;
+
+    // Inject translation chip synchronously (no fetch needed until modal opens)
+    const txCC = getCityCountryCode(day.region || day.city || '');
+    if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
+      const txCity = day.city || day.region || '';
+      const txActs = (Array.isArray(day.activities)
+        ? day.activities
+        : Object.values(day.activities || {}))
+        .map(a => (typeof a === 'object' ? (a.text || '') : String(a))).filter(Boolean);
+      injectTranslationChip(cardId, txCity, txCC, txActs);
+    }
   });
 
 
@@ -3657,6 +3707,141 @@ function openWeatherModal(city, coords, isAvg, wx) {
 }
 
 // ════════════════════════════════════════
+//  TRANSLATION MODAL
+// ════════════════════════════════════════
+const translationCache = new Map();
+
+window.closeTranslationModal = function(e) {
+  if (e && e.target !== document.getElementById('translationModal')) return;
+  document.getElementById('translationModal').classList.remove('open');
+};
+
+window.speakPhrase = function(text, bcp47) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = bcp47;
+  utt.rate = 0.85;
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length) {
+    const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
+    if (match) utt.voice = match;
+  }
+  window.speechSynthesis.speak(utt);
+};
+
+async function openTranslationModal(city, countryCode, activityTexts) {
+  const langInfo = TRANSLATION_LANG_MAP[countryCode];
+  if (!langInfo) return;
+  const modal      = document.getElementById('translationModal');
+  const titleEl    = document.getElementById('translationModalTitle');
+  const subtitleEl = document.getElementById('translationModalSubtitle');
+  const content    = document.getElementById('translationModalContent');
+  titleEl.textContent    = langInfo.name + ' Phrases';
+  subtitleEl.textContent = 'Useful words for your day in ' + city;
+  content.innerHTML      = '<div style="text-align:center;padding:28px;color:var(--muted);">Finding phrases…</div>';
+  modal.classList.add('open');
+
+  const actSummary = activityTexts.slice(0, 6).join(', ').slice(0, 80);
+  const cacheKey   = countryCode + ':' + actSummary;
+  if (translationCache.has(cacheKey)) {
+    renderTranslationPhrases(content, translationCache.get(cacheKey), langInfo.bcp47);
+    return;
+  }
+  try {
+    const data = await fetchTranslationPhrases(countryCode, langInfo.name, city, activityTexts);
+    translationCache.set(cacheKey, data);
+    renderTranslationPhrases(content, data, langInfo.bcp47);
+  } catch(err) {
+    content.innerHTML = '<div style="text-align:center;padding:28px;color:var(--muted);">Could not load phrases</div>';
+    console.warn('Translation fetch failed', err);
+  }
+}
+
+async function fetchTranslationPhrases(countryCode, langName, city, activityTexts) {
+  const actList = activityTexts.filter(Boolean).slice(0, 10).join('\n- ') || 'general sightseeing';
+  const prompt =
+    `You are a travel language assistant. A traveler is spending a day in ${city} where ${langName} is spoken.\n\n` +
+    `Today's activities:\n- ${actList}\n\n` +
+    `Return ONLY a JSON object with exactly two keys:\n` +
+    `1. "activities": translate each activity above into ${langName}. One object per activity, in the same order.\n` +
+    `2. "phrases": 8 essential travel phrases for this destination — 3 core (hello, thank you, excuse me) plus 5 contextual to today's activities.\n\n` +
+    `Every entry (in both arrays) must have exactly: "native" (${langName} script), "phonetic" (simple English pronunciation like "bohn-ZHOOR"), "english" (original English text).\n\n` +
+    `No markdown, no explanation — just the JSON object.`;
+
+  const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const resp = await res.json();
+  if (resp.error) throw new Error(resp.error.message || 'API error');
+  const raw   = (resp.content?.[0]?.text || '').trim();
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON in response');
+  return JSON.parse(match[0]);
+}
+
+function renderTranslationPhrases(container, data, bcp47, expandActivities) {
+  const activities = Array.isArray(data.activities) ? data.activities : [];
+  const phrases    = Array.isArray(data.phrases)    ? data.phrases    : [];
+  if (!activities.length && !phrases.length) {
+    container.innerHTML = '<div style="text-align:center;padding:28px;color:var(--muted);">No phrases available</div>';
+    return;
+  }
+
+  const buildRows = list => list.map(p => {
+    const nativeSafe   = escHtml(p.native   || '');
+    const phoneticSafe = escHtml(p.phonetic || '');
+    const englishSafe  = escHtml(p.english  || '');
+    const nativeAttr   = escAttr(p.native   || '');
+    const bcp47Attr    = escAttr(bcp47);
+    return `<div class="translation-row">
+      <div style="flex:1;min-width:0;">
+        <div class="translation-native">${nativeSafe}</div>
+        <div class="translation-phonetic">${phoneticSafe}</div>
+        <div class="translation-english">${englishSafe}</div>
+      </div>
+      <button class="translation-speak-btn" onclick="speakPhrase('${nativeAttr}','${bcp47Attr}')" title="Hear pronunciation">🔊</button>
+    </div>`;
+  }).join('');
+
+  const showAll = expandActivities || activities.length <= 5;
+  const visibleActs = showAll ? activities : activities.slice(0, 5);
+
+  let html = '';
+  if (activities.length) {
+    html += '<div class="translation-section-header">Your Activities Today</div>';
+    html += buildRows(visibleActs);
+    if (!showAll) {
+      html += `<div style="text-align:center;padding:8px 0 4px;">
+        <button onclick="translationExpandActivities()" style="background:none;border:none;color:var(--terracotta);font-size:12px;cursor:pointer;padding:4px 8px;">
+          Show all (${activities.length}) ▾
+        </button>
+      </div>`;
+    }
+  }
+  if (phrases.length) {
+    html += '<div class="translation-section-header">Useful Phrases</div>';
+    html += buildRows(phrases);
+  }
+
+  container.innerHTML = html;
+  container._txData  = data;
+  container._txBcp47 = bcp47;
+}
+
+window.translationExpandActivities = function() {
+  const container = document.getElementById('translationModalContent');
+  if (!container._txData) return;
+  renderTranslationPhrases(container, container._txData, container._txBcp47, true);
+};
+
+// ════════════════════════════════════════
 //  CSV FILE PICKER
 // ════════════════════════════════════════
 let csvImportMethod = 'file';
@@ -4697,6 +4882,46 @@ async function fetchTripWeather(days, tripYear) {
         }
       }
     } catch(e) { console.warn('Climate fetch failed for', city, e); }
+  }
+}
+
+const TRANSLATION_LANG_MAP = {
+  fr: { name: 'French',     bcp47: 'fr-FR' },
+  de: { name: 'German',     bcp47: 'de-DE' },
+  it: { name: 'Italian',    bcp47: 'it-IT' },
+  pt: { name: 'Portuguese', bcp47: 'pt-PT' },
+  es: { name: 'Spanish',    bcp47: 'es-ES' },
+  jp: { name: 'Japanese',   bcp47: 'ja-JP' },
+  th: { name: 'Thai',       bcp47: 'th-TH' },
+  vn: { name: 'Vietnamese', bcp47: 'vi-VN' },
+  ae: { name: 'Arabic',     bcp47: 'ar-AE' },
+  mv: { name: 'Dhivehi',    bcp47: 'dv-MV' },
+  za: { name: 'Afrikaans',  bcp47: 'af-ZA' },
+};
+const TRANSLATION_SKIP = new Set(['au', 'nz', 'gb', 'sg']);
+
+function injectTranslationChip(cardId, city, countryCode, activityTexts) {
+  if (TRANSLATION_SKIP.has(countryCode) || !TRANSLATION_LANG_MAP[countryCode]) return;
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const header = card.querySelector('.day-header');
+  if (!header) return;
+  const old = header.querySelector('.translation-chip');
+  if (old) old.remove();
+  const chip = document.createElement('div');
+  chip.className = 'translation-chip';
+  chip.title = 'Local phrases';
+  chip.innerHTML = '🌍 <span style="font-weight:600;font-size:10px;">ABC</span>';
+  chip.addEventListener('click', function(e) {
+    e.stopPropagation();
+    openTranslationModal(city, countryCode, activityTexts);
+  });
+  const rightCol = header.querySelector('.day-right-col');
+  if (rightCol) {
+    rightCol.appendChild(chip);
+  } else {
+    const chevron = header.querySelector('.day-chevron');
+    header.insertBefore(chip, chevron);
   }
 }
 
