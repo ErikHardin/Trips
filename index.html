@@ -3742,8 +3742,9 @@ window.closeTranslationModal = function(e) {
 
 window.speakPhrase = function(text, bcp47) {
   if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const doSpeak = () => {
+  speechSynthesis.cancel();
+  // iOS Safari silently drops speak() if called immediately after cancel()
+  setTimeout(() => {
     const utt = new SpeechSynthesisUtterance(text);
     utt.lang = bcp47;
     utt.rate = 0.85;
@@ -3751,16 +3752,7 @@ window.speakPhrase = function(text, bcp47) {
     const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
     if (match) utt.voice = match;
     speechSynthesis.speak(utt);
-  };
-  // Chrome loads voices asynchronously — wait for voiceschanged if not ready yet
-  if (speechSynthesis.getVoices().length > 0) {
-    doSpeak();
-  } else {
-    let fired = false;
-    const once = () => { if (!fired) { fired = true; doSpeak(); } };
-    speechSynthesis.addEventListener('voiceschanged', once, { once: true });
-    setTimeout(once, 300);
-  }
+  }, 100);
 };
 
 async function openTranslationModal(city, countryCode, activityTexts) {
