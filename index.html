@@ -1828,10 +1828,18 @@ function renderTripItinerary(trip) {
       const txCC = getCityCountryCode(day.region || day.city || '');
       if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
         const txCity = day.city || day.region || '';
+        const txCityLow = txCity.toLowerCase();
+        const txRegionLow = (day.region || '').toLowerCase();
         const txActs = (Array.isArray(day.activities)
           ? day.activities
           : Object.values(day.activities || {}))
-          .map(a => (typeof a === 'object' ? (a.text || '') : String(a))).filter(Boolean);
+          .map(a => (typeof a === 'object' ? (a.text || '') : String(a)))
+          .filter(text => {
+            const t = text.trim().toLowerCase();
+            if (!t) return false;
+            const stripped = t.replace(/^\p{Emoji}\s*/u, '').trim();
+            return stripped !== txCityLow && stripped !== txRegionLow;
+          });
         injectTranslationChip('dc-' + dayId, txCity, txCC, txActs);
       }
     });
@@ -3725,15 +3733,24 @@ window.closeTranslationModal = function(e) {
 window.speakPhrase = function(text, bcp47) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = bcp47;
-  utt.rate = 0.85;
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length) {
+  const doSpeak = () => {
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = bcp47;
+    utt.rate = 0.85;
+    const voices = speechSynthesis.getVoices();
     const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
     if (match) utt.voice = match;
+    speechSynthesis.speak(utt);
+  };
+  // Chrome loads voices asynchronously — wait for voiceschanged if not ready yet
+  if (speechSynthesis.getVoices().length > 0) {
+    doSpeak();
+  } else {
+    let fired = false;
+    const once = () => { if (!fired) { fired = true; doSpeak(); } };
+    speechSynthesis.addEventListener('voiceschanged', once, { once: true });
+    setTimeout(once, 300);
   }
-  window.speechSynthesis.speak(utt);
 };
 
 async function openTranslationModal(city, countryCode, activityTexts) {
