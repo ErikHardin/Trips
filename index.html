@@ -3822,7 +3822,7 @@ async function openTranslationModal(city, countryCode, activityTexts) {
 }
 
 async function fetchTranslationPhrases(countryCode, langName, city, activityTexts) {
-  const actList = activityTexts.filter(Boolean).slice(0, 10).join('\n- ') || 'general sightseeing';
+  const actList = activityTexts.filter(Boolean).slice(0, 6).join('\n- ') || 'general sightseeing';
   const prompt =
     `You are a travel language assistant. A traveler is spending a day in ${city} where ${langName} is spoken.\n\n` +
     `Today's activities:\n- ${actList}\n\n` +
@@ -3837,7 +3837,7 @@ async function fetchTranslationPhrases(countryCode, langName, city, activityText
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 900,
+      max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }]
     })
   });
