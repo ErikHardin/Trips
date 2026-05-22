@@ -1855,6 +1855,44 @@ function renderTripItinerary(trip) {
     });
   }, 50);
 
+  // Pre-fetch translation phrases in background for the first 3 translatable days
+  if (trip.status === 'upcoming' || trip.status === 'active') {
+    setTimeout(async () => {
+      let fetched = 0;
+      for (const [, day] of days) {
+        if (fetched >= 3) break;
+        const txCC = getCityCountryCode(day.region || day.city || '');
+        if (!txCC || TRANSLATION_SKIP.has(txCC) || !TRANSLATION_LANG_MAP[txCC]) continue;
+        const txCity = day.city || day.region || '';
+        const txCityLow = txCity.toLowerCase();
+        const txRegionLow = (day.region || '').toLowerCase();
+        const txActs = (Array.isArray(day.activities)
+          ? day.activities : Object.values(day.activities || {}))
+          .map(a => (typeof a === 'object' ? (a.text || '') : String(a)))
+          .filter(text => {
+            const s = text.trim().toLowerCase().replace(/^\p{Emoji}\s*/u, '').trim();
+            return s && s !== txCityLow && s !== txRegionLow;
+          })
+          .map(text => {
+            let t = text;
+            [...new Set([txCity, day.region].filter(Boolean))].forEach(loc => {
+              const esc = loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              t = t.replace(new RegExp(esc + "'s\\b", 'gi'), '').replace(new RegExp('\\b' + esc + ',?\\b', 'gi'), '');
+            });
+            return t.replace(/\s+/g, ' ').trim();
+          }).filter(Boolean);
+        const cacheKey = txCC + ':' + txActs.slice(0, 6).join(', ').slice(0, 80);
+        if (translationCache.has(cacheKey)) continue;
+        const langInfo = TRANSLATION_LANG_MAP[txCC];
+        try {
+          const data = await fetchTranslationPhrases(txCC, langInfo.name, txCity, txActs);
+          translationCache.set(cacheKey, data);
+          fetched++;
+        } catch(e) { /* silently skip prefetch failures */ }
+      }
+    }, 2000);
+  }
+
   // Fetch weather and drive times for upcoming/active trips
   if (trip.status === 'upcoming' || trip.status === 'active') {
     setTimeout(() => fetchTripWeather(days, trip.year), 100);
@@ -3799,7 +3837,7 @@ async function fetchTranslationPhrases(countryCode, langName, city, activityText
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
+      max_tokens: 900,
       messages: [{ role: 'user', content: prompt }]
     })
   });
@@ -3823,15 +3861,13 @@ function renderTranslationPhrases(container, data, bcp47, expandActivities) {
     const nativeSafe   = escHtml(p.native   || '');
     const phoneticSafe = escHtml(p.phonetic || '');
     const englishSafe  = escHtml(p.english  || '');
-    const nativeAttr   = escAttr(p.native   || '');
-    const bcp47Attr    = escAttr(bcp47);
     return `<div class="translation-row">
       <div style="flex:1;min-width:0;">
         <div class="translation-native">${nativeSafe}</div>
         <div class="translation-phonetic">${phoneticSafe}</div>
         <div class="translation-english">${englishSafe}</div>
       </div>
-      <button class="translation-speak-btn" onclick="speakPhrase('${nativeAttr}','${bcp47Attr}')" title="Hear pronunciation">🔊</button>
+      <button class="translation-speak-btn" data-native="${nativeSafe}" title="Hear pronunciation">🔊</button>
     </div>`;
   }).join('');
 
@@ -3858,6 +3894,10 @@ function renderTranslationPhrases(container, data, bcp47, expandActivities) {
   container.innerHTML = html;
   container._txData  = data;
   container._txBcp47 = bcp47;
+  // Attach speak listeners after innerHTML so apostrophes/quotes never break onclick
+  container.querySelectorAll('.translation-speak-btn').forEach(btn => {
+    btn.addEventListener('click', () => speakPhrase(btn.dataset.native, bcp47));
+  });
 }
 
 window.translationExpandActivities = function() {
