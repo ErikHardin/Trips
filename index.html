@@ -3785,7 +3785,7 @@ window.speakPhrase = function(text, bcp47) {
   setTimeout(() => {
     const utt = new SpeechSynthesisUtterance(text);
     utt.lang = bcp47;
-    utt.rate = 0.85;
+    utt.rate = 0.7;
     const voices = speechSynthesis.getVoices();
     const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
     if (match) utt.voice = match;
