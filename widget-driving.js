@@ -69,7 +69,7 @@ function buildDrivingWidget(w, { trip, days }) {
     dateTxt.lineLimit = 1;
 
     if (day.totalDrive) {
-      hdr.addSpacer();
+      hdr.addSpacer(6);
       const totalTxt = hdr.addText(day.totalDrive);
       totalTxt.font = Font.boldSystemFont(11);
       totalTxt.textColor = TERRACOTTA;
