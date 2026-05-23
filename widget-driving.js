@@ -52,9 +52,10 @@ async function getFirebaseToken() {
 const fbToken = await getFirebaseToken();
 const authParam = fbToken ? '?auth=' + fbToken : '';
 
-const [workerData, fbTrips] = await Promise.all([
+const [workerData, fbTrips, geocache] = await Promise.all([
   new Request(WORKER_URL).loadJSON().catch(() => null),
-  new Request(FB_URL + '/trips.json' + authParam).loadJSON().catch(() => null),
+  new Request(FB_URL + '/trips.json'   + authParam).loadJSON().catch(() => null),
+  new Request(FB_URL + '/geocache.json' + authParam).loadJSON().catch(() => null),
 ]);
 
 // ── Compute per-day drive durations via OSRM ─────────────────────────────────
@@ -86,14 +87,20 @@ if (workerData?.trip && fbTrips) {
       const driveActs = acts.filter(a => a?.drive);
 
       // Build waypoints, tracking which activity each belongs to (actIdx = -1 for city endpoints)
+      const context = [day.city, day.region].filter(Boolean).join(', ');
       const wayptSrcs = [];
-      const startCoord = cityCoord(prev);
+      const startCoord = cityCoord(prev, geocache);
       if (startCoord) wayptSrcs.push({ coord: startCoord, actIdx: -1 });
       driveActs.forEach((a, i) => {
-        if (a.coords?.lat != null)
-          wayptSrcs.push({ coord: [a.coords.lat, a.coords.lng], actIdx: i });
+        let coord = null;
+        if (a.coords?.lat != null) {
+          coord = [a.coords.lat, a.coords.lng];
+        } else if (a.text) {
+          coord = gcCoord(extractPlace(a.text) + (context ? ', ' + context : ''), geocache);
+        }
+        if (coord) wayptSrcs.push({ coord, actIdx: i });
       });
-      const endCoord = cityCoord(day);
+      const endCoord = cityCoord(day, geocache);
       if (endCoord) wayptSrcs.push({ coord: endCoord, actIdx: -1 });
 
       // Drop adjacent duplicates
@@ -226,15 +233,36 @@ function findActiveTrip(trips) {
     || null;
 }
 
-// Look up [lat, lng] for a day's region/city using KNOWN_COORDS
-function cityCoord(day) {
-  if (!day) return null;
-  const name = (day.region || day.city || '').split(/[·,]/)[0].trim().toLowerCase();
-  if (!name) return null;
-  for (const [k, v] of Object.entries(KNOWN_COORDS)) {
-    if (name === k || name.includes(k) || k.includes(name)) return v;
-  }
+// Mirrors extractPlaceFromActivity in index.html — strips verb prefix, takes part before comma
+const VERB_RE = /^(explore|drive along|drive to|drive|visit|hike to|hike|see|walk to|walk|bike to|cycle to|go to|head to|stop at|stop in|lunch at|dinner at|breakfast at|brunch at|drinks at|swim at|relax at|check into|check in at|arrive at|arrive in|tasting at|tasting in)\s+/i;
+function extractPlace(text) {
+  let s = text.trim().replace(VERB_RE, '');
+  s = s.split(/\s*[–—]\s*/)[0];
+  s = s.split('(')[0].trim();
+  s = s.split(/\s+(?:and|&)\s+/i)[0].trim();
+  if (s.includes(',')) s = s.split(',')[0].trim();
+  return s;
+}
+
+// Look up a query string in the Firebase geocache
+function gcCoord(query, gc) {
+  if (!gc || !query) return null;
+  const key = query.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const entry = gc[key];
+  if (entry?.lat != null && (entry.v || 0) >= 2) return [entry.lat, entry.lng];
   return null;
+}
+
+// Look up [lat, lng] for a day's region/city — KNOWN_COORDS first, then geocache
+function cityCoord(day, gc) {
+  if (!day) return null;
+  const name = (day.region || day.city || '').split(/[·,]/)[0].trim();
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  for (const [k, v] of Object.entries(KNOWN_COORDS)) {
+    if (lower === k || lower.includes(k) || k.includes(lower)) return v;
+  }
+  return gcCoord(name, gc);
 }
 
 // Call OSRM and return { total: seconds, legs: [seconds, ...] } (zeros on failure)
