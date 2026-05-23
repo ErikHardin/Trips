@@ -202,18 +202,18 @@ async function handleWidgetData(env, request) {
 
 async function handleWidgetDriving(env, request) {
   const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
-  const dateParam = new URL(request.url).searchParams.get('date');
 
   if (!env.FIREBASE_URL) {
     return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
   }
 
-  const fbUrl = env.FIREBASE_URL + '/trips.json' + (env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '');
-  let trips;
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  let trips, geocache;
   try {
-    const resp = await fetch(fbUrl);
-    if (!resp.ok) throw new Error('status ' + resp.status);
-    trips = await resp.json();
+    [trips, geocache] = await Promise.all([
+      fetch(env.FIREBASE_URL + '/trips.json'    + auth).then(r => r.ok ? r.json() : null),
+      fetch(env.FIREBASE_URL + '/geocache.json' + auth).then(r => r.ok ? r.json() : null),
+    ]);
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
   }
@@ -243,33 +243,155 @@ async function handleWidgetDriving(env, request) {
 
   const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  const days = [];
+  // Build sorted day list
+  const sortedDays = [];
   if (chosen.days) {
     for (const day of Object.values(chosen.days)) {
       const iso = day.dateISO || dayDateISO(day, chosen.year);
       if (!iso) continue;
-
-      const rawActs = day.activities
-        ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
-        : [];
-
-      const drives = rawActs
-        .filter(a => a && a.drive)
-        .map(a => ({ time: a.time || '', text: a.text || a.description || '' }));
-
-      const d = new Date(iso + 'T00:00:00Z');
-      days.push({
-        dateISO:   iso,
-        dateLabel: WEEKDAYS[d.getUTCDay()] + ' ' + d.getUTCDate(),
-        city:      day.city || '',
-        drives,
-      });
+      sortedDays.push({ iso, day });
     }
   }
+  sortedDays.sort((a, b) => a.iso.localeCompare(b.iso));
 
-  days.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  // Compute drive days and OSRM routes in parallel
+  const days = await Promise.all(sortedDays.map(async ({ iso, day }, idx) => {
+    const rawActs = day.activities
+      ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+      : [];
+
+    const drives = rawActs
+      .filter(a => a && a.drive)
+      .map(a => ({ time: a.time || '', text: a.text || a.description || '' }));
+
+    const d = new Date(iso + 'T00:00:00Z');
+    const result = {
+      dateISO:   iso,
+      dateLabel: WEEKDAYS[d.getUTCDay()] + ' ' + d.getUTCDate(),
+      city:      day.city || '',
+      drives,
+      totalDrive: null,
+      legTimes:   {},
+    };
+
+    if (drives.length === 0) return result;
+
+    // Build waypoints
+    const driveActs = rawActs.filter(a => a && a.drive);
+    const prevDay   = idx > 0 ? sortedDays[idx - 1].day : null;
+    const context   = [day.city, day.region].filter(Boolean).join(', ');
+    const wayptSrcs = [];
+
+    const startCoord = wCityCoord(prevDay, geocache);
+    if (startCoord) wayptSrcs.push({ coord: startCoord, actIdx: -1 });
+
+    driveActs.forEach((a, i) => {
+      let coord = null;
+      if (a.coords?.lat != null) {
+        coord = [a.coords.lat, a.coords.lng];
+      } else if (a.text) {
+        coord = wGcCoord(wExtractPlace(a.text) + (context ? ', ' + context : ''), geocache);
+      }
+      if (coord) wayptSrcs.push({ coord, actIdx: i });
+    });
+
+    const endCoord = wCityCoord(day, geocache);
+    if (endCoord) wayptSrcs.push({ coord: endCoord, actIdx: -1 });
+
+    const deduped = wayptSrcs.filter((w, i) =>
+      !i || !(w.coord[0] === wayptSrcs[i-1].coord[0] && w.coord[1] === wayptSrcs[i-1].coord[1])
+    );
+    if (deduped.length < 2) return result;
+
+    const { total, legs } = await wOsrmRoute(deduped.map(w => w.coord));
+    if (total <= 600) return result;
+
+    const legMap = {};
+    for (let i = 1; i < deduped.length; i++) {
+      const { actIdx } = deduped[i];
+      if (actIdx >= 0 && legs[i - 1] > 60)
+        legMap[actIdx] = wFmtSecs(legs[i - 1]);
+    }
+
+    result.totalDrive = wFmtSecs(total);
+    result.legTimes   = legMap;
+    return result;
+  }));
 
   return new Response(JSON.stringify({ trip: tripInfo, days }), { headers: CORS });
+}
+
+// ── Worker-side drive-time helpers ────────────────────────────────────────────
+
+const W_KNOWN_COORDS = {
+  'lyon':[45.75,4.85],'luberon':[43.83,5.38],'burgundy':[47.05,4.85],
+  'alsace':[48.32,7.44],'champagne':[49.26,4.03],'paris':[48.85,2.35],
+  'loire valley':[47.35,0.68],'amboise':[47.41,0.98],
+  'bandol':[43.13,5.75],'cannes':[43.55,7.01],'cassis':[43.21,5.54],
+  'marseille':[43.30,5.37],'aix-en-provence':[43.53,5.45],
+  'gordes':[43.91,5.20],'roussillon':[43.90,5.29],'bonnieux':[43.84,5.31],
+  'lourmarin':[43.76,5.36],'apt':[43.88,5.40],'menerbes':[43.84,5.21],
+  'oppede':[43.84,5.17],'lake como':[45.98,9.27],'portofino':[44.30,9.21],
+  'milan':[45.46,9.19],'piedmont':[44.70,8.00],'london':[51.51,-0.13],
+  'berlin':[52.52,13.4],'cape town':[-33.93,18.42],'dubai':[25.20,55.27],
+  'singapore':[1.35,103.82],'sydney':[-33.87,151.21],'new york':[40.71,-74.01],
+  'franschhoek':[-33.91,19.12],'stellenbosch':[-33.93,18.86],
+  'hluhluwe':[-28.02,32.27],'durban':[-29.86,31.02],
+  'maldives':[3.20,73.22],'washington dc':[38.91,-77.04],
+  'chiang mai':[18.79,98.98],'bangkok':[13.75,100.50],'hoi an':[15.88,108.34],
+  'queenstown':[-45.03,168.66],'porto':[41.16,-8.62],'lisbon':[38.72,-9.14],
+  'douro valley':[41.16,-7.75],'melbourne':[-37.81,144.96],'hobart':[-42.88,147.33],
+};
+
+const W_VERB_RE = /^(explore|drive along|drive to|drive|visit|hike to|hike|see|walk to|walk|bike to|cycle to|go to|head to|stop at|stop in|lunch at|dinner at|breakfast at|brunch at|drinks at|swim at|relax at|check into|check in at|arrive at|arrive in|tasting at|tasting in)\s+/i;
+function wExtractPlace(text) {
+  let s = text.trim().replace(W_VERB_RE, '');
+  s = s.split(/\s*[–—]\s*/)[0];
+  s = s.split('(')[0].trim();
+  s = s.split(/\s+(?:and|&)\s+/i)[0].trim();
+  if (s.includes(',')) s = s.split(',')[0].trim();
+  return s;
+}
+
+function wGcCoord(query, gc) {
+  if (!gc || !query) return null;
+  const key = query.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const entry = gc[key];
+  if (entry?.lat != null && (entry.v || 0) >= 2) return [entry.lat, entry.lng];
+  return null;
+}
+
+function wCityCoord(day, gc) {
+  if (!day) return null;
+  const name = (day.region || day.city || '').split(/[·,]/)[0].trim();
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  for (const [k, v] of Object.entries(W_KNOWN_COORDS)) {
+    if (lower === k || lower.includes(k) || k.includes(lower)) return v;
+  }
+  return wGcCoord(name, gc);
+}
+
+async function wOsrmRoute(pts) {
+  const coords = pts.map(p => p[1] + ',' + p[0]).join(';');
+  try {
+    const r = await fetch(
+      'https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=false'
+    ).then(res => res.json());
+    if (!r.routes?.[0]) return { total: 0, legs: [] };
+    return {
+      total: Math.round(r.routes[0].duration),
+      legs:  r.routes[0].legs.map(l => Math.round(l.duration)),
+    };
+  } catch(e) { return { total: 0, legs: [] }; }
+}
+
+function wFmtSecs(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h === 0) return m + 'm';
+  if (m === 0) return h + 'h';
+  return h + 'h ' + m + 'm';
 }
 
 const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12, january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12 };
