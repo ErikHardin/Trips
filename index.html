@@ -2327,6 +2327,37 @@ async function renderTripOverview(trip) {
       for (const [wDayId, { wx, coords, city: wCity }] of Object.entries(tripWeatherByDay)) {
         injectOverviewWeatherChip(wDayId, wx, coords, wCity);
       }
+      // Inject translation chips for days with non-English locations
+      setTimeout(() => {
+        for (const [dayId, day] of sortedForItinerary) {
+          const txCC = getCityCountryCode(day.region || day.city || '');
+          if (!txCC || TRANSLATION_SKIP.has(txCC) || !TRANSLATION_LANG_MAP[txCC]) continue;
+          const txCity = day.city || day.region || '';
+          const txCityLow = txCity.toLowerCase();
+          const txRegionLow = (day.region || '').toLowerCase();
+          const txActs = (Array.isArray(day.activities)
+            ? day.activities
+            : Object.values(day.activities || {}))
+            .map(a => (typeof a === 'object' ? (a.text || '') : String(a)))
+            .filter(text => {
+              const t = text.trim().toLowerCase();
+              if (!t) return false;
+              const stripped = t.replace(/^\p{Emoji}\s*/u, '').trim();
+              return stripped !== txCityLow && stripped !== txRegionLow;
+            })
+            .map(text => {
+              let t = text;
+              [...new Set([txCity, day.region].filter(Boolean))].forEach(loc => {
+                const esc = loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                t = t.replace(new RegExp(esc + "'s\\b", 'gi'), '');
+                t = t.replace(new RegExp('\\b' + esc + ',?\\b', 'gi'), '');
+              });
+              return t.replace(/\s+/g, ' ').trim();
+            })
+            .filter(Boolean);
+          injectOverviewTranslationChip(dayId, txCity, txCC, txActs);
+        }
+      }, 50);
     }
   }
 }
@@ -5061,6 +5092,25 @@ function injectOverviewWeatherChip(dayId, wx, coords, city) {
     });
   }
   chip.innerHTML = '<span>' + icon + '</span> <span class="ov-wx-temp">' + prefix + wx.hi + '°/' + prefix + wx.lo + '°</span>';
+  const info = header.querySelector('.ov-day-info');
+  if (info) info.appendChild(chip);
+}
+
+function injectOverviewTranslationChip(dayId, city, countryCode, activityTexts) {
+  const card = document.getElementById('ov-dc-' + dayId);
+  if (!card) return;
+  const header = card.querySelector('.ov-day-header');
+  if (!header) return;
+  const old = header.querySelector('.ov-translation-chip');
+  if (old) old.remove();
+  const chip = document.createElement('div');
+  chip.className = 'ov-translation-chip translation-chip';
+  chip.title = 'Local phrases';
+  chip.textContent = '🗣';
+  chip.addEventListener('click', function(e) {
+    e.stopPropagation();
+    openTranslationModal(city, countryCode, activityTexts);
+  });
   const info = header.querySelector('.ov-day-info');
   if (info) info.appendChild(chip);
 }
