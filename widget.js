@@ -30,6 +30,8 @@ if (!data || !data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
   t.font = Font.mediumSystemFont(15);
   t.textColor = INK;
+} else if (data.trip.status === "upcoming" && isPastDeparture(data.trip)) {
+  buildItineraryWidget(widget, data);
 } else if (data.trip.status === "upcoming") {
   buildCountdownWidget(widget, data.trip);
 } else {
@@ -42,6 +44,33 @@ Script.complete();
 // ── Pre-trip: header row with countdown top-right, flights below ──────────────
 function buildCountdownWidget(w, trip) {
   const days = trip.daysUntil ?? 0;
+
+  // On departure day, show hours/minutes until first flight instead of "0 days"
+  let countNum, countLabel;
+  if (days === 0) {
+    const dep = parseFirstDepTime(trip.flightOut);
+    if (dep) {
+      const now = new Date();
+      const flightDate = new Date();
+      flightDate.setHours(dep.h, dep.min, 0, 0);
+      const diffMs = flightDate - now;
+      if (diffMs > 3600000) {
+        const hrs  = Math.floor(diffMs / 3600000);
+        const mins = Math.floor((diffMs % 3600000) / 60000);
+        countNum   = String(hrs);
+        countLabel = `hr${hrs !== 1 ? "s" : ""} ${mins}m until`;
+      } else {
+        countNum   = "✈️";
+        countLabel = "Bon voyage!";
+      }
+    } else {
+      countNum   = "🛫";
+      countLabel = "Departs today!";
+    }
+  } else {
+    countNum   = String(days);
+    countLabel = days === 1 ? "day until" : "days until";
+  }
 
   // Top row: emoji + name on left, countdown on right
   const topRow = w.addStack();
@@ -64,11 +93,11 @@ function buildCountdownWidget(w, trip) {
   const countCol = topRow.addStack();
   countCol.layoutVertically();
 
-  const numTxt = countCol.addText(String(days));
+  const numTxt = countCol.addText(countNum);
   numTxt.font = Font.boldSystemFont(28);
   numTxt.textColor = TERRACOTTA;
 
-  const labelTxt = countCol.addText(days === 1 ? "day until" : "days until");
+  const labelTxt = countCol.addText(countLabel);
   labelTxt.font = Font.systemFont(10);
   labelTxt.textColor = MUTED;
 
@@ -206,4 +235,27 @@ function buildItineraryWidget(w, { trip, today }) {
 
     w.addSpacer(2);
   }
+}
+
+// True when it's departure day and we're more than 1 hour past the first flight time
+function isPastDeparture(trip) {
+  if ((trip.daysUntil ?? 1) !== 0) return false;
+  const dep = parseFirstDepTime(trip.flightOut);
+  if (!dep) return false;
+  const flightDate = new Date();
+  flightDate.setHours(dep.h, dep.min, 0, 0);
+  return (new Date() - flightDate) > 3600000;
+}
+
+// Parse the first departure time from a flightOut string like "UA27 DEN → LHR · 5:35pm – 9:40am"
+function parseFirstDepTime(flightOut) {
+  if (!flightOut) return null;
+  const m = flightOut.match(/·\s*(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]);
+  const min = parseInt(m[2]);
+  const ampm = m[3].toLowerCase();
+  if (ampm === "pm" && h !== 12) h += 12;
+  if (ampm === "am" && h === 12) h = 0;
+  return { h, min };
 }
