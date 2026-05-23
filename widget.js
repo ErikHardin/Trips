@@ -3,8 +3,10 @@
 // to your home screen and select this script.
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data";
-const NAV_APP    = "google"; // "google" or "waze"
+const WORKER_URL    = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data";
+const NAV_APP       = "google";        // "google" or "waze"
+const DEST_TIMEZONE = "Europe/Paris";  // IANA timezone of destination
+const DEST_CITY     = "Lyon";          // display name shown next to the time
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const BG         = new Color("#e8ddd0");
@@ -138,6 +140,17 @@ function buildCountdownWidget(w, trip) {
 
       w.addSpacer(3);
     }
+  }
+
+  // Destination local time
+  if (DEST_TIMEZONE) {
+    const destTime = new Date().toLocaleTimeString("en-US", {
+      timeZone: DEST_TIMEZONE, hour: "numeric", minute: "2-digit", hour12: true
+    });
+    w.addSpacer(4);
+    const dtTxt = w.addText("🕐  " + (DEST_CITY ? DEST_CITY + "  " : "") + destTime);
+    dtTxt.font = Font.systemFont(11);
+    dtTxt.textColor = MUTED;
   }
 }
 
