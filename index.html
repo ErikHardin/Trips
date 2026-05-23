@@ -797,6 +797,15 @@ body {
 .weather-chip:hover { opacity: 0.75; }
 .weather-chip .wx-icon { font-size: 13px; line-height: 1; }
 .weather-chip .wx-temp { font-weight: 500; color: var(--blue); }
+.ov-weather-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--muted);
+  background: var(--blue-light); border-radius: 20px;
+  padding: 2px 8px; margin-top: 4px;
+  white-space: nowrap; cursor: pointer; transition: opacity 0.15s;
+}
+.ov-weather-chip:hover { opacity: 0.75; }
+.ov-weather-chip .ov-wx-temp { font-weight: 500; color: var(--blue); }
 .day-chips-row { display: flex; flex-direction: row; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .translation-chip {
   display: inline-flex; align-items: center; gap: 3px;
@@ -1415,6 +1424,7 @@ let selectedPhotoFiles = [];  // multi-photo array
 let notesUnsubscribe = null;
 let isShareView = false;
 let shareCheckDone = false;
+let tripWeatherByDay = {};
 
 const BOOKING_STATUSES = [
   { key: 'booked',          emoji: '📆',   label: 'Booked' },
@@ -2289,7 +2299,7 @@ async function renderTripOverview(trip) {
           const dowFull = day.dateISO
             ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
             : (day.dayName ? day.dayName.slice(0,3) : '');
-          return regionHeader + `<div class="ov-day-card">
+          return regionHeader + `<div class="ov-day-card" id="ov-dc-${dayId}">
             <div class="ov-day-header">
               <div class="ov-day-date">
                 <span class="ov-day-num">${day.dateNum||'–'}</span>
@@ -2312,6 +2322,10 @@ async function renderTripOverview(trip) {
         mapContainer.insertAdjacentHTML('afterend', itineraryHTML);
       } else {
         panel.innerHTML += itineraryHTML;
+      }
+      // Apply any weather already fetched by the itinerary tab's weather fetch
+      for (const [wDayId, { wx, coords, city: wCity }] of Object.entries(tripWeatherByDay)) {
+        injectOverviewWeatherChip(wDayId, wx, coords, wCity);
       }
     }
   }
@@ -4832,6 +4846,7 @@ function wxInfo(code) {
 }
 
 async function fetchTripWeather(days, tripYear) {
+  tripWeatherByDay = {};
   const today = new Date();
   today.setHours(0,0,0,0);
   const forecastCutoff = new Date(today);
@@ -4893,10 +4908,12 @@ async function fetchTripWeather(days, tripYear) {
           avg:  false
         };
       });
-      for (const { dateISO, cardId } of entries) {
+      for (const { dayId, dateISO, cardId } of entries) {
         const wx = wxByDate[dateISO];
         if (!wx) continue;
         injectWeatherChip(cardId, wx, [lat, lon], city);
+        tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
+        injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
       }
     } catch(e) { console.warn('Forecast fetch failed for', city, e); }
   }
@@ -4942,8 +4959,10 @@ async function fetchTripWeather(days, tripYear) {
         const typicalCode = parseInt(Object.entries(codeFreq).sort((a,b)=>b[1]-a[1])[0][0]);
         const wx = { code: typicalCode, hi: avgHi, lo: avgLo, avg: true };
 
-        for (const { cardId } of monthEntries) {
+        for (const { dayId, cardId } of monthEntries) {
           injectWeatherChip(cardId, wx, [lat, lon], city);
+          tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
+          injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
         }
       }
     } catch(e) { console.warn('Climate fetch failed for', city, e); }
@@ -5021,6 +5040,29 @@ function injectWeatherChip(cardId, wx, coords, city) {
     if (rightCol) rightCol.appendChild(chip);
     else { const chevron = header.querySelector('.day-chevron'); header.insertBefore(chip, chevron); }
   }
+}
+
+function injectOverviewWeatherChip(dayId, wx, coords, city) {
+  const card = document.getElementById('ov-dc-' + dayId);
+  if (!card) return;
+  const header = card.querySelector('.ov-day-header');
+  if (!header) return;
+  const old = header.querySelector('.ov-weather-chip');
+  if (old) old.remove();
+  const { icon, label } = wxInfo(wx.code);
+  const prefix = wx.avg ? '~' : '';
+  const chip = document.createElement('div');
+  chip.className = 'ov-weather-chip';
+  chip.title = (wx.avg ? 'Typical: ' : '') + label;
+  if (coords) {
+    chip.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openWeatherModal(city || '', coords, wx.avg, wx);
+    });
+  }
+  chip.innerHTML = '<span>' + icon + '</span> <span class="ov-wx-temp">' + prefix + wx.hi + '°/' + prefix + wx.lo + '°</span>';
+  const info = header.querySelector('.ov-day-info');
+  if (info) info.appendChild(chip);
 }
 
 function injectDriveChip(cardId, seconds, legDetails, notFound) {
