@@ -5,9 +5,7 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-driving";
 const FB_URL     = "https://hardin-trips-default-rtdb.firebaseio.com";
-// Firebase database secret — find it in Firebase Console → Project Settings →
-// Service accounts → Database secrets. Required for drive duration computation.
-const FB_SECRET  = "";
+const FB_API_KEY = "AIzaSyAM2Bm8PgkCk6c6uAiySuclKLkIq06HMxQ"; // public app key
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const BG         = new Color("#e8ddd0");
@@ -36,8 +34,24 @@ const KNOWN_COORDS = {
   'douro valley':[41.16,-7.75],'melbourne':[-37.81,144.96],'hobart':[-42.88,147.33],
 };
 
-// ── Fetch worker data + Firebase trips in parallel ────────────────────────────
-const authParam = FB_SECRET ? '?auth=' + FB_SECRET : '';
+// ── Authenticate anonymously then fetch data ──────────────────────────────────
+// Mirrors what the main app does with signInAnonymously()
+async function getFirebaseToken() {
+  try {
+    const req = new Request(
+      'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY
+    );
+    req.method = 'POST';
+    req.headers = { 'Content-Type': 'application/json' };
+    req.body = JSON.stringify({ returnSecureToken: true });
+    const res = await req.loadJSON();
+    return res.idToken || null;
+  } catch(e) { return null; }
+}
+
+const fbToken = await getFirebaseToken();
+const authParam = fbToken ? '?auth=' + fbToken : '';
+
 const [workerData, fbTrips] = await Promise.all([
   new Request(WORKER_URL).loadJSON().catch(() => null),
   new Request(FB_URL + '/trips.json' + authParam).loadJSON().catch(() => null),
