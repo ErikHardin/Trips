@@ -43,8 +43,9 @@ const [workerData, fbTrips] = await Promise.all([
   new Request(FB_URL + '/trips.json' + authParam).loadJSON().catch(() => null),
 ]);
 
-// ── Compute per-day total drive durations via OSRM ───────────────────────────
-const driveDurations = {}; // { [dateISO]: "Xh Ym" }
+// ── Compute per-day drive durations via OSRM ─────────────────────────────────
+// driveDurations[dateISO] = { total: "Xh Ym", legs: { actIdx: "Xh Ym" } }
+const driveDurations = {};
 
 if (workerData?.trip && fbTrips) {
   const fbTrip = findActiveTrip(fbTrips);
@@ -68,26 +69,38 @@ if (workerData?.trip && fbTrips) {
       const acts = day.activities
         ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
         : [];
+      const driveActs = acts.filter(a => a?.drive);
 
-      // Waypoints: prev city → pinned drive activity coords → current city
-      const pts = [];
-      const start = cityCoord(prev);
-      if (start) pts.push(start);
-      for (const a of acts) {
-        if (a?.drive && a.coords?.lat != null)
-          pts.push([a.coords.lat, a.coords.lng]);
-      }
-      const end = cityCoord(day);
-      if (end) pts.push(end);
+      // Build waypoints, tracking which activity each belongs to (actIdx = -1 for city endpoints)
+      const wayptSrcs = [];
+      const startCoord = cityCoord(prev);
+      if (startCoord) wayptSrcs.push({ coord: startCoord, actIdx: -1 });
+      driveActs.forEach((a, i) => {
+        if (a.coords?.lat != null)
+          wayptSrcs.push({ coord: [a.coords.lat, a.coords.lng], actIdx: i });
+      });
+      const endCoord = cityCoord(day);
+      if (endCoord) wayptSrcs.push({ coord: endCoord, actIdx: -1 });
 
       // Drop adjacent duplicates
-      const deduped = pts.filter((p, i) =>
-        !i || !(p[0] === pts[i-1][0] && p[1] === pts[i-1][1])
+      const deduped = wayptSrcs.filter((w, i) =>
+        !i || !(w.coord[0] === wayptSrcs[i-1].coord[0] && w.coord[1] === wayptSrcs[i-1].coord[1])
       );
       if (deduped.length < 2) return;
 
-      const secs = await osrmSeconds(deduped);
-      if (secs > 600) driveDurations[iso] = fmtSecs(secs);
+      const { total, legs } = await osrmRoute(deduped.map(w => w.coord));
+      if (total <= 600) return;
+
+      // Map each incoming leg to the destination waypoint's activity
+      // leg[i] = travel from deduped[i] to deduped[i+1], so deduped[i+1] receives leg[i]
+      const legMap = {};
+      for (let i = 1; i < deduped.length; i++) {
+        const { actIdx } = deduped[i];
+        if (actIdx >= 0 && legs[i - 1] > 60)
+          legMap[actIdx] = fmtSecs(legs[i - 1]);
+      }
+
+      driveDurations[iso] = { total: fmtSecs(total), legs: legMap };
     }));
   }
 }
@@ -131,45 +144,61 @@ function buildDrivingWidget(w, { trip, days }, driveDurations) {
 
   let rowCount = 0;
   for (const day of driveDays) {
-    if (rowCount >= 7) break;
+    if (rowCount >= 8) break;
     const isToday = day.dateISO === todayISO;
-    const dayDur  = driveDurations[day.dateISO];
+    const dayDur  = driveDurations[day.dateISO]; // { total, legs } or undefined
 
+    // Day header row: "Thu 28 - Total Drive   2h 30m"
+    const hdr = w.addStack();
+    hdr.layoutHorizontally();
+    hdr.centerAlignContent();
+
+    const dateTxt = hdr.addText(day.dateLabel + " - Total Drive");
+    dateTxt.font = isToday ? Font.boldSystemFont(11) : Font.boldSystemFont(11);
+    dateTxt.textColor = isToday ? TERRACOTTA : INK;
+    dateTxt.lineLimit = 1;
+
+    if (dayDur?.total) {
+      hdr.addSpacer();
+      const totalTxt = hdr.addText(dayDur.total);
+      totalTxt.font = Font.boldSystemFont(11);
+      totalTxt.textColor = TERRACOTTA;
+      totalTxt.lineLimit = 1;
+    }
+
+    w.addSpacer(3);
+    rowCount++;
+
+    // Activity rows
     for (let i = 0; i < day.drives.length; i++) {
-      if (rowCount >= 7) break;
+      if (rowCount >= 8) break;
       const drive = day.drives[i];
 
       const row = w.addStack();
       row.layoutHorizontally();
       row.centerAlignContent();
 
-      // Date label — only on first drive of the day
-      const dateTxt = row.addText(i === 0 ? day.dateLabel : "");
-      dateTxt.font = isToday ? Font.boldSystemFont(11) : Font.systemFont(11);
-      dateTxt.textColor = isToday ? TERRACOTTA : MUTED;
-      dateTxt.minimumScaleFactor = 1.0;
-
-      row.addSpacer(10);
+      row.addSpacer(14); // indent
 
       const driveTxt = row.addText(drive.text || "Drive");
       driveTxt.font = Font.systemFont(11);
-      driveTxt.textColor = INK;
+      driveTxt.textColor = MUTED;
       driveTxt.lineLimit = 1;
 
-      // First drive of day: total OSRM duration (or fall back to scheduled time)
-      // Subsequent drives: scheduled time
-      const rightLabel = (i === 0 && dayDur) ? dayDur : (drive.time || "");
-      if (rightLabel) {
+      const legDur = dayDur?.legs?.[i];
+      if (legDur) {
         row.addSpacer();
-        const rt = row.addText(rightLabel);
-        rt.font = Font.boldSystemFont(10);
-        rt.textColor = TERRACOTTA;
-        rt.lineLimit = 1;
+        const legTxt = row.addText(legDur);
+        legTxt.font = Font.boldSystemFont(10);
+        legTxt.textColor = TERRACOTTA;
+        legTxt.lineLimit = 1;
       }
 
-      w.addSpacer(4);
+      w.addSpacer(3);
       rowCount++;
     }
+
+    w.addSpacer(2);
   }
 }
 
@@ -194,15 +223,20 @@ function cityCoord(day) {
   return null;
 }
 
-// Call OSRM and return total route seconds (0 on failure)
-async function osrmSeconds(pts) {
+// Call OSRM and return { total: seconds, legs: [seconds, ...] } (zeros on failure)
+async function osrmRoute(pts) {
   const coords = pts.map(p => p[1] + ',' + p[0]).join(';'); // OSRM wants lon,lat
   try {
     const r = await new Request(
       'https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=false'
     ).loadJSON();
-    return r.routes?.[0] ? Math.round(r.routes[0].duration) : 0;
-  } catch(e) { return 0; }
+    if (!r.routes?.[0]) return { total: 0, legs: [] };
+    const route = r.routes[0];
+    return {
+      total: Math.round(route.duration),
+      legs:  route.legs.map(l => Math.round(l.duration)),
+    };
+  } catch(e) { return { total: 0, legs: [] }; }
 }
 
 function fmtSecs(secs) {
