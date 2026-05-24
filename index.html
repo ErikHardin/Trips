@@ -253,6 +253,10 @@ body {
   border-radius: 10px;
 }
 .hotel-badge-text { font-size: 12.5px; color: var(--sage); font-weight: 500; }
+.spend-badge { display:flex; align-items:center; gap:8px; margin-top:0; margin-bottom:8px; padding:8px 12px; background:var(--terracotta-light); border:1px solid #e8c0aa; border-radius:10px; }
+.spend-badge-label { font-size:12.5px; color:var(--terracotta); font-weight:500; flex:1; }
+.spend-badge-amount { font-size:14px; color:var(--terracotta); font-weight:600; cursor:pointer; }
+.spend-badge-input { font-size:14px; color:var(--terracotta); font-weight:600; background:none; border:none; border-bottom:1px solid var(--terracotta); outline:none; width:80px; }
 .michelin { display: inline-block; font-size: 10px; background: #fff2ec; color: var(--terracotta); border: 1px solid #f0c4ae; border-radius: 20px; padding: 1px 7px; font-weight: 500; margin-left: 5px; vertical-align: middle; }
 
 /* ══════════════════════════════
@@ -1158,6 +1162,8 @@ body {
           <option value="active">Active (in progress)</option>
           <option value="past">Past</option>
         </select>
+        <label class="form-label">Currency Symbol</label>
+        <input class="form-input" id="editTripCurrency" placeholder="€  $ £ ¥ …">
       </div>
     </div>
 
@@ -1826,6 +1832,7 @@ function renderTripItinerary(trip) {
         <div class="day-body">
           ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight${Array.isArray(day.flightInfo) && day.flightInfo.length > 1 ? 's' : ''}</div>${(Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}</div></div>` : ''}
           <div class="activity-list">${activitiesHTML}</div>
+          ${(isAdmin || day.dailySpend != null) ? `<div class="spend-badge" id="spend-${dayId}"><span>💰</span><span class="spend-badge-label">Daily spend</span><span class="spend-badge-amount"${isAdmin ? ` onclick="openSpendEdit('${dayId}',this)"` : ''}>${day.dailySpend != null ? (escHtml(trip.currency||'') + Number(day.dailySpend).toLocaleString()) : (isAdmin ? '<span style="opacity:0.4;font-size:12px;">+ add</span>' : '')}</span></div>` : ''}
           ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
         </div>
       </div>`;
@@ -3108,6 +3115,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   document.getElementById('editTripDates').value = trip.dates || '';
   document.getElementById('editTripEmoji').value = trip.emoji || '';
   document.getElementById('editTripStatus').value = trip.status || 'upcoming';
+  document.getElementById('editTripCurrency').value = trip.currency || '';
   // Parse existing trip-level flight strings into chip arrays
   _editFlightsOut = (trip.flightOut || '').split('\n').filter(Boolean)
     .map(f => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '' }));
@@ -3149,6 +3157,7 @@ window.saveEditedTrip = async function() {
     dates: document.getElementById('editTripDates').value.trim(),
     emoji: document.getElementById('editTripEmoji').value.trim() || '✈️',
     status: document.getElementById('editTripStatus').value,
+    currency: document.getElementById('editTripCurrency').value.trim(),
     flightOutDate:    _editFlightsOut[0]?.date || '',
     flightOut:        _editFlightsOut.map(f => f.formatted).join('\n'),
     flightReturnDate: _editFlightsRet[0]?.date || '',
@@ -3672,6 +3681,48 @@ window.saveDayEdit = async function() {
 
   closeEditDayModalDirect();
   showToast('Day saved! ✓');
+};
+
+window.openSpendEdit = function(dayId, el) {
+  if (!isAdmin) return;
+  const day = allTrips[currentTripId]?.days?.[dayId];
+  const current = day?.dailySpend;
+  const currency = allTrips[currentTripId]?.currency || '';
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'spend-badge-input';
+  input.value = current != null ? current : '';
+  input.placeholder = '0';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const restore = (val) => {
+    const span = document.createElement('span');
+    span.className = 'spend-badge-amount';
+    span.onclick = () => openSpendEdit(dayId, span);
+    span.innerHTML = val != null
+      ? escHtml(currency) + Number(val).toLocaleString()
+      : '<span style="opacity:0.4;font-size:12px;">+ add</span>';
+    input.replaceWith(span);
+  };
+
+  let saved = false;
+  const save = async () => {
+    if (saved) return;
+    saved = true;
+    const raw = input.value.trim();
+    const numVal = raw === '' ? null : parseFloat(raw);
+    restore(numVal);
+    await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: numVal });
+    showToast('Spend saved ✓');
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { saved = true; restore(current); }
+  });
 };
 
 // ════════════════════════════════════════
@@ -4333,6 +4384,7 @@ const BOOKING_ITEMS = [
   { key: 'hotelsBooked',    label: 'Hotels Booked',     icon: '🏨' },
   { key: 'carRentalBooked', label: 'Car Rental Booked', icon: '🚗' },
 ];
+const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'KRW','A$':'AUD','C$':'CAD','CHF':'CHF','kr':'SEK','zł':'PLN','₺':'TRY','₹':'INR','R':'ZAR' };
 
 // ── Render the full logistics panel ──
 async function renderLogisticsPanel(tripId) {
@@ -4356,6 +4408,43 @@ async function _renderLogisticsInner(tripId, panel) {
     const aSnap = await window._get(window._ref(window._db, 'avatarUrls'));
     avatarUrls = aSnap.val() || {};
   } catch(e) { console.warn('Could not load avatars', e); }
+
+  // Trip spend summary
+  const trip = allTrips[tripId];
+  const tripCurrency = trip?.currency || '';
+  const tripDays = trip?.days ? Object.values(trip.days) : [];
+  const trackedDays = tripDays.filter(d => d.dailySpend != null);
+  const totalSpend = trackedDays.reduce((s, d) => s + (d.dailySpend || 0), 0);
+  const hasSpend = trackedDays.length > 0;
+  let usdTotal = null;
+  if (hasSpend) {
+    if (tripCurrency === '$' || tripCurrency === 'USD') {
+      usdTotal = totalSpend;
+    } else if (tripCurrency) {
+      const code = CURRENCY_CODE_MAP[tripCurrency];
+      if (code) {
+        try {
+          const rateRes = await fetch('https://open.er-api.com/v6/latest/USD');
+          const rateData = await rateRes.json();
+          const rate = rateData?.rates?.[code];
+          if (rate) usdTotal = totalSpend / rate;
+        } catch(e) { /* skip conversion on network error */ }
+      }
+    }
+  }
+  var spendSummaryHTML = hasSpend
+    ? '<div class="logistics-section" style="padding-top:0;padding-bottom:0;">' +
+        '<div class="logistics-section-title" style="padding:0 0 10px;">Trip Spend</div>' +
+        '<div class="logistics-card" style="padding:14px 16px;">' +
+          '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
+            '<span style="font-size:22px;font-weight:700;color:var(--terracotta);">' + escHtml(tripCurrency) + totalSpend.toLocaleString() + '</span>' +
+            (usdTotal != null ? '<span style="font-size:13px;color:var(--muted);">≈ $' + Math.round(usdTotal).toLocaleString() + ' USD</span>' : '') +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:4px;">' + trackedDays.length + ' of ' + tripDays.length + ' days tracked</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="packing-divider"></div>'
+    : '';
 
   // Booking checklist
   const checkedCount = BOOKING_ITEMS.filter(function(i) { return logistics[i.key]; }).length;
@@ -4390,6 +4479,8 @@ async function _renderLogisticsInner(tripId, panel) {
 
   panel.innerHTML =
     '<div style="height:16px;"></div>' +
+
+    spendSummaryHTML +
 
     '<div class="logistics-section" style="padding-top:0;">' +
       '<div class="logistics-section-title" style="padding:0 0 10px;">Booking Checklist</div>' +
