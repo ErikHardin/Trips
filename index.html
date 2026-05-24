@@ -2736,7 +2736,7 @@ function renderNotesList(dayId, actKey) {
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
               <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-              ${isAdmin ? `<div style="display:flex;gap:4px;">${n.text ? `<button onclick="editNote('${noteId}',${JSON.stringify(n.text)})" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button>` : ''}<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
+              ${isAdmin ? `<div style="display:flex;gap:4px;">${n.text ? `<button data-noteid="${noteId}" data-notetext="${escAttr(n.text)}" onclick="editNote(this.dataset.noteid,this.dataset.notetext)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button>` : ''}<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
             </div>
           </div>
         </div>`;
