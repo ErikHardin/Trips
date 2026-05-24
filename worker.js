@@ -156,31 +156,6 @@ async function handleWidgetData(env, request) {
     daysUntil = Math.max(0, Math.ceil((new Date(chosen.startDateISO + 'T00:00:00Z') - Date.now()) / msPerDay));
   }
 
-  // Compute total trip spend and convert to USD if needed
-  const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'KRW','A$':'AUD','C$':'CAD','CHF':'CHF','kr':'SEK','zł':'PLN','₺':'TRY','₹':'INR','R':'ZAR' };
-  const currency = chosen.currency || '';
-  let totalSpendRaw = null;
-  let totalSpendUSD = null;
-  if (chosen.days) {
-    const tracked = Object.values(chosen.days).filter(d => d.dailySpend != null);
-    if (tracked.length > 0) {
-      totalSpendRaw = tracked.reduce((s, d) => s + (Number(d.dailySpend) || 0), 0);
-      if (currency === '$' || currency === 'USD') {
-        totalSpendUSD = totalSpendRaw;
-      } else if (currency) {
-        const code = CURRENCY_CODE_MAP[currency];
-        if (code) {
-          try {
-            const rateRes = await fetch('https://open.er-api.com/v6/latest/USD');
-            const rateData = await rateRes.json();
-            const rate = rateData?.rates?.[code];
-            if (rate) totalSpendUSD = Math.round(totalSpendRaw / rate);
-          } catch(e) {}
-        }
-      }
-    }
-  }
-
   const tripInfo = {
     name:          chosen.name || '',
     emoji:         chosen.emoji || '✈️',
@@ -189,9 +164,6 @@ async function handleWidgetData(env, request) {
     daysUntil,
     flightOut:     chosen.flightOut     || null,
     flightOutDate: chosen.flightOutDate || null,
-    currency,
-    totalSpendRaw,
-    totalSpendUSD,
   };
 
   // Find today's day and build sorted activity list
