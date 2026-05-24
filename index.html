@@ -244,6 +244,9 @@ body {
 .activity-time { font-size: 11px; color: var(--muted); white-space: nowrap; margin-top: 1px; }
 .activity-notes-indicator { position: absolute; top: 8px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--terracotta); }
 .activity-notes-count { font-size: 10px; color: var(--terracotta); margin-top: 3px; }
+.daily-memories-row { display:flex;align-items:center;gap:10px;padding:9px 12px 9px 10px;border-bottom:1px solid var(--divider);cursor:pointer;background:rgba(192,106,61,0.04); }
+.daily-memories-label { font-size:13px;font-weight:500;color:var(--ink); }
+.daily-memories-chevron { opacity:0.35;font-size:18px;flex-shrink:0; }
 
 .hotel-badge {
   display: flex; align-items: center; gap: 8px;
@@ -1428,6 +1431,7 @@ let currentActivityKey = null;
 let currentDayKey = null;
 let selectedPhotoFiles = [];  // multi-photo array
 let notesUnsubscribe = null;
+let editingNoteId = null;
 let isShareView = false;
 let shareCheckDone = false;
 let tripWeatherByDay = {};
@@ -1570,6 +1574,9 @@ window.lockApp = function() {
 
 function goBackFromNotes() {
   if (notesUnsubscribe) { notesUnsubscribe(); notesUnsubscribe = null; }
+  editingNoteId = null;
+  const btn = document.getElementById('saveNoteBtn');
+  if (btn) btn.textContent = 'Save Memory';
   showScreen('screen-trip');
 }
 window.goBackFromNotes = goBackFromNotes;
@@ -1831,6 +1838,7 @@ function renderTripItinerary(trip) {
         </div>
         <div class="day-body">
           ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight${Array.isArray(day.flightInfo) && day.flightInfo.length > 1 ? 's' : ''}</div>${(Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}</div></div>` : ''}
+          ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (day.description||day.city ? ' — ' + (day.description||day.city) : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
           <div class="activity-list">${activitiesHTML}</div>
           ${(isAdmin || day.dailySpend != null) ? `<div class="spend-badge" id="spend-${dayId}"><span>💰</span><span class="spend-badge-label">Daily spend</span><span class="spend-badge-amount"${isAdmin ? ` onclick="openSpendEdit('${dayId}',this)"` : ''}>${day.dailySpend != null ? (escHtml(trip.currency||'') + Number(day.dailySpend).toLocaleString()) : (isAdmin ? '<span style="opacity:0.4;font-size:12px;">+ add</span>' : '')}</span></div>` : ''}
           ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
@@ -2202,7 +2210,9 @@ async function renderTripOverview(trip) {
         Object.entries(day.notes).forEach(([actKey, actNotes]) => {
           if (actNotes && typeof actNotes === 'object') {
             let actLabel = '';
-            if (day.activities) {
+            if (actKey === '__daily__') {
+              actLabel = 'Day Memory';
+            } else if (day.activities) {
               const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
               const idx = parseInt(actKey);
               const act = isNaN(idx) ? acts.find(function(a){ return a && a.key === actKey; }) : acts[idx];
@@ -2689,9 +2699,11 @@ window.generateTripJournal = async function(tripId) {
 window.openNotes = function(dayId, actKey, actText) {
   currentDayKey = dayId;
   currentActivityKey = actKey;
+  editingNoteId = null;
   document.getElementById('notesScreenTitle').textContent = actText.length>30 ? actText.slice(0,30)+'…' : actText;
   document.getElementById('notesActivityTitle').textContent = actText;
   document.getElementById('noteText').value = '';
+  document.getElementById('saveNoteBtn').textContent = 'Save Memory';
   clearPhotos();
   // Show add form only if authenticated
   document.getElementById('addNoteForm').style.display = isAdmin ? '' : 'none';
@@ -2724,7 +2736,7 @@ function renderNotesList(dayId, actKey) {
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
               <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-              ${isAdmin ? `<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button>` : ''}
+              ${isAdmin ? `<div style="display:flex;gap:4px;">${n.text ? `<button onclick="editNote('${noteId}',${JSON.stringify(n.text)})" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button>` : ''}<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
             </div>
           </div>
         </div>`;
@@ -2756,6 +2768,16 @@ window.deleteNote = async function(noteId) {
     showToast('Error deleting — try again');
     console.error('deleteNote error:', e);
   }
+};
+
+window.editNote = function(noteId, text) {
+  editingNoteId = noteId;
+  const textarea = document.getElementById('noteText');
+  const btn = document.getElementById('saveNoteBtn');
+  textarea.value = text;
+  btn.textContent = 'Update Memory';
+  document.getElementById('addNoteForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  textarea.focus();
 };
 
 // ── Image compression ──
@@ -2792,6 +2814,18 @@ window.saveNote = async function() {
 
   try {
     if (!window._auth.currentUser && !_isOffline) await window._signInAnonymously(window._auth);
+
+    // Edit mode: update existing note's text in place
+    if (editingNoteId) {
+      const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}/${editingNoteId}`;
+      await window._update(window._ref(window._db, notePath), { text: text || null });
+      editingNoteId = null;
+      btn.textContent = 'Save Memory';
+      document.getElementById('noteText').value = '';
+      showToast('Memory updated! ✓');
+      btn.disabled = false;
+      return;
+    }
 
     const photoUrls = {};
     if (selectedPhotoFiles.length > 0 && !_isOffline) {
