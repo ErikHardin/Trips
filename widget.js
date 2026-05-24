@@ -185,7 +185,7 @@ function buildItineraryWidget(w, { trip, today }) {
       : `https://maps.google.com/?q=${q}`;
   }
 
-  // Header: emoji + name
+  // Header: emoji + name + spend (right)
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
@@ -199,6 +199,16 @@ function buildItineraryWidget(w, { trip, today }) {
   nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
+
+  const spendAmt = trip.totalSpendUSD != null
+    ? "$" + trip.totalSpendUSD.toLocaleString()
+    : (trip.totalSpendRaw != null ? (trip.currency || '') + trip.totalSpendRaw.toLocaleString() : null);
+  if (spendAmt) {
+    hdr.addSpacer();
+    const spendTxt = hdr.addText("💰 " + spendAmt);
+    spendTxt.font = Font.systemFont(11);
+    spendTxt.textColor = MUTED;
+  }
 
   w.addSpacer(3);
 
