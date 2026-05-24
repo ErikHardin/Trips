@@ -23,6 +23,12 @@ try {
   data = null;
 }
 
+// Fetch weather for today's city (Open-Meteo, free, no API key)
+let weather = null;
+if (data?.today?.city) {
+  weather = await fetchWeather(data.today.city);
+}
+
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
@@ -196,12 +202,21 @@ function buildItineraryWidget(w, { trip, today }) {
 
   w.addSpacer(3);
 
-  // Today's location
+  // Today's location + weather
   if (today?.description) {
-    const locTxt = w.addText("📍  " + today.description);
+    const locRow = w.addStack();
+    locRow.layoutHorizontally();
+    locRow.centerAlignContent();
+    const locTxt = locRow.addText("📍  " + today.description);
     locTxt.font = Font.mediumSystemFont(11);
     locTxt.textColor = MUTED;
     locTxt.lineLimit = 1;
+    if (weather) {
+      locRow.addSpacer();
+      const wxTxt = locRow.addText(weather.emoji + " " + weather.hi + "°/" + weather.lo + "°");
+      wxTxt.font = Font.systemFont(11);
+      wxTxt.textColor = MUTED;
+    }
     w.addSpacer(3);
   }
 
@@ -271,4 +286,38 @@ function parseFirstDepTime(flightOut) {
   if (ampm === "pm" && h !== 12) h += 12;
   if (ampm === "am" && h === 12) h = 0;
   return { h, min };
+}
+
+// Geocode city → fetch today's high/low + WMO weather code from Open-Meteo
+async function fetchWeather(city) {
+  try {
+    const geoResp = await new Request(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`
+    ).loadJSON();
+    const loc = geoResp.results?.[0];
+    if (!loc) return null;
+    const wxResp = await new Request(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&forecast_days=1`
+    ).loadJSON();
+    const code = wxResp.daily?.weathercode?.[0];
+    const hi   = Math.round(wxResp.daily?.temperature_2m_max?.[0]);
+    const lo   = Math.round(wxResp.daily?.temperature_2m_min?.[0]);
+    if (code == null || isNaN(hi) || isNaN(lo)) return null;
+    return { emoji: wxEmoji(code), hi, lo };
+  } catch (e) {
+    return null;
+  }
+}
+
+function wxEmoji(code) {
+  if (code === 0)  return "☀️";
+  if (code <= 2)   return "⛅";
+  if (code === 3)  return "☁️";
+  if (code <= 49)  return "🌫️";
+  if (code <= 57)  return "🌦️";
+  if (code <= 67)  return "🌧️";
+  if (code <= 77)  return "❄️";
+  if (code <= 82)  return "🌧️";
+  if (code <= 86)  return "🌨️";
+  return "⛈️";
 }
