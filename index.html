@@ -258,7 +258,9 @@ body {
 .hotel-badge-text { font-size: 12.5px; color: var(--sage); font-weight: 500; }
 .spend-badge { display:flex; align-items:center; gap:8px; margin-top:0; margin-bottom:8px; padding:8px 12px; background:var(--terracotta-light); border:1px solid #e8c0aa; border-radius:10px; }
 .spend-badge-label { font-size:12.5px; color:var(--terracotta); font-weight:500; flex:1; }
-.spend-badge-amount { font-size:14px; color:var(--terracotta); font-weight:600; cursor:pointer; }
+.spend-badge-amount { font-size:14px; color:var(--terracotta); font-weight:600; }
+.spend-add-btn { background:var(--terracotta); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; padding:2px 8px; cursor:pointer; line-height:1.6; }
+.spend-clear-btn { background:none; border:none; font-size:13px; color:var(--muted); cursor:pointer; padding:2px 4px; opacity:0.6; }
 .spend-badge-input { font-size:14px; color:var(--terracotta); font-weight:600; background:none; border:none; border-bottom:1px solid var(--terracotta); outline:none; width:80px; }
 .michelin { display: inline-block; font-size: 10px; background: #fff2ec; color: var(--terracotta); border: 1px solid #f0c4ae; border-radius: 20px; padding: 1px 7px; font-weight: 500; margin-left: 5px; vertical-align: middle; }
 
@@ -1813,6 +1815,19 @@ function renderTripItinerary(trip) {
     }).join('');
 
     const cardId = 'dc-'+dayId;
+    const spendBadge = (isAdmin || day.dailySpend != null) ? (
+      '<div class="spend-badge" id="spend-' + dayId + '">' +
+      '<span>💰</span>' +
+      '<span class="spend-badge-label">Daily spend</span>' +
+      (day.dailySpend != null
+        ? '<span class="spend-badge-amount">' + escHtml(trip.currency||'') + Number(day.dailySpend).toLocaleString() + '</span>' +
+          (isAdmin
+            ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)" title="Add to today\'s spend">+</button>' +
+              '<button class="spend-clear-btn" onclick="clearSpend(\'' + dayId + '\')" title="Clear spend">✕</button>'
+            : '')
+        : (isAdmin ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)">+ add</button>' : '')) +
+      '</div>'
+    ) : '';
     // Derive day of week from ISO date if available, else fall back to stored dayName
     const dowFull = day.dateISO
       ? new Date(day.dateISO + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
@@ -1840,7 +1855,7 @@ function renderTripItinerary(trip) {
           ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight${Array.isArray(day.flightInfo) && day.flightInfo.length > 1 ? 's' : ''}</div>${(Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}</div></div>` : ''}
           ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (day.description||day.city ? ' — ' + (day.description||day.city) : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
           <div class="activity-list">${activitiesHTML}</div>
-          ${(isAdmin || day.dailySpend != null) ? `<div class="spend-badge" id="spend-${dayId}"><span>💰</span><span class="spend-badge-label">Daily spend</span><span class="spend-badge-amount"${isAdmin ? ` onclick="openSpendEdit('${dayId}',this)"` : ''}>${day.dailySpend != null ? (escHtml(trip.currency||'') + Number(day.dailySpend).toLocaleString()) : (isAdmin ? '<span style="opacity:0.4;font-size:12px;">+ add</span>' : '')}</span></div>` : ''}
+          ${spendBadge}
           ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
         </div>
       </div>`;
@@ -3691,6 +3706,7 @@ window.saveDayEdit = async function() {
     activities,
     sortOrder: existing.sortOrder || 0,
     notes: existing.notes || null,
+    ...(existing.dailySpend != null ? { dailySpend: existing.dailySpend } : {}),
   };
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
 
@@ -3717,46 +3733,78 @@ window.saveDayEdit = async function() {
   showToast('Day saved! ✓');
 };
 
-window.openSpendEdit = function(dayId, el) {
-  if (!isAdmin) return;
-  const day = allTrips[currentTripId]?.days?.[dayId];
-  const current = day?.dailySpend;
+function _rebuildSpendBadge(dayId) {
+  const badge = document.getElementById('spend-' + dayId);
+  if (!badge) return;
   const currency = allTrips[currentTripId]?.currency || '';
+  const current = allTrips[currentTripId]?.days?.[dayId]?.dailySpend;
+  badge.querySelectorAll('.spend-badge-amount, .spend-badge-input, .spend-add-btn, .spend-clear-btn').forEach(el => el.remove());
+  if (current != null) {
+    const amt = document.createElement('span');
+    amt.className = 'spend-badge-amount';
+    amt.textContent = (currency || '') + Number(current).toLocaleString();
+    badge.appendChild(amt);
+    if (isAdmin) {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'spend-add-btn';
+      addBtn.title = "Add to today's spend";
+      addBtn.textContent = '+';
+      addBtn.onclick = () => addSpendClick(dayId, addBtn);
+      badge.appendChild(addBtn);
+      const clrBtn = document.createElement('button');
+      clrBtn.className = 'spend-clear-btn';
+      clrBtn.title = 'Clear spend';
+      clrBtn.textContent = '✕';
+      clrBtn.onclick = () => clearSpend(dayId);
+      badge.appendChild(clrBtn);
+    }
+  } else if (isAdmin) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'spend-add-btn';
+    addBtn.textContent = '+ add';
+    addBtn.onclick = () => addSpendClick(dayId, addBtn);
+    badge.appendChild(addBtn);
+  }
+}
+
+window.addSpendClick = function(dayId, btn) {
+  if (!isAdmin) return;
   const input = document.createElement('input');
   input.type = 'number';
   input.className = 'spend-badge-input';
-  input.value = current != null ? current : '';
   input.placeholder = '0';
-  el.replaceWith(input);
+  input.min = '0';
+  btn.replaceWith(input);
   input.focus();
-  input.select();
-
-  const restore = (val) => {
-    const span = document.createElement('span');
-    span.className = 'spend-badge-amount';
-    span.onclick = () => openSpendEdit(dayId, span);
-    span.innerHTML = val != null
-      ? escHtml(currency) + Number(val).toLocaleString()
-      : '<span style="opacity:0.4;font-size:12px;">+ add</span>';
-    input.replaceWith(span);
-  };
 
   let saved = false;
   const save = async () => {
     if (saved) return;
     saved = true;
     const raw = input.value.trim();
-    const numVal = raw === '' ? null : parseFloat(raw);
-    restore(numVal);
-    await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: numVal });
+    const added = raw === '' ? 0 : parseFloat(raw);
+    if (!added) { _rebuildSpendBadge(dayId); return; }
+    const prev = allTrips[currentTripId]?.days?.[dayId]?.dailySpend || 0;
+    const newTotal = prev + added;
+    // Optimistic update so the badge shows the new total immediately
+    if (allTrips[currentTripId]?.days?.[dayId]) allTrips[currentTripId].days[dayId].dailySpend = newTotal;
+    _rebuildSpendBadge(dayId);
+    await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: newTotal });
     showToast('Spend saved ✓');
   };
 
   input.addEventListener('blur', save);
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    if (e.key === 'Escape') { saved = true; restore(current); }
+    if (e.key === 'Escape') { saved = true; _rebuildSpendBadge(dayId); }
   });
+};
+
+window.clearSpend = async function(dayId) {
+  if (allTrips[currentTripId]?.days?.[dayId]) allTrips[currentTripId].days[dayId].dailySpend = null;
+  _rebuildSpendBadge(dayId);
+  await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: null });
+  showToast('Spend cleared');
 };
 
 // ════════════════════════════════════════
