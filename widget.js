@@ -4,6 +4,7 @@
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const WORKER_URL    = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data";
+const FIREBASE_URL  = "https://hardin-trips-default-rtdb.firebaseio.com";
 const NAV_APP       = "google";        // "google" or "waze"
 const DEST_TIMEZONE = "Europe/Paris";  // IANA timezone of destination
 const DEST_CITY     = "Lyon";          // display name shown next to the time
@@ -27,6 +28,12 @@ try {
 let weather = null;
 if (data?.today?.city) {
   weather = await fetchWeather(data.today.city);
+}
+
+// Fetch spend total directly from Firebase
+let spendAmt = null;
+if (data?.trip) {
+  spendAmt = await fetchSpend();
 }
 
 // ── Build widget ──────────────────────────────────────────────────────────────
@@ -185,7 +192,7 @@ function buildItineraryWidget(w, { trip, today }) {
       : `https://maps.google.com/?q=${q}`;
   }
 
-  // Header: emoji + name
+  // Header: emoji + name + spend (right)
   const hdr = w.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
@@ -199,6 +206,13 @@ function buildItineraryWidget(w, { trip, today }) {
   nameTxt.font = Font.boldSystemFont(14);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
+
+  if (spendAmt) {
+    hdr.addSpacer();
+    const spendTxt = hdr.addText("💰 " + spendAmt);
+    spendTxt.font = Font.systemFont(11);
+    spendTxt.textColor = MUTED;
+  }
 
   w.addSpacer(3);
 
@@ -320,4 +334,35 @@ function wxEmoji(code) {
   if (code <= 82)  return "🌧️";
   if (code <= 86)  return "🌨️";
   return "⛈️";
+}
+
+// Fetch trip spend total directly from Firebase and convert to USD
+async function fetchSpend() {
+  const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'KRW','A$':'AUD','C$':'CAD','CHF':'CHF','kr':'SEK','zł':'PLN','₺':'TRY','₹':'INR','R':'ZAR' };
+  try {
+    const trips = await new Request(FIREBASE_URL + "/trips.json").loadJSON();
+    if (!trips) return null;
+    const entries = Object.values(trips);
+    let chosen = entries.find(t => t.status === 'active');
+    if (!chosen) {
+      chosen = entries
+        .filter(t => t.status === 'upcoming' && t.startDateISO)
+        .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO))[0] || null;
+    }
+    if (!chosen?.days) return null;
+    const tracked = Object.values(chosen.days).filter(d => d.dailySpend != null);
+    if (!tracked.length) return null;
+    const currency = chosen.currency || '';
+    const total = tracked.reduce((s, d) => s + (Number(d.dailySpend) || 0), 0);
+    if (currency === '$' || currency === 'USD') return "$" + Math.round(total).toLocaleString();
+    const code = CURRENCY_CODE_MAP[currency];
+    if (code) {
+      const rateResp = await new Request('https://open.er-api.com/v6/latest/USD').loadJSON();
+      const rate = rateResp?.rates?.[code];
+      if (rate) return "$" + Math.round(total / rate).toLocaleString();
+    }
+    return (currency || '') + total.toLocaleString();
+  } catch (e) {
+    return null;
+  }
 }
