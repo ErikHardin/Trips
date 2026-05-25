@@ -1862,9 +1862,14 @@ function renderTripItinerary(trip) {
 
   });
 
+  // Local date string (avoids UTC-offset bug with toISOString)
+  const _tn = new Date();
+  const _todayISO = `${_tn.getFullYear()}-${String(_tn.getMonth()+1).padStart(2,'0')}-${String(_tn.getDate()).padStart(2,'0')}`;
+
   // Inject translation chips after the loop so innerHTML+= doesn't strip event listeners
   setTimeout(() => {
     days.forEach(([dayId, day]) => {
+      if (trip.status === 'active' && day.dateISO && day.dateISO < _todayISO) return;
       const txCC = getCityCountryCode(day.region || day.city || '');
       if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
         const txCity = day.city || day.region || '';
@@ -1936,7 +1941,10 @@ function renderTripItinerary(trip) {
   // Fetch weather and drive times for upcoming/active trips
   if (trip.status === 'upcoming' || trip.status === 'active') {
     setTimeout(() => fetchTripWeather(days, trip.year), 100);
-    setTimeout(() => fetchTripDriveTimes(days), 200);
+    const _driveDays = trip.status === 'active'
+      ? days.filter(([, d]) => !d.dateISO || d.dateISO >= _todayISO)
+      : days;
+    setTimeout(() => fetchTripDriveTimes(_driveDays), 200);
   }
   if (trip.status === 'active') setTimeout(() => highlightToday(trip), 50);
   // Return flights
@@ -1953,8 +1961,17 @@ function renderTripItinerary(trip) {
 }
 
 function highlightToday(trip) {
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const entry = Object.entries(trip.days || {}).find(([, d]) => d.dateISO === todayISO);
+  const _n = new Date();
+  const todayISO = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
+  const _mo = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  const entry = Object.entries(trip.days || {}).find(([, d]) => {
+    if (d.dateISO) return d.dateISO === todayISO;
+    if (d.dateNum && d.dateMonth && trip.year) {
+      const m = _mo[d.dateMonth.slice(0,3)];
+      if (m) return `${trip.year}-${String(m).padStart(2,'0')}-${String(d.dateNum).padStart(2,'0')}` === todayISO;
+    }
+    return false;
+  });
   if (!entry) return;
   const card = document.getElementById('dc-' + entry[0]);
   if (!card) return;
@@ -1962,7 +1979,7 @@ function highlightToday(trip) {
   const dateCol = card.querySelector('.day-num')?.parentElement;
   if (dateCol && !card.querySelector('.today-badge')) {
     const badge = Object.assign(document.createElement('div'), { className: 'today-badge', textContent: 'Today' });
-    dateCol.after(badge);
+    dateCol.appendChild(badge);
   }
   card.classList.add('open');
   setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
