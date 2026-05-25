@@ -3682,6 +3682,7 @@ window.saveDayEdit = async function() {
   const existingActs = existing.activities
     ? (Array.isArray(existing.activities) ? existing.activities : Object.values(existing.activities))
     : [];
+  const existingByText = new Map(existingActs.map(a => [typeof a === 'object' ? (a.text||'') : String(a), a]));
   const activities = Array.from(rows).map((row, i) => {
     const emoji = row.querySelector('.act-emoji-btn').textContent.trim();
     const text  = row.querySelector('.act-text-input').value.trim();
@@ -3689,8 +3690,10 @@ window.saveDayEdit = async function() {
     const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
     const activeBooking = row.querySelector('.act-booking-opt.active');
     const bookingStatus = activeBooking ? activeBooking.dataset.status : '';
-    const coords = existingActs[i] && existingActs[i].coords ? existingActs[i].coords : undefined;
-    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }) };
+    const existAct = existingByText.get(text) || existingActs[i];
+    const coords = existAct?.coords;
+    const michelin = existAct?.michelin;
+    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }), ...(michelin && { michelin: true }) };
   }).filter(a => a.text);
 
   const dayData = {
@@ -3707,6 +3710,8 @@ window.saveDayEdit = async function() {
     sortOrder: existing.sortOrder || 0,
     notes: existing.notes || null,
     ...(existing.dailySpend != null ? { dailySpend: existing.dailySpend } : {}),
+    ...(existing.flightInfo != null ? { flightInfo: existing.flightInfo } : {}),
+    ...(existing.regionDates != null ? { regionDates: existing.regionDates } : {}),
   };
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
 
