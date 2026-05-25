@@ -24,6 +24,17 @@ try {
   data = null;
 }
 
+// Pre-fetch tomorrow's data so the widget can roll over once today's last activity ends
+const tomorrowISO = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+let tomorrowData = null;
+try {
+  const td = await new Request(WORKER_URL + "?date=" + tomorrowISO).loadJSON();
+  tomorrowData = td?.today ?? null;
+  if (tomorrowData) tomorrowData.dateISO = tomorrowISO;
+} catch (e) {
+  tomorrowData = null;
+}
+
 // Fetch weather for today's city (Open-Meteo, free, no API key)
 let weather = null;
 if (data?.today?.city) {
@@ -46,11 +57,11 @@ if (!data || !data.trip) {
   t.font = Font.mediumSystemFont(15);
   t.textColor = INK;
 } else if (data.trip.status === "upcoming" && isPastDeparture(data.trip)) {
-  buildItineraryWidget(widget, data);
+  buildItineraryWidget(widget, { ...data, tomorrow: tomorrowData });
 } else if (data.trip.status === "upcoming") {
   buildCountdownWidget(widget, data.trip);
 } else {
-  buildItineraryWidget(widget, data);
+  buildItineraryWidget(widget, { ...data, tomorrow: tomorrowData });
 }
 
 Script.setWidget(widget);
