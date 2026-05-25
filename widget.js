@@ -35,11 +35,13 @@ try {
   tomorrowData = null;
 }
 
-// Fetch weather for today's city (Open-Meteo, free, no API key)
+// Fetch weather for today's and tomorrow's city in parallel
 let weather = null;
-if (data?.today?.city) {
-  weather = await fetchWeather(data.today.city);
-}
+let tomorrowWeather = null;
+[weather, tomorrowWeather] = await Promise.all([
+  data?.today?.city       ? fetchWeather(data.today.city)         : Promise.resolve(null),
+  tomorrowData?.description ? fetchWeather(tomorrowData.description) : Promise.resolve(null),
+]);
 
 // Fetch spend total directly from Firebase
 let spendAmt = null;
@@ -249,9 +251,10 @@ function buildItineraryWidget(w, { trip, today, tomorrow }) {
     locTxt.font = Font.mediumSystemFont(11);
     locTxt.textColor = MUTED;
     locTxt.lineLimit = 1;
-    if (!showTomorrow && weather) {
+    const wx = showTomorrow ? tomorrowWeather : weather;
+    if (wx) {
       locRow.addSpacer();
-      const wxTxt = locRow.addText(weather.emoji + " " + weather.hi + "°/" + weather.lo + "°");
+      const wxTxt = locRow.addText(wx.emoji + " " + wx.hi + "°/" + wx.lo + "°");
       wxTxt.font = Font.systemFont(11);
       wxTxt.textColor = MUTED;
     }
