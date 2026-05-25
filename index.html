@@ -2538,6 +2538,10 @@ async function renderWishlistPanel(tripId) {
               style="background:var(--sage);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">
               → Add to Day
             </button>
+            <button onclick="editWishlistItem('${tripId}','${id}')"
+              style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--ink);cursor:pointer;">
+              Edit
+            </button>
             <button onclick="deleteWishlistItem('${tripId}','${id}')"
               style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">
               Remove
@@ -2576,6 +2580,62 @@ window.deleteWishlistItem = async function(tripId, id) {
   } catch(err) {
     showToast('Error removing — check connection');
   }
+};
+
+window.editWishlistItem = function(tripId, id) {
+  const item = (_wishlistCache[tripId] || {})[id];
+  if (!item) { showToast('Item not found — try refreshing the tab'); return; }
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;';
+  modal.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 40px;box-sizing:border-box;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:16px;">Edit Wishlist Item</div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Emoji &amp; Name</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <input id="editWishlistEmoji" type="text" maxlength="4"
+          style="width:52px;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:16px;text-align:center;background:var(--sand);"
+          value="${escAttr(item.emoji||'📌')}">
+        <input id="editWishlistText" type="text" placeholder="Place or activity name"
+          style="flex:1;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);"
+          value="${escAttr(item.text||'')}">
+      </div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Notes (optional)</div>
+      <input id="editWishlistNotes" type="text" placeholder="Notes or URL (optional)"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:13px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;"
+        value="${escAttr(item.notes||'')}">
+      <div style="display:flex;gap:10px;">
+        <button onclick="this.closest('[style*=fixed]').remove()"
+          style="flex:1;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;cursor:pointer;">Cancel</button>
+        <button id="editWishlistSaveBtn"
+          style="flex:1;padding:12px;border:none;border-radius:12px;background:var(--terracotta);color:#fff;font-size:14px;font-weight:500;cursor:pointer;">Save</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+
+  modal.querySelector('#editWishlistSaveBtn').onclick = async function() {
+    const emoji = modal.querySelector('#editWishlistEmoji').value.trim() || '📌';
+    const text  = modal.querySelector('#editWishlistText').value.trim();
+    const notes = modal.querySelector('#editWishlistNotes').value.trim();
+    if (!text) { showToast('Enter a place or activity name'); return; }
+    const btn = modal.querySelector('#editWishlistSaveBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      await window._update(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), {
+        emoji, text, notes: notes || null
+      });
+      if (_wishlistCache[tripId] && _wishlistCache[tripId][id]) {
+        Object.assign(_wishlistCache[tripId][id], { emoji, text, notes: notes || null });
+      }
+      modal.remove();
+      showToast('Wishlist item updated ✓');
+      renderWishlistPanel(tripId);
+    } catch(err) {
+      showToast('Error saving — check connection');
+      btn.disabled = false; btn.textContent = 'Save';
+    }
+  };
 };
 
 window.promoteWishlistItem = function(tripId, id) {
