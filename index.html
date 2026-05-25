@@ -3833,6 +3833,8 @@ window.addSpendClick = function(dayId, btn) {
 };
 
 window.clearSpend = async function(dayId) {
+  const confirmed = await showConfirmDialog('Delete daily spend?', 'This will remove the spend amount for this day.');
+  if (!confirmed) return;
   if (allTrips[currentTripId]?.days?.[dayId]) allTrips[currentTripId].days[dayId].dailySpend = null;
   _rebuildSpendBadge(dayId);
   await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: null });
@@ -4417,6 +4419,27 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.target === lb && !isDragging) closeLightbox();
   });
 });
+
+function showConfirmDialog(title, message) {
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 36px;box-sizing:border-box;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;margin-bottom:8px;">${title}</div>
+        <div style="font-size:14px;color:var(--muted);margin-bottom:24px;">${message}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button id="confirmDialogYes" style="padding:14px;background:var(--terracotta);color:white;border:none;border-radius:14px;font-size:15px;font-weight:500;cursor:pointer;">Delete</button>
+          <button id="confirmDialogNo" style="padding:14px;background:none;border:1px solid var(--border);border-radius:14px;font-size:15px;color:var(--muted);cursor:pointer;">Cancel</button>
+        </div>
+      </div>`;
+    const cleanup = (result) => { modal.remove(); resolve(result); };
+    modal.querySelector('#confirmDialogYes').onclick = () => cleanup(true);
+    modal.querySelector('#confirmDialogNo').onclick = () => cleanup(false);
+    modal.addEventListener('click', e => { if (e.target === modal) cleanup(false); });
+    document.body.appendChild(modal);
+  });
+}
 
 function showToast(msg) {
   const t = document.getElementById('toast');
