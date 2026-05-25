@@ -387,6 +387,21 @@ body {
 .save-note-btn:active { opacity: 0.8; }
 .save-note-btn:disabled { opacity: 0.5; }
 
+.recommend-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px 0;
+}
+.recommend-row input[type=checkbox] {
+  width: 18px; height: 18px; accent-color: var(--terracotta); cursor: pointer; flex-shrink: 0;
+}
+.recommend-row label { font-size: 13px; color: var(--ink); cursor: pointer; user-select: none; }
+.recommended-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--terracotta); background: #fff2ec; border: 1px solid #f0c4ae;
+  border-radius: 20px; padding: 2px 7px; vertical-align: middle; margin-left: 6px;
+}
+
 /* ══════════════════════════════
    ADMIN SCREEN
 ══════════════════════════════ */
@@ -981,6 +996,10 @@ body {
   </div>
   <div class="scroll-content">
     <div class="notes-activity-title" id="notesActivityTitle"></div>
+    <div class="recommend-row" id="recommendRow" style="display:none;">
+      <input type="checkbox" id="recommendCheck" onchange="toggleRecommended(this.checked)">
+      <label for="recommendCheck">Recommend this activity</label>
+    </div>
     <div class="notes-list" id="notesList"></div>
     <div id="addNoteForm" class="add-note-form" style="display:none;">
       <div class="add-note-label">Add a Memory</div>
@@ -2262,7 +2281,7 @@ async function renderTripOverview(trip) {
             }
             Object.values(actNotes).forEach(function(note) {
               if (note && (note.text || note.photoUrls || note.photoUrl)) {
-                allNotes.push(Object.assign({}, note, { actLabel: actLabel }));
+                allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey }));
               }
             });
           }
@@ -2295,7 +2314,8 @@ async function renderTripOverview(trip) {
               <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
                 ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
               </div>` : '';
-            var actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + '</div>' : '';
+            var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
+            var actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
             var noteTextHTML = note.text ? '<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">' + escHtml(note.text) + '</div>' : '';
             return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
           }).join('')}
@@ -2811,8 +2831,33 @@ window.openNotes = function(dayId, actKey, actText) {
   clearPhotos();
   // Show add form only if authenticated
   document.getElementById('addNoteForm').style.display = isAdmin ? '' : 'none';
+  // Recommend checkbox — admin only, not for day-level memories
+  const recommendRow = document.getElementById('recommendRow');
+  if (isAdmin && actKey !== '__daily__') {
+    recommendRow.style.display = 'flex';
+    document.getElementById('recommendCheck').checked = !!(allTrips[currentTripId]?.days?.[dayId]?.recommended?.[actKey]);
+  } else {
+    recommendRow.style.display = 'none';
+  }
   renderNotesList(dayId, actKey);
   showScreen('screen-notes');
+};
+
+window.toggleRecommended = async function(checked) {
+  if (!currentTripId || !currentDayKey || !currentActivityKey) return;
+  const path = `trips/${currentTripId}/days/${currentDayKey}/recommended/${currentActivityKey}`;
+  try {
+    if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
+    if (checked) {
+      await window._set(window._ref(window._db, path), true);
+    } else {
+      await window._remove(window._ref(window._db, path));
+    }
+    showToast(checked ? 'Activity recommended ✓' : 'Recommendation removed');
+  } catch(e) {
+    showToast('Error saving — try again');
+    console.error('toggleRecommended error:', e);
+  }
 };
 
 function renderNotesList(dayId, actKey) {
