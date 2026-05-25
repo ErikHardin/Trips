@@ -197,7 +197,40 @@ async function handleWidgetData(env, request) {
     }
   }
 
-  return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
+  // Find tomorrow's day
+  const todayDate = new Date(todayISO + 'T00:00:00Z');
+  todayDate.setUTCDate(todayDate.getUTCDate() + 1);
+  const tomorrowISO = todayDate.toISOString().slice(0, 10);
+
+  let tomorrowData = null;
+  if (chosen.days) {
+    const tomorrowEntry = Object.values(chosen.days).find(d => {
+      if (d.dateISO) return d.dateISO === tomorrowISO;
+      return dayDateISO(d, chosen.year) === tomorrowISO;
+    });
+    if (tomorrowEntry) {
+      const rawActs = tomorrowEntry.activities
+        ? (Array.isArray(tomorrowEntry.activities) ? tomorrowEntry.activities : Object.values(tomorrowEntry.activities))
+        : [];
+      const city = tomorrowEntry.description || tomorrowEntry.city || '';
+      const activities = rawActs
+        .filter(a => a && (a.text || a.description))
+        .map(a => ({
+          time:     a.time || '',
+          timeSort: parseTimeTo24h(a.time || ''),
+          emoji:    a.emoji || '📌',
+          text:     a.text || a.description || '',
+          location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
+        }));
+      tomorrowData = {
+        dateISO:     tomorrowISO,
+        description: city,
+        activities,
+      };
+    }
+  }
+
+  return new Response(JSON.stringify({ trip: tripInfo, today: todayData, tomorrow: tomorrowData }), { headers: CORS });
 }
 
 async function handleWidgetDriving(env, request) {
