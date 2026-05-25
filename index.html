@@ -1865,11 +1865,21 @@ function renderTripItinerary(trip) {
   // Local date string (avoids UTC-offset bug with toISOString)
   const _tn = new Date();
   const _todayISO = `${_tn.getFullYear()}-${String(_tn.getMonth()+1).padStart(2,'0')}-${String(_tn.getDate()).padStart(2,'0')}`;
+  const _moMap = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  function _dayISO(day) {
+    if (day.dateISO) return day.dateISO;
+    if (day.dateNum && day.dateMonth && trip.year) {
+      const m = _moMap[day.dateMonth.slice(0,3)];
+      if (m) return `${trip.year}-${String(m).padStart(2,'0')}-${String(day.dateNum).padStart(2,'0')}`;
+    }
+    return null;
+  }
 
   // Inject translation chips after the loop so innerHTML+= doesn't strip event listeners
   setTimeout(() => {
     days.forEach(([dayId, day]) => {
-      if (trip.status === 'active' && day.dateISO && day.dateISO < _todayISO) return;
+      const _iso = _dayISO(day);
+      if (trip.status === 'active' && _iso && _iso < _todayISO) return;
       const txCC = getCityCountryCode(day.region || day.city || '');
       if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
         const txCity = day.city || day.region || '';
@@ -1942,7 +1952,7 @@ function renderTripItinerary(trip) {
   if (trip.status === 'upcoming' || trip.status === 'active') {
     setTimeout(() => fetchTripWeather(days, trip.year), 100);
     const _driveDays = trip.status === 'active'
-      ? days.filter(([, d]) => !d.dateISO || d.dateISO >= _todayISO)
+      ? days.filter(([, d]) => { const iso = _dayISO(d); return !iso || iso >= _todayISO; })
       : days;
     setTimeout(() => fetchTripDriveTimes(_driveDays), 200);
   }
