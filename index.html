@@ -2573,6 +2573,8 @@ window.addWishlistItem = async function(tripId) {
 };
 
 window.deleteWishlistItem = async function(tripId, id) {
+  const confirmed = await showConfirmDialog('Remove from wishlist?', 'This will permanently remove this item.');
+  if (!confirmed) return;
   try {
     await window._set(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), null);
     showToast('Removed from wishlist');
