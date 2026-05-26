@@ -1542,6 +1542,23 @@ async function initApp() {
       if (editingTripId && allTrips[editingTripId]) {
         renderEditDaysList(allTrips[editingTripId]);
       }
+      if (currentTripId && allTrips[currentTripId]) {
+        const tripScreen = document.getElementById('screen-trip');
+        if (tripScreen && tripScreen.classList.contains('active')) {
+          const trip = allTrips[currentTripId];
+          if (document.getElementById('tripItineraryPanel').classList.contains('active')) {
+            renderTripItinerary(trip);
+          } else if (document.getElementById('tripOverviewPanel').classList.contains('active')) {
+            renderTripOverview(trip);
+          } else if (document.getElementById('tripLogisticsPanel').classList.contains('active')) {
+            renderLogisticsPanel(currentTripId);
+          } else if (document.getElementById('tripChangesPanel').classList.contains('active')) {
+            renderChangesPanel(currentTripId);
+          } else if (document.getElementById('tripWishlistPanel').classList.contains('active')) {
+            renderWishlistPanel(currentTripId);
+          }
+        }
+      }
     });
   });
   if (!new URLSearchParams(window.location.search).get('trip')) {
@@ -1598,6 +1615,9 @@ function goBackFromNotes() {
   editingNoteId = null;
   const btn = document.getElementById('saveNoteBtn');
   if (btn) btn.textContent = 'Save Memory';
+  if (currentTripId && allTrips[currentTripId]) {
+    renderTripItinerary(allTrips[currentTripId]);
+  }
   showScreen('screen-trip');
 }
 window.goBackFromNotes = goBackFromNotes;
@@ -1811,6 +1831,7 @@ function renderTripItinerary(trip) {
       const drive = typeof a==='object' && a.drive;
       const bookingStatus = typeof a==='object' && a.bookingStatus ? a.bookingStatus : '';
       const bookingInfo = BOOKING_STATUSES.find(s => s.key === bookingStatus);
+      const actNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.[noteKey] || {}).length;
       // Build search URL using region for cleaner location context
       const regionClean = (day.region||'').trim();
       const searchQ = regionClean ? text + ' ' + regionClean : text;
@@ -1827,8 +1848,11 @@ function renderTripItinerary(trip) {
           </div>
           <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq,this.closest('.activity-item').dataset.day,this.closest('.activity-item').dataset.key)" title="Open in Maps"
             style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
-          <button class="notes-open-btn" title="Notes & Photos"
-            style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.5;">📝</button>
+          <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+            <button class="notes-open-btn" title="Notes & Photos"
+              style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;opacity:0.5;">📝</button>
+            ${actNoteCount > 0 ? `<div class="activity-notes-count">${actNoteCount}</div>` : ''}
+          </div>
           ${isAdmin && time && trip.status === 'active' ? `<button class="act-bell-btn" title="Set reminder" onclick="onBellClick(event)">🔔</button>` : ''}
         </div>`;
     }).join('');
