@@ -2315,8 +2315,8 @@ async function renderTripOverview(trip) {
               actLabel = 'Day Memory';
             } else if (day.activities) {
               const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
-              const idx = parseInt(actKey);
-              const act = isNaN(idx) ? acts.find(function(a){ return a && a.key === actKey; }) : acts[idx];
+              const isLegacyIndex = /^\d+$/.test(actKey);
+              const act = isLegacyIndex ? acts[parseInt(actKey)] : acts.find(function(a){ return a && a.key === actKey; });
               if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
             }
             Object.values(actNotes).forEach(function(note) {
@@ -2504,8 +2504,8 @@ function renderShareHighlights(trip) {
             actLabel = 'Day Memory';
           } else if (day.activities) {
             const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
-            const idx = parseInt(actKey);
-            const act = isNaN(idx) ? acts.find(function(a){ return a && a.key === actKey; }) : acts[idx];
+            const isLegacyIndex = /^\d+$/.test(actKey);
+            const act = isLegacyIndex ? acts[parseInt(actKey)] : acts.find(function(a){ return a && a.key === actKey; });
             if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
           }
           Object.values(actNotes).forEach(function(note) {
