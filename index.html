@@ -962,12 +962,16 @@ body {
     </div>
     <button class="header-action" id="tripAdminBtn" onclick="showTripAdmin()" style="display:none;">✏️</button>
   </div>
-  <div class="tab-nav">
+  <div class="tab-nav" id="regularTabNav">
     <button class="tab-btn active" onclick="switchTripTab('itinerary',this)">Itinerary</button>
     <button class="tab-btn" onclick="switchTripTab('overview',this)">Overview</button>
     <button class="tab-btn" id="logisticsTabBtn" onclick="switchTripTab('logistics',this)" style="display:none;">Logistics</button>
     <button class="tab-btn" id="changesTabBtn" onclick="switchTripTab('changes',this)" style="display:none;">Changes</button>
     <button class="tab-btn" id="wishlistTabBtn" onclick="switchTripTab('wishlist',this)" style="display:none;">Wishlist</button>
+  </div>
+  <div class="tab-nav" id="shareTabNav" style="display:none;">
+    <button class="tab-btn active" onclick="switchShareTab('itinerary',this)">Itinerary</button>
+    <button class="tab-btn" onclick="switchShareTab('highlights',this)">Highlights</button>
   </div>
   <div class="scroll-content">
     <div id="tripItineraryPanel" class="tab-panel active"></div>
@@ -975,6 +979,7 @@ body {
     <div id="tripLogisticsPanel" class="tab-panel"></div>
     <div id="tripChangesPanel" class="tab-panel"></div>
     <div id="tripWishlistPanel" class="tab-panel"></div>
+    <div id="tripShareHighlightsPanel" class="tab-panel"></div>
   </div>
 </div>
 
@@ -1479,7 +1484,8 @@ function checkShareLink() {
   if (tripId && allTrips[tripId]) {
     isShareView = true;
     openTrip(tripId, 'overview');
-    document.querySelectorAll('.tab-btn').forEach(b => b.style.display = 'none');
+    document.getElementById('regularTabNav').style.display = 'none';
+    document.getElementById('shareTabNav').style.display = '';
     const tripBackBtn = document.querySelector('#screen-trip .back-btn');
     if (tripBackBtn) tripBackBtn.style.display = 'none';
   } else if (tripId) {
@@ -1775,6 +1781,29 @@ function switchTripTab(name, btn) {
   }
 }
 window.switchTripTab = switchTripTab;
+
+function switchShareTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#shareTabNav .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  if (name === 'itinerary') {
+    document.getElementById('tripOverviewPanel').classList.add('active');
+    // Re-init the map when returning to this tab (mirrors switchTripTab behaviour)
+    if (currentTripId && allTrips[currentTripId]) {
+      setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
+    }
+  } else if (name === 'highlights') {
+    const panel = document.getElementById('tripShareHighlightsPanel');
+    panel.classList.add('active');
+    // Lazy render — only build once
+    if (!panel.dataset.rendered && currentTripId && allTrips[currentTripId]) {
+      renderShareHighlights(allTrips[currentTripId]);
+      panel.dataset.rendered = 'true';
+    }
+  }
+}
+window.switchShareTab = switchShareTab;
 
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
@@ -2450,6 +2479,79 @@ async function renderTripOverview(trip) {
       }, 50);
     }
   }
+}
+
+function renderShareHighlights(trip) {
+  const panel = document.getElementById('tripShareHighlightsPanel');
+  const days = trip.days ? Object.entries(trip.days) : [];
+  const sortedDays = days.slice().sort((a,b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+  const daysWithNotes = sortedDays.filter(([,d]) => d.notes && Object.keys(d.notes).length > 0);
+
+  if (!daysWithNotes.length) {
+    panel.innerHTML = '<div style="padding:40px 16px;text-align:center;color:var(--muted);font-size:14px;font-style:italic;">No highlights yet.</div>';
+    return;
+  }
+
+  let html = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Highlights</div>`;
+
+  daysWithNotes.forEach(([dayId, day]) => {
+    const allNotes = [];
+    if (day.notes) {
+      Object.entries(day.notes).forEach(([actKey, actNotes]) => {
+        if (actNotes && typeof actNotes === 'object') {
+          let actLabel = '';
+          if (actKey === '__daily__') {
+            actLabel = 'Day Memory';
+          } else if (day.activities) {
+            const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
+            const idx = parseInt(actKey);
+            const act = isNaN(idx) ? acts.find(function(a){ return a && a.key === actKey; }) : acts[idx];
+            if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
+          }
+          Object.values(actNotes).forEach(function(note) {
+            if (note && (note.text || note.photoUrls || note.photoUrl)) {
+              allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey }));
+            }
+          });
+        }
+      });
+    }
+    if (!allNotes.length) return;
+    allNotes.sort((a,b) => (a.ts||0) - (b.ts||0));
+
+    const dowFull = day.dateISO
+      ? new Date(day.dateISO+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
+      : (day.dayName||'').slice(0,3);
+
+    html += `
+      <div style="margin:0 16px 12px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-sm);">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+          <div style="text-align:center;min-width:36px;">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;">${day.dateNum||'–'}</div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">${day.dateMonth||''}</div>
+            ${dowFull?`<div style="font-size:9px;color:var(--terracotta);font-weight:500;letter-spacing:1px;text-transform:uppercase;">${dowFull}</div>`:''}
+          </div>
+          <div style="width:1px;height:32px;background:var(--border);flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:14px;font-weight:500;">${day.description||day.city||''}</div>
+            <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
+          </div>
+        </div>
+        ${allNotes.map(note => {
+          const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
+          const photosHTML = photos.length ? `
+            <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
+              ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
+            </div>` : '';
+          var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
+          var actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
+          var noteTextHTML = note.text ? '<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">' + escHtml(note.text) + '</div>' : '';
+          return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
+        }).join('')}
+      </div>`;
+  });
+
+  panel.innerHTML = html;
 }
 
 window.toggleDay = function(id) {
