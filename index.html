@@ -3034,6 +3034,7 @@ window.deleteNote = async function(noteId) {
 
 window.editNote = function(noteId, text) {
   editingNoteId = noteId;
+  clearPhotos(); // discard any in-progress new-memory photos before entering edit mode
   const textarea = document.getElementById('noteText');
   const btn = document.getElementById('saveNoteBtn');
   textarea.value = text;
@@ -3077,11 +3078,36 @@ window.saveNote = async function() {
   try {
     if (!window._auth.currentUser && !_isOffline) await window._signInAnonymously(window._auth);
 
-    // Edit mode: update existing note's text in place
+    // Edit mode: update existing note's text and optionally add more photos
     if (editingNoteId) {
       const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}/${editingNoteId}`;
-      await window._update(window._ref(window._db, notePath), { text: text || null });
+
+      // Merge new photos into existing ones (if any selected)
+      const existingNote = allTrips[currentTripId]?.days?.[currentDayKey]
+                            ?.notes?.[currentActivityKey]?.[editingNoteId];
+      const existingPhotoUrls = existingNote?.photoUrls || {};
+      const existingNums = Object.keys(existingPhotoUrls)
+        .map(k => parseInt(k.slice(1))).filter(n => !isNaN(n));
+      const nextIdx = existingNums.length ? Math.max(...existingNums) + 1 : 0;
+
+      const mergedPhotoUrls = { ...existingPhotoUrls };
+      if (selectedPhotoFiles.length > 0 && !_isOffline) {
+        for (let i = 0; i < selectedPhotoFiles.length; i++) {
+          const compressed = await compressImage(selectedPhotoFiles[i], 1200, 0.8);
+          const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
+          const storageRef = window._sRef(window._storage, storePath);
+          const snap = await window._uploadBytes(storageRef, compressed);
+          mergedPhotoUrls[`p${nextIdx + i}`] = await window._getDownloadURL(snap.ref);
+        }
+      }
+
+      await window._update(window._ref(window._db, notePath), {
+        text: text || null,
+        photoUrls: Object.keys(mergedPhotoUrls).length ? mergedPhotoUrls : null,
+      });
+
       editingNoteId = null;
+      clearPhotos();
       btn.textContent = 'Save Memory';
       document.getElementById('noteText').value = '';
       showToast('Memory updated! ✓');
@@ -3930,6 +3956,7 @@ window.saveDayEdit = async function() {
     ? (Array.isArray(existing.activities) ? existing.activities : Object.values(existing.activities))
     : [];
   const existingByText = new Map(existingActs.map(a => [typeof a === 'object' ? (a.text||'') : String(a), a]));
+  const genKey = () => Math.random().toString(36).slice(2, 8);
   const activities = Array.from(rows).map((row, i) => {
     const emoji = row.querySelector('.act-emoji-btn').textContent.trim();
     const text  = row.querySelector('.act-text-input').value.trim();
@@ -3940,8 +3967,27 @@ window.saveDayEdit = async function() {
     const existAct = existingByText.get(text) || existingActs[i];
     const coords = existAct?.coords;
     const michelin = existAct?.michelin;
-    return { emoji: emoji||'📍', text, time, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }), ...(michelin && { michelin: true }) };
+    // Preserve existing stable key or mint a new one so notes survive reorders
+    const key = existAct?.key || genKey();
+    return { emoji: emoji||'📍', text, time, key, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }), ...(michelin && { michelin: true }) };
   }).filter(a => a.text);
+
+  // Migrate notes from old numeric-index paths to stable key paths (first save after key assignment)
+  const indexToKey = new Map();
+  activities.forEach(act => {
+    const oldAct = existingByText.get(act.text);
+    if (oldAct && !oldAct.key) {
+      const oldIdx = existingActs.indexOf(oldAct);
+      if (oldIdx !== -1) indexToKey.set(String(oldIdx), act.key);
+    }
+  });
+  let notes = existing.notes ? JSON.parse(JSON.stringify(existing.notes)) : {};
+  for (const [oldIdx, newKey] of indexToKey) {
+    if (notes[oldIdx] && oldIdx !== newKey) {
+      notes[newKey] = notes[oldIdx];
+      delete notes[oldIdx];
+    }
+  }
 
   const dayData = {
     dateNum:      document.getElementById('editDayNum').value,
@@ -3955,7 +4001,7 @@ window.saveDayEdit = async function() {
     regionColor:  document.getElementById('editDayRegionColor').value || '#c06a3d',
     activities,
     sortOrder: existing.sortOrder || 0,
-    notes: existing.notes || null,
+    notes: Object.keys(notes).length ? notes : null,
     ...(existing.dailySpend != null ? { dailySpend: existing.dailySpend } : {}),
     ...(existing.flightInfo != null ? { flightInfo: existing.flightInfo } : {}),
     ...(existing.regionDates != null ? { regionDates: existing.regionDates } : {}),
