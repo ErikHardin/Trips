@@ -2347,7 +2347,7 @@ async function renderTripOverview(trip) {
         : (day.dayName||'').slice(0,3);
 
       memoriesHTML += `
-        <div style="margin:0 16px 12px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-sm);">
+        <div style="margin:0 16px 20px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-md);">
           <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
             <div style="text-align:center;min-width:36px;">
               <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;">${day.dateNum||'–'}</div>
@@ -2367,8 +2367,8 @@ async function renderTripOverview(trip) {
                 ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
               </div>` : '';
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
-            var actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
-            var noteTextHTML = note.text ? '<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">' + escHtml(note.text) + '</div>' : '';
+            var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
+            var noteTextHTML = note.text ? '<div style="padding:8px 14px 12px;font-size:15px;color:var(--ink);line-height:1.6;">' + escHtml(note.text) + '</div>' : '';
             return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
           }).join('')}
         </div>`;
@@ -2548,7 +2548,7 @@ function renderShareHighlights(trip) {
       : (day.dayName||'').slice(0,3);
 
     html += `
-      <div style="margin:0 16px 12px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-sm);">
+      <div style="margin:0 16px 20px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-md);">
         <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
           <div style="text-align:center;min-width:36px;">
             <div style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--terracotta);line-height:1;">${day.dateNum||'–'}</div>
@@ -2568,8 +2568,8 @@ function renderShareHighlights(trip) {
               ${photos.map(url=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}')">`).join('')}
             </div>` : '';
           var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
-          var actLabelHTML = note.actLabel ? '<div style="padding:8px 14px 4px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
-          var noteTextHTML = note.text ? '<div style="padding:10px 14px;font-size:13px;color:var(--ink);line-height:1.5;">' + escHtml(note.text) + '</div>' : '';
+          var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
+          var noteTextHTML = note.text ? '<div style="padding:8px 14px 12px;font-size:15px;color:var(--ink);line-height:1.6;">' + escHtml(note.text) + '</div>' : '';
           return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
         }).join('')}
       </div>`;
