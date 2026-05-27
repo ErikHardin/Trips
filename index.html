@@ -485,13 +485,6 @@ body {
   color:var(--muted); padding:2px 4px; flex-shrink:0; line-height:1; margin-left:auto;
 }
 
-/* ── EMOJI GRID ── */
-.emoji-cell {
-  font-size:24px; text-align:center; padding:6px 2px;
-  cursor:pointer; border-radius:8px; transition:background 0.1s;
-  -webkit-user-select:none; user-select:none;
-}
-.emoji-cell:active { background:var(--sand); }
 
 /* ══════════════════════════════
    PIN SCREEN
@@ -1273,16 +1266,10 @@ body {
   </div>
 </div>
 
-<!-- ══ EMOJI PICKER SHEET ══ -->
-<div class="modal-overlay" id="emojiPickerModal" onclick="closeEmojiPicker(event)">
-  <div class="modal-sheet" style="max-height:70vh;">
-    <div class="modal-handle"></div>
-    <div style="font-family:'Cormorant Garamond',serif;font-size:20px;margin-bottom:10px;">Pick an Emoji</div>
-    <input type="text" id="emojiSearch" placeholder="Search… (food, wine, beach…)" oninput="filterEmojis(this.value)"
-      style="width:100%;border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px;background:var(--cream);outline:none;margin-bottom:12px;">
-    <div id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;overflow-y:auto;max-height:300px;"></div>
-  </div>
-</div>
+<!-- Native emoji keyboard capture input -->
+<input type="text" id="nativeEmojiInput"
+  autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+  style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;bottom:0;left:0;font-size:16px;">
 
 <!-- ══ WEATHER FORECAST MODAL ══ -->
 <div class="modal-overlay" id="wxModal" onclick="closeWxModal(event)">
@@ -3973,60 +3960,71 @@ window.clearSpend = async function(dayId) {
 };
 
 // ════════════════════════════════════════
-//  EMOJI PICKER
+//  EMOJI PICKER — native keyboard
 // ════════════════════════════════════════
-let emojiTargetIdx = null;
+let emojiTargetBtn = null;
+let _emojiSession  = 0;
 
-const EMOJIS = [
-  {g:'Food & Drink', e:['🍽️','🥐','🥖','🧀','🥗','🍲','🫕','🥩','🍕','🌮','🍣','🍜','🥘','🫔','🥂','🍷','🍸','🍹','🍺','☕','🧃','🥃','🍾','🫖']},
-  {g:'Wine & Tastings', e:['🍇','🍷','🥂','🫙','🪣','🧴','🍾','🌿','🫒','🧑‍🍳']},
-  {g:'Travel & Transport', e:['✈️','🚗','🚕','🚂','🚢','🚁','🛬','🛫','🏎️','🚲','🛵','⛵','🚡','🚠','🚌']},
-  {g:'Places & Sights', e:['🏛️','⛪','🕌','🗼','🗽','🏰','🏯','🏟️','🎡','🎢','🗺️','🧭','🌁','🌉','🌃','🌆','🌇','🌄','🌅']},
-  {g:'Nature & Outdoors', e:['🏖️','🏝️','🏕️','⛰️','🏔️','🌋','🗻','🌊','🏞️','🌲','🌿','🌸','🌺','☀️','🌤️','⛅','🌙']},
-  {g:'Activities', e:['🚴','🏊','🏄','⛷️','🧗','🎭','🎨','🎬','🎤','🎸','⛳','🎾','🎯','🧘','🏃','🛍️','🎪','🎠']},
-  {g:'Accommodation', e:['🏨','🏩','🏡','⛺','🛏️','🛁','🪴','🔑']},
-  {g:'Misc', e:['📍','⭐','❤️','💡','📸','📷','🗓️','💼','🧳','🎁','🛒','💳','🎫','🎟️','📝','✅','⚠️','🔔','🌍','🌎','🌏']},
-];
-
-function buildEmojiGrid(filter) {
-  const grid = document.getElementById('emojiGrid');
-  grid.innerHTML = '';
-  const q = (filter||'').toLowerCase();
-  EMOJIS.forEach(({g, e}) => {
-    const filtered = q ? e.filter(em => g.toLowerCase().includes(q)) : e;
-    if (!filtered.length) return;
-    filtered.forEach(em => {
-      const cell = document.createElement('div');
-      cell.className = 'emoji-cell';
-      cell.textContent = em;
-      cell.onclick = () => selectEmoji(em);
-      grid.appendChild(cell);
-    });
-  });
-}
+const isMobile = /Mobi|Android|iPhone|iPad|iPod/.test(navigator.userAgent) ||
+                 navigator.maxTouchPoints > 1;
 
 window.openEmojiPicker = function(idx) {
-  emojiTargetIdx = idx;
-  document.getElementById('emojiSearch').value = '';
-  buildEmojiGrid('');
-  document.getElementById('emojiPickerModal').classList.add('open');
-};
-
-window.filterEmojis = function(val) { buildEmojiGrid(val); };
-
-function selectEmoji(em) {
-  if (emojiTargetIdx === null) return;
   const rows = document.querySelectorAll('#editActivityRows .act-row');
-  const row = rows[emojiTargetIdx];
-  if (row) row.querySelector('.act-emoji-btn').textContent = em;
-  closeEmojiPicker();
-}
+  const row  = rows[idx];
+  if (!row) return;
+  emojiTargetBtn = row.querySelector('.act-emoji-btn');
 
-window.closeEmojiPicker = function(e) {
-  if (!e || e.target.id==='emojiPickerModal') {
-    document.getElementById('emojiPickerModal').classList.remove('open');
-    emojiTargetIdx = null;
+  // Desktop fallback: use the OS emoji picker (Win+. / Cmd+Ctrl+Space) or typed emoji
+  if (!isMobile) {
+    const current = emojiTargetBtn.textContent.trim();
+    const result  = prompt('Type or paste an emoji:', current);
+    if (result) {
+      let firstCluster = result;
+      try {
+        const segs = [...new Intl.Segmenter(undefined, {granularity:'grapheme'}).segment(result)];
+        if (segs.length) firstCluster = segs[0].segment;
+      } catch(e) { firstCluster = [...result][0] || result[0]; }
+      emojiTargetBtn.textContent = firstCluster;
+    }
+    emojiTargetBtn = null;
+    return;
   }
+
+  // Mobile: focus hidden input to trigger native keyboard + emoji key
+  const sessionId = ++_emojiSession;
+  const input = document.getElementById('nativeEmojiInput');
+  input.value = '';
+
+  function onInput() {
+    if (_emojiSession !== sessionId) return;
+    input.removeEventListener('input', onInput);
+    input.removeEventListener('blur',  onBlur);
+    const raw = input.value;
+    if (raw && emojiTargetBtn) {
+      let firstCluster = raw;
+      try {
+        const segs = [...new Intl.Segmenter(undefined, {granularity:'grapheme'}).segment(raw)];
+        if (segs.length) firstCluster = segs[0].segment;
+      } catch(e) { firstCluster = [...raw][0] || raw[0]; }
+      emojiTargetBtn.textContent = firstCluster;
+    }
+    emojiTargetBtn = null;
+    input.value = '';
+    input.blur();
+  }
+
+  function onBlur() {
+    setTimeout(function() {
+      if (_emojiSession !== sessionId) return;
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('blur',  onBlur);
+      emojiTargetBtn = null;
+    }, 150);
+  }
+
+  input.addEventListener('input', onInput);
+  input.addEventListener('blur',  onBlur);
+  input.focus();
 };
 
 window.deleteDay = async function() {
