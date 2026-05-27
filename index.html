@@ -2328,7 +2328,12 @@ async function renderTripOverview(trip) {
         });
       }
       if (!allNotes.length) return;
-      allNotes.sort((a,b)=>(a.ts||0)-(b.ts||0));
+      allNotes.sort((a,b) => {
+        const aIsDaily = a.actKey === '__daily__' ? 0 : 1;
+        const bIsDaily = b.actKey === '__daily__' ? 0 : 1;
+        if (aIsDaily !== bIsDaily) return aIsDaily - bIsDaily;
+        return (a.ts||0) - (b.ts||0);
+      });
 
       const dowFull = day.dateISO
         ? new Date(day.dateISO+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
@@ -2517,7 +2522,12 @@ function renderShareHighlights(trip) {
       });
     }
     if (!allNotes.length) return;
-    allNotes.sort((a,b) => (a.ts||0) - (b.ts||0));
+    allNotes.sort((a,b) => {
+      const aIsDaily = a.actKey === '__daily__' ? 0 : 1;
+      const bIsDaily = b.actKey === '__daily__' ? 0 : 1;
+      if (aIsDaily !== bIsDaily) return aIsDaily - bIsDaily;
+      return (a.ts||0) - (b.ts||0);
+    });
 
     const dowFull = day.dateISO
       ? new Date(day.dateISO+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
