@@ -2007,9 +2007,9 @@ function renderTripItinerary(trip) {
     }, 2000);
   }
 
-  // Fetch weather and drive times for upcoming/active trips
+  // Fetch weather for all trips; drive times for upcoming/active only
+  setTimeout(() => fetchTripWeather(days, trip.year), 100);
   if (trip.status === 'upcoming' || trip.status === 'active') {
-    setTimeout(() => fetchTripWeather(days, trip.year), 100);
     const _driveDays = trip.status === 'active'
       ? days.filter(([, d]) => { const iso = _dayISO(d); return !iso || iso >= _todayISO; })
       : days;
@@ -5383,19 +5383,36 @@ function wxInfo(code) {
 
 async function fetchTripWeather(days, tripYear) {
   tripWeatherByDay = {};
+
+  // ── Load & inject already-stored weather from Firebase ──
+  let storedWeather = {};
+  if (currentTripId) {
+    try {
+      const snap = await window._get(window._ref(window._db, `trips/${currentTripId}/dayWeather`));
+      storedWeather = snap.val() || {};
+      for (const [dayId, wx] of Object.entries(storedWeather)) {
+        tripWeatherByDay[dayId] = { wx, coords: null, city: null };
+        injectWeatherChip('dc-' + dayId, wx, null, null);
+        injectOverviewWeatherChip(dayId, wx, null, null);
+      }
+    } catch(e) {}
+  }
+
   const today = new Date();
   today.setHours(0,0,0,0);
   const forecastCutoff = new Date(today);
   forecastCutoff.setDate(forecastCutoff.getDate() + 15);
 
-  // Separate days into: real forecast (<=15 days) vs climate average (beyond)
-  const forecastCityDays = {};   // city -> [{dayId, dateISO, cardId}]
-  const climateCityDays  = {};   // city -> [{dayId, dateISO, cardId, month}]
+  // Three buckets: historical (past), real forecast (≤15 days), climate average (>15 days)
+  const historicalCityDays = {};   // city -> [{dayId, dateISO, cardId}]
+  const forecastCityDays   = {};   // city -> [{dayId, dateISO, cardId}]
+  const climateCityDays    = {};   // city -> [{dayId, dateISO, cardId, month}]
 
   const MONTHS_MAP = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
 
   for (const [dayId, day] of days) {
     if (!day.city) continue;
+    if (storedWeather[dayId]) continue;  // Already loaded from Firebase
     // Derive dateISO from stored field or fall back to dateNum+dateMonth+year
     let dateISO = day.dateISO;
     if (!dateISO && day.dateNum && day.dateMonth && tripYear) {
@@ -5408,17 +5425,61 @@ async function fetchTripWeather(days, tripYear) {
     }
     if (!dateISO) continue;
     const d = new Date(dateISO + 'T00:00:00');
-    if (d < today) continue;
     const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
     if (!clean) continue;
     const entry = { dayId, dateISO, cardId: 'dc-' + dayId };
-    if (d <= forecastCutoff) {
+    if (d < today) {
+      if (!historicalCityDays[clean]) historicalCityDays[clean] = [];
+      historicalCityDays[clean].push(entry);
+    } else if (d <= forecastCutoff) {
       if (!forecastCityDays[clean]) forecastCityDays[clean] = [];
       forecastCityDays[clean].push(entry);
     } else {
       if (!climateCityDays[clean]) climateCityDays[clean] = [];
       climateCityDays[clean].push({ ...entry, month: d.getMonth() + 1 });
     }
+  }
+
+  // Helper: persist weather to Firebase
+  const saveWeather = (dayId, wx) => {
+    if (!currentTripId) return;
+    window._set(window._ref(window._db, `trips/${currentTripId}/dayWeather/${dayId}`),
+      { code: wx.code, hi: wx.hi, lo: wx.lo, avg: wx.avg || false })
+      .catch(e => console.warn('Weather save failed:', e));
+  };
+
+  // ── Historical weather (actual past dates via archive API) ──
+  for (const [city, entries] of Object.entries(historicalCityDays)) {
+    try {
+      const coords = await getCityCoords(city);
+      if (!coords) continue;
+      const [lat, lon] = coords;
+      const dates = entries.map(e => e.dateISO).sort();
+      const startDate = dates[0];
+      const endDate   = dates[dates.length - 1];
+      const url = 'https://archive-api.open-meteo.com/v1/archive?latitude=' + lat + '&longitude=' + lon +
+        '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + startDate + '&end_date=' + endDate;
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (!data.daily) continue;
+      const wxByDate = {};
+      data.daily.time.forEach((date, i) => {
+        wxByDate[date] = {
+          code: data.daily.weathercode[i],
+          hi:   Math.round(data.daily.temperature_2m_max[i]),
+          lo:   Math.round(data.daily.temperature_2m_min[i]),
+          avg:  false
+        };
+      });
+      for (const { dayId, dateISO, cardId } of entries) {
+        const wx = wxByDate[dateISO];
+        if (!wx || wx.code === null || wx.hi === null) continue;
+        injectWeatherChip(cardId, wx, [lat, lon], city);
+        tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
+        injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
+        saveWeather(dayId, wx);
+      }
+    } catch(e) { console.warn('Historical fetch failed for', city, e); }
   }
 
   // ── Real forecasts ──
@@ -5450,11 +5511,12 @@ async function fetchTripWeather(days, tripYear) {
         injectWeatherChip(cardId, wx, [lat, lon], city);
         tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
         injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
+        saveWeather(dayId, wx);
       }
     } catch(e) { console.warn('Forecast fetch failed for', city, e); }
   }
 
-  // ── Historical climate averages (last 10 years same month) ──
+  // ── Historical climate averages for far-future days (last year same month) ──
   for (const [city, entries] of Object.entries(climateCityDays)) {
     try {
       const coords = await getCityCoords(city);
@@ -5469,7 +5531,7 @@ async function fetchTripWeather(days, tripYear) {
       }
 
       for (const [month, monthEntries] of Object.entries(byMonth)) {
-        // Use last 5 years of same-month data to get averages
+        // Use last year's same-month data to get typical conditions
         const refYear = today.getFullYear() - 1;
         const mm = String(month).padStart(2,'0');
         // Get days in that month
@@ -5499,6 +5561,7 @@ async function fetchTripWeather(days, tripYear) {
           injectWeatherChip(cardId, wx, [lat, lon], city);
           tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
           injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
+          saveWeather(dayId, wx);
         }
       }
     } catch(e) { console.warn('Climate fetch failed for', city, e); }
