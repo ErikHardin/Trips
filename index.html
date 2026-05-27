@@ -2308,20 +2308,28 @@ async function renderTripOverview(trip) {
       // Collect all notes with activity label
       const allNotes = [];
       if (day.notes) {
+        const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
         Object.entries(day.notes).forEach(([actKey, actNotes]) => {
           if (actNotes && typeof actNotes === 'object') {
-            let actLabel = '';
+            let actLabel = '', actTime = Infinity, actIndex = Infinity;
             if (actKey === '__daily__') {
               actLabel = 'Day Memory';
-            } else if (day.activities) {
-              const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
+              actTime = -Infinity;
+              actIndex = -1;
+            } else {
               const isLegacyIndex = /^\d+$/.test(actKey);
-              const act = isLegacyIndex ? acts[parseInt(actKey)] : acts.find(function(a){ return a && a.key === actKey; });
-              if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
+              const idx = isLegacyIndex ? parseInt(actKey) : acts.findIndex(function(a){ return a && a.key === actKey; });
+              const act = isLegacyIndex ? acts[idx] : (idx >= 0 ? acts[idx] : null);
+              if (act) {
+                actLabel = typeof act === 'string' ? act : (act.text || '');
+                const parsed = parseActivityStartMinutes(typeof act === 'object' ? act.time : '');
+                actTime = parsed !== null ? parsed : Infinity;
+                actIndex = idx >= 0 ? idx : Infinity;
+              }
             }
             Object.entries(actNotes).forEach(function([noteId, note]) {
               if (note && (note.text || note.photoUrls || note.photoUrl)) {
-                allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey, noteId: noteId }));
+                allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey, noteId: noteId, actTime: actTime, actIndex: actIndex }));
               }
             });
           }
@@ -2329,10 +2337,8 @@ async function renderTripOverview(trip) {
       }
       if (!allNotes.length) return;
       allNotes.sort((a,b) => {
-        const aIsDaily = a.actKey === '__daily__' ? 0 : 1;
-        const bIsDaily = b.actKey === '__daily__' ? 0 : 1;
-        if (aIsDaily !== bIsDaily) return aIsDaily - bIsDaily;
-        if ((a.ts||0) !== (b.ts||0)) return (a.ts||0) - (b.ts||0);
+        if (a.actTime !== b.actTime) return a.actTime - b.actTime;
+        if (a.actIndex !== b.actIndex) return a.actIndex - b.actIndex;
         return (a.noteId||'').localeCompare(b.noteId||'');
       });
 
@@ -2503,20 +2509,28 @@ function renderShareHighlights(trip) {
   daysWithNotes.forEach(([dayId, day]) => {
     const allNotes = [];
     if (day.notes) {
+      const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
       Object.entries(day.notes).forEach(([actKey, actNotes]) => {
         if (actNotes && typeof actNotes === 'object') {
-          let actLabel = '';
+          let actLabel = '', actTime = Infinity, actIndex = Infinity;
           if (actKey === '__daily__') {
             actLabel = 'Day Memory';
-          } else if (day.activities) {
-            const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
+            actTime = -Infinity;
+            actIndex = -1;
+          } else {
             const isLegacyIndex = /^\d+$/.test(actKey);
-            const act = isLegacyIndex ? acts[parseInt(actKey)] : acts.find(function(a){ return a && a.key === actKey; });
-            if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
+            const idx = isLegacyIndex ? parseInt(actKey) : acts.findIndex(function(a){ return a && a.key === actKey; });
+            const act = isLegacyIndex ? acts[idx] : (idx >= 0 ? acts[idx] : null);
+            if (act) {
+              actLabel = typeof act === 'string' ? act : (act.text || '');
+              const parsed = parseActivityStartMinutes(typeof act === 'object' ? act.time : '');
+              actTime = parsed !== null ? parsed : Infinity;
+              actIndex = idx >= 0 ? idx : Infinity;
+            }
           }
           Object.entries(actNotes).forEach(function([noteId, note]) {
             if (note && (note.text || note.photoUrls || note.photoUrl)) {
-              allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey, noteId: noteId }));
+              allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey, noteId: noteId, actTime: actTime, actIndex: actIndex }));
             }
           });
         }
@@ -2524,10 +2538,8 @@ function renderShareHighlights(trip) {
     }
     if (!allNotes.length) return;
     allNotes.sort((a,b) => {
-      const aIsDaily = a.actKey === '__daily__' ? 0 : 1;
-      const bIsDaily = b.actKey === '__daily__' ? 0 : 1;
-      if (aIsDaily !== bIsDaily) return aIsDaily - bIsDaily;
-      if ((a.ts||0) !== (b.ts||0)) return (a.ts||0) - (b.ts||0);
+      if (a.actTime !== b.actTime) return a.actTime - b.actTime;
+      if (a.actIndex !== b.actIndex) return a.actIndex - b.actIndex;
       return (a.noteId||'').localeCompare(b.noteId||'');
     });
 
