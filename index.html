@@ -2403,7 +2403,7 @@ async function renderTripOverview(trip) {
   const visibleJournal  = isShareView ? '' : journalHTML;
 
   // Render synchronously so the map div is in the DOM before switchTripTab's initTripMap call
-  panel.innerHTML = flightsHTML + (isShareView ? '' : statsHTML) + hotelsHTML + mapHTML + visibleMemories + visibleJournal;
+  panel.innerHTML = flightsHTML + (isShareView ? '' : statsHTML) + hotelsHTML + mapHTML + visibleMemories + visibleJournal + (isShareView ? '<div id="share-itinerary-slot"></div>' : '');
   // Map is initialized lazily when Overview tab becomes visible (see switchTripTab)
 
   // In share view: fetch summaries and append itinerary section after panel is already in DOM
@@ -2447,12 +2447,18 @@ async function renderTripOverview(trip) {
         }).join('');
       const itineraryHTML = `<div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Itinerary</div>
         <div class="overview-itinerary">${dayCardsHTML}</div>`;
-      // Append after map container
-      const mapContainer = panel.querySelector('#tripMapContainer');
-      if (mapContainer) {
-        mapContainer.insertAdjacentHTML('afterend', itineraryHTML);
+      // Write into the pre-allocated slot so concurrent async renders overwrite
+      // rather than append, preventing duplicate itinerary sections.
+      const slot = panel.querySelector('#share-itinerary-slot');
+      if (slot) {
+        slot.innerHTML = itineraryHTML;
       } else {
-        panel.innerHTML += itineraryHTML;
+        const mapContainer = panel.querySelector('#tripMapContainer');
+        if (mapContainer) {
+          mapContainer.insertAdjacentHTML('afterend', itineraryHTML);
+        } else {
+          panel.innerHTML += itineraryHTML;
+        }
       }
       // Apply any weather already fetched by the itinerary tab's weather fetch
       for (const [wDayId, { wx, coords, city: wCity }] of Object.entries(tripWeatherByDay)) {
