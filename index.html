@@ -2319,9 +2319,9 @@ async function renderTripOverview(trip) {
               const act = isLegacyIndex ? acts[parseInt(actKey)] : acts.find(function(a){ return a && a.key === actKey; });
               if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
             }
-            Object.values(actNotes).forEach(function(note) {
+            Object.entries(actNotes).forEach(function([noteId, note]) {
               if (note && (note.text || note.photoUrls || note.photoUrl)) {
-                allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey }));
+                allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey, noteId: noteId }));
               }
             });
           }
@@ -2332,7 +2332,8 @@ async function renderTripOverview(trip) {
         const aIsDaily = a.actKey === '__daily__' ? 0 : 1;
         const bIsDaily = b.actKey === '__daily__' ? 0 : 1;
         if (aIsDaily !== bIsDaily) return aIsDaily - bIsDaily;
-        return (a.ts||0) - (b.ts||0);
+        if ((a.ts||0) !== (b.ts||0)) return (a.ts||0) - (b.ts||0);
+        return (a.noteId||'').localeCompare(b.noteId||'');
       });
 
       const dowFull = day.dateISO
@@ -2513,9 +2514,9 @@ function renderShareHighlights(trip) {
             const act = isLegacyIndex ? acts[parseInt(actKey)] : acts.find(function(a){ return a && a.key === actKey; });
             if (act) actLabel = typeof act === 'string' ? act : (act.text || '');
           }
-          Object.values(actNotes).forEach(function(note) {
+          Object.entries(actNotes).forEach(function([noteId, note]) {
             if (note && (note.text || note.photoUrls || note.photoUrl)) {
-              allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey }));
+              allNotes.push(Object.assign({}, note, { actLabel: actLabel, actKey: actKey, noteId: noteId }));
             }
           });
         }
@@ -2526,7 +2527,8 @@ function renderShareHighlights(trip) {
       const aIsDaily = a.actKey === '__daily__' ? 0 : 1;
       const bIsDaily = b.actKey === '__daily__' ? 0 : 1;
       if (aIsDaily !== bIsDaily) return aIsDaily - bIsDaily;
-      return (a.ts||0) - (b.ts||0);
+      if ((a.ts||0) !== (b.ts||0)) return (a.ts||0) - (b.ts||0);
+      return (a.noteId||'').localeCompare(b.noteId||'');
     });
 
     const dowFull = day.dateISO
