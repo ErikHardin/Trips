@@ -3839,8 +3839,9 @@ function renderEditDaysList(trip) {
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:0 0 12px;">No days yet. Import a CSV or add days manually.</p>';
     return;
   }
-  list.innerHTML = days.map(function(entry) {
-    var dayId = entry[0], day = entry[1];
+  var tn = new Date();
+  var todayISO = tn.getFullYear() + '-' + String(tn.getMonth()+1).padStart(2,'0') + '-' + String(tn.getDate()).padStart(2,'0');
+  function buildDayCard(dayId, day) {
     var dn = day.dayName;
     if (!dn && day.dateISO) {
       var dt = new Date(day.dateISO + 'T00:00:00');
@@ -3864,7 +3865,21 @@ function renderEditDaysList(trip) {
       + '</div>'
       + '<button data-edit-day-id="' + dayId + '" style="' + btnStyle + '">Edit</button>'
     + '</div>';
-  }).join('');
+  }
+  var pastDays = days.filter(function(e) { var iso = e[1].dateISO; return iso && iso < todayISO; });
+  var futureDays = days.filter(function(e) { var iso = e[1].dateISO; return !iso || iso >= todayISO; });
+  var html = '';
+  if (pastDays.length) {
+    html += '<div class="admin-collapsible-title" onclick="toggleEditPastDays()" style="margin-bottom:8px;padding:6px 2px;">'
+          + '<span style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Past Days (' + pastDays.length + ')</span>'
+          + '<span id="editPastDaysChev" class="admin-collapsible-chev">›</span>'
+          + '</div>'
+          + '<div id="editPastDaysBody" style="display:none;">'
+          + pastDays.map(function(e) { return buildDayCard(e[0], e[1]); }).join('')
+          + '</div>';
+  }
+  html += futureDays.map(function(e) { return buildDayCard(e[0], e[1]); }).join('');
+  list.innerHTML = html;
 }
 
 window.addNewDay = async function() {
@@ -5625,6 +5640,15 @@ function refreshPackingPct(packingList) {
 // ════════════════════════════════════════
 //  MASTER PACKING LIST (settings template)
 // ════════════════════════════════════════
+
+window.toggleEditPastDays = function() {
+  const body = document.getElementById('editPastDaysBody');
+  const chev = document.getElementById('editPastDaysChev');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.classList.toggle('open', opening);
+};
 
 window.toggleMasterPackingSection = function() {
   const body = document.getElementById('masterPackingBody');
