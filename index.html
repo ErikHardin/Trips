@@ -262,6 +262,8 @@ body {
 .spend-add-btn { background:var(--terracotta); color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; padding:2px 8px; cursor:pointer; line-height:1.6; }
 .spend-clear-btn { background:none; border:none; font-size:13px; color:var(--muted); cursor:pointer; padding:2px 4px; opacity:0.6; }
 .spend-badge-input { font-size:14px; color:var(--terracotta); font-weight:600; background:none; border:none; border-bottom:1px solid var(--terracotta); outline:none; width:80px; }
+.spend-log-btn { background:none; border:none; font-size:13px; cursor:pointer; padding:2px 4px; opacity:0.7; }
+.spend-log-item { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
 .michelin { display: inline-block; font-size: 10px; background: #fff2ec; color: var(--terracotta); border: 1px solid #f0c4ae; border-radius: 20px; padding: 1px 7px; font-weight: 500; margin-left: 5px; vertical-align: middle; }
 
 /* ══════════════════════════════
@@ -3832,7 +3834,7 @@ window.addActivityRow = function(act) {
     <div class="act-main">
       <input class="act-text-input" placeholder="Activity name">
       <div class="act-sub">
-        <input class="act-time-input" placeholder="Time">
+        <input class="act-time-input" placeholder="e.g. 3pm">
         <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
         ${BOOKING_STATUSES.map(s => `<button class="act-booking-opt${booking === s.key ? ' active' : ''}" data-status="${s.key}" title="${s.label}">${s.emoji}</button>`).join('')}
         <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>
@@ -3856,6 +3858,27 @@ window.addActivityRow = function(act) {
       if (!wasActive) this.classList.add('active');
     });
   });
+  // Time input am/pm validation
+  function validateTimeInput() {
+    const val = timeInput.value.trim();
+    let hint = timeInput.nextElementSibling;
+    if (hint && hint.classList.contains('act-time-hint')) hint.remove();
+    if (val && !/am|pm/i.test(val)) {
+      timeInput.style.borderColor = 'var(--terracotta)';
+      timeInput.style.boxShadow = '0 0 0 2px rgba(192,106,61,0.18)';
+      const h = document.createElement('div');
+      h.className = 'act-time-hint';
+      h.style.cssText = 'font-size:10px;color:var(--terracotta);margin-top:2px;white-space:nowrap;';
+      h.textContent = 'Include am/pm (e.g. 3pm, 2pm–4pm)';
+      timeInput.parentNode.insertBefore(h, timeInput.nextSibling);
+    } else {
+      timeInput.style.borderColor = '';
+      timeInput.style.boxShadow = '';
+    }
+  }
+  timeInput.addEventListener('blur', validateTimeInput);
+  timeInput.addEventListener('input', validateTimeInput);
+
   // Prevent drag events on inputs so text selection works normally
   [textInput, timeInput].forEach(function(inp) {
     inp.setAttribute('draggable', 'false');
@@ -3973,13 +3996,25 @@ function onTouchEnd(e) {
   touchDragSrc = null;
 }
 
-window.removeActivityRow = function(btn) {
+window.removeActivityRow = async function(btn) {
+  const confirmed = await showConfirmDialog('Remove activity?', 'This will remove this activity from the day.');
+  if (!confirmed) return;
   btn.closest('.act-row').remove();
   reindexRows();
 };
 
 window.saveDayEdit = async function() {
   if (!editingTripId || !editingDayId) return;
+  // Validate time inputs require am/pm
+  const timeInputs = document.querySelectorAll('#editActivityRows .act-time-input');
+  for (const ti of timeInputs) {
+    const v = ti.value.trim();
+    if (v && !/am|pm/i.test(v)) {
+      showToast('Include am/pm in times — e.g. 3pm or 10am–2pm');
+      ti.focus();
+      return;
+    }
+  }
   const existing = allTrips[editingTripId].days[editingDayId];
   const rows = document.querySelectorAll('#editActivityRows .act-row');
   const existingActs = existing.activities
@@ -4033,6 +4068,7 @@ window.saveDayEdit = async function() {
     sortOrder: existing.sortOrder || 0,
     notes: Object.keys(notes).length ? notes : null,
     ...(existing.dailySpend != null ? { dailySpend: existing.dailySpend } : {}),
+    ...(existing.spendLog != null ? { spendLog: existing.spendLog } : {}),
     ...(existing.flightInfo != null ? { flightInfo: existing.flightInfo } : {}),
     ...(existing.regionDates != null ? { regionDates: existing.regionDates } : {}),
   };
@@ -4066,7 +4102,7 @@ function _rebuildSpendBadge(dayId) {
   if (!badge) return;
   const currency = allTrips[currentTripId]?.currency || '';
   const current = allTrips[currentTripId]?.days?.[dayId]?.dailySpend;
-  badge.querySelectorAll('.spend-badge-amount, .spend-badge-input, .spend-add-btn, .spend-clear-btn').forEach(el => el.remove());
+  badge.querySelectorAll('.spend-badge-amount, .spend-badge-input, .spend-add-btn, .spend-clear-btn, .spend-log-btn').forEach(el => el.remove());
   if (current != null) {
     const amt = document.createElement('span');
     amt.className = 'spend-badge-amount';
@@ -4085,6 +4121,15 @@ function _rebuildSpendBadge(dayId) {
       clrBtn.textContent = '✕';
       clrBtn.onclick = () => clearSpend(dayId);
       badge.appendChild(clrBtn);
+      const spendLog = allTrips[currentTripId]?.days?.[dayId]?.spendLog;
+      if (spendLog && Object.keys(spendLog).length > 0) {
+        const logBtn = document.createElement('button');
+        logBtn.className = 'spend-log-btn';
+        logBtn.title = 'View spend log';
+        logBtn.textContent = '📋';
+        logBtn.onclick = () => showSpendLog(dayId);
+        badge.appendChild(logBtn);
+      }
     }
   } else if (isAdmin) {
     const addBtn = document.createElement('button');
@@ -4118,6 +4163,7 @@ window.addSpendClick = function(dayId, btn) {
     if (allTrips[currentTripId]?.days?.[dayId]) allTrips[currentTripId].days[dayId].dailySpend = newTotal;
     _rebuildSpendBadge(dayId);
     await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: newTotal });
+    window._push(window._ref(window._db, `trips/${currentTripId}/days/${dayId}/spendLog`), { amount: added, ts: Date.now() });
     showToast('Spend saved ✓');
   };
 
@@ -4129,12 +4175,47 @@ window.addSpendClick = function(dayId, btn) {
 };
 
 window.clearSpend = async function(dayId) {
-  const confirmed = await showConfirmDialog('Delete daily spend?', 'This will remove the spend amount for this day.');
+  const confirmed = await showConfirmDialog('Delete daily spend?', 'This will remove the spend amount and log for this day.');
   if (!confirmed) return;
-  if (allTrips[currentTripId]?.days?.[dayId]) allTrips[currentTripId].days[dayId].dailySpend = null;
+  if (allTrips[currentTripId]?.days?.[dayId]) {
+    allTrips[currentTripId].days[dayId].dailySpend = null;
+    allTrips[currentTripId].days[dayId].spendLog = null;
+  }
   _rebuildSpendBadge(dayId);
-  await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: null });
+  await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: null, spendLog: null });
   showToast('Spend cleared');
+};
+
+window.showSpendLog = function(dayId) {
+  const currency = allTrips[currentTripId]?.currency || '';
+  const rawLog = allTrips[currentTripId]?.days?.[dayId]?.spendLog || {};
+  const entries = Object.values(rawLog).sort((a, b) => b.ts - a.ts);
+  const total = entries.reduce((s, e) => s + (e.amount || 0), 0);
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
+
+  const rows = entries.length
+    ? entries.map(e => {
+        const t = new Date(e.ts).toLocaleString(undefined, {hour:'numeric', minute:'2-digit', month:'short', day:'numeric'});
+        return `<div class="spend-log-item"><span style="color:var(--muted);font-size:13px;">${t}</span><span style="font-weight:600;">${currency}${Number(e.amount).toLocaleString()}</span></div>`;
+      }).join('') +
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;font-size:15px;font-weight:700;">
+        <span>Total</span><span style="color:var(--terracotta);">${currency}${Number(total).toLocaleString()}</span>
+      </div>`
+    : '<div style="color:var(--muted);font-size:14px;padding:12px 0;">No entries yet.</div>';
+
+  modal.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 40px;box-sizing:border-box;max-height:70vh;overflow-y:auto;">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;margin-bottom:16px;">Spend Log</div>
+      ${rows}
+      <button style="margin-top:20px;width:100%;padding:14px;background:none;border:1px solid var(--border);border-radius:14px;font-size:15px;color:var(--muted);cursor:pointer;" id="_spendLogClose">Close</button>
+    </div>`;
+
+  const close = () => modal.remove();
+  modal.querySelector('#_spendLogClose').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  document.body.appendChild(modal);
 };
 
 // ════════════════════════════════════════
