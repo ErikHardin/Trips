@@ -1873,7 +1873,7 @@ function renderTripItinerary(trip) {
 
     const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
     const activitiesHTML = acts.map((a,i) => {
-      const noteKey = typeof a === 'object' ? (a.key||i) : i;
+      const noteKey = (typeof a === 'object' && a != null && a.key != null && a.key !== '') ? a.key : i;
       const text = typeof a==='object' ? (a.text||'') : a;
       const emoji = typeof a==='object' && a.emoji ? a.emoji : getEmoji(text);
       const time = typeof a==='object' && a.time ? a.time : '';
@@ -2882,7 +2882,8 @@ window.promoteWishlistItem = function(tripId, id) {
       const snap = await window._get(actsRef);
       const raw = snap.val();
       const acts = raw ? (Array.isArray(raw) ? [...raw] : Object.values(raw)) : [];
-      acts.push({ emoji: item.emoji || '📌', text: item.text, time: time || '' });
+      const wlKey = Math.random().toString(36).slice(2, 8);
+      acts.push({ emoji: item.emoji || '📌', text: item.text, time: time || '', key: wlKey });
       await window._set(actsRef, acts);
       await window._set(window._ref(window._db, 'trips/' + tripId + '/wishlist/' + id), null);
       const day = trip.days[dayId];
@@ -4072,6 +4073,8 @@ window.saveDayEdit = async function() {
     : [];
   const existingByText = new Map(existingActs.map(a => [typeof a === 'object' ? (a.text||'') : String(a), a]));
   const genKey = () => Math.random().toString(36).slice(2, 8);
+  // Build set of new texts so we can detect when a position-slot was vacated by a displaced activity
+  const newTexts = new Set(Array.from(rows).map(r => r.querySelector('.act-text-input').value.trim()).filter(t => t));
   const activities = Array.from(rows).map((row, i) => {
     const emoji = row.querySelector('.act-emoji-btn').textContent.trim();
     const text  = row.querySelector('.act-text-input').value.trim();
@@ -4079,9 +4082,16 @@ window.saveDayEdit = async function() {
     const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
     const activeBooking = row.querySelector('.act-booking-opt.active');
     const bookingStatus = activeBooking ? activeBooking.dataset.status : '';
-    const existAct = existingByText.get(text) || existingActs[i];
-    const coords = existAct?.coords;
-    const michelin = existAct?.michelin;
+    const existActByText = existingByText.get(text);
+    const posAct = existingActs[i];
+    const posActText = posAct ? (typeof posAct === 'object' ? (posAct.text || '') : String(posAct)) : '';
+    // Only inherit key/metadata via position if the old activity there is NOT still present in the
+    // new list (i.e. it was renamed, not merely shifted down by an insertion above it).
+    // This prevents a newly-inserted activity from stealing the key of the activity it displaced,
+    // which would make two activities share a key and show the same memory count.
+    const existAct = existActByText || (posActText && !newTexts.has(posActText) ? posAct : null);
+    const coords = (existActByText || posAct)?.coords;
+    const michelin = (existActByText || posAct)?.michelin;
     // Preserve existing stable key or mint a new one so notes survive reorders
     const key = existAct?.key || genKey();
     return { emoji: emoji||'📍', text, time, key, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }), ...(michelin && { michelin: true }) };
