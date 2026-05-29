@@ -2422,6 +2422,7 @@ async function renderTripOverview(trip) {
               <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
             </div>
           </div>
+          <div style="padding:0 8px 8px;">
           ${allNotes.map(note => {
             const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
             const photosHTML = photos.length ? `
@@ -2431,8 +2432,9 @@ async function renderTripOverview(trip) {
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
             var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
             var noteTextHTML = note.text ? '<div style="padding:8px 14px 12px;font-size:15px;color:var(--ink);line-height:1.6;">' + escHtml(note.text) + '</div>' : '';
-            return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
+            return '<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
           }).join('')}
+          </div>
         </div>`;
     });
   }
@@ -2628,6 +2630,7 @@ function renderShareHighlights(trip) {
             <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
           </div>
         </div>
+        <div style="padding:0 8px 8px;">
         ${allNotes.map(note => {
           const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
           const photosHTML = photos.length ? `
@@ -2637,8 +2640,9 @@ function renderShareHighlights(trip) {
           var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
           var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
           var noteTextHTML = note.text ? '<div style="padding:8px 14px 12px;font-size:15px;color:var(--ink);line-height:1.6;">' + escHtml(note.text) + '</div>' : '';
-          return '<div style="border-bottom:1px solid var(--border);">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
+          return '<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
         }).join('')}
+        </div>
       </div>`;
   });
 
