@@ -1565,7 +1565,6 @@ async function initApp() {
       checkShareLink();
       populateImportSelect();
       renderAdminTripList();
-      loadMasterPackingList();
       if (editingTripId && allTrips[editingTripId]) {
         renderEditDaysList(allTrips[editingTripId]);
       }
@@ -5541,7 +5540,7 @@ window.toggleMasterPackingSection = function() {
   const opening = body.style.display === 'none';
   body.style.display = opening ? 'block' : 'none';
   if (chev) chev.classList.toggle('open', opening);
-  if (opening && masterPackingList === null) loadMasterPackingList();
+  if (opening) loadMasterPackingList();
 };
 
 window.syncMasterFromFrance = async function() {
@@ -5572,6 +5571,8 @@ window.syncMasterFromFrance = async function() {
 };
 
 async function loadMasterPackingList() {
+  const container = document.getElementById('masterPackingListContainer');
+  if (container) container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
   try {
     const snap = await window._get(window._ref(window._db, 'settings/masterPackingList'));
     let list = snap.val() ? normalizePackingList(snap.val()) : null;
@@ -5611,6 +5612,8 @@ async function loadMasterPackingList() {
     renderMasterPackingListUI();
   } catch(e) {
     console.error('loadMasterPackingList error:', e);
+    const c = document.getElementById('masterPackingListContainer');
+    if (c) c.innerHTML = '<div style="padding:16px;color:var(--terracotta);font-size:13px;">Load error: ' + e.message + '</div>';
   }
 }
 
@@ -5621,7 +5624,12 @@ function renderMasterPackingListUI() {
     container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
     return;
   }
-  container.innerHTML = buildMasterPackingListHTML(masterPackingList);
+  try {
+    container.innerHTML = buildMasterPackingListHTML(masterPackingList);
+  } catch(e) {
+    console.error('renderMasterPackingListUI error:', e);
+    container.innerHTML = '<div style="padding:16px;color:var(--terracotta);font-size:13px;">Error rendering list: ' + e.message + '</div>';
+  }
 }
 
 function buildMasterPackingListHTML(list) {
