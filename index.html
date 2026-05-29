@@ -465,12 +465,11 @@ body {
 }
 .act-row.dragging { opacity:0.4; }
 .act-row.drag-over { box-shadow: 0 0 0 2px var(--terracotta); background: var(--terracotta-light); }
-.act-drag-handle {
-  font-size:16px; color:var(--sand-dark); cursor:grab; flex-shrink:0;
-  padding:2px 4px; line-height:1; touch-action:none; margin-top:2px;
-  -webkit-user-select:none; user-select:none;
-}
-.act-drag-handle:active { cursor:grabbing; }
+.act-move-btns { display:flex; flex-direction:column; gap:1px; flex-shrink:0; margin-top:2px; }
+.act-move-btn  { background:none; border:none; font-size:9px; cursor:pointer; color:var(--sand-dark);
+                 padding:2px 4px; border-radius:4px; line-height:1.2;
+                 transition:color 0.15s, background 0.15s; -webkit-user-select:none; user-select:none; }
+.act-move-btn:hover { color:var(--terracotta); background:var(--terracotta-light); }
 .act-emoji-btn {
   font-size:20px; background:none; border:none; cursor:pointer;
   padding:2px 4px; border-radius:6px; flex-shrink:0; margin-top:0;
@@ -874,8 +873,8 @@ body {
 .drive-leg-unknown { opacity: 0.6; font-style: italic; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
-.act-booking-opt { background: none; border: none; font-size: 13px; cursor: pointer; padding: 3px 4px; flex-shrink: 0; opacity: 0.2; transition: opacity 0.15s; border-radius: 6px; }
-.act-booking-opt.active { opacity: 1; background: var(--sand); }
+.act-booking-select { border:1px solid var(--border); border-radius:7px; background:var(--warm-white); font-size:11px; font-family:'DM Sans',sans-serif; color:var(--muted); padding:3px 4px; height:26px; flex-shrink:0; cursor:pointer; max-width:120px; }
+.act-delete-btn:hover { color:var(--terracotta); }
 .wx-forecast-row { display:flex; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
 .wx-forecast-row:last-child { border-bottom:none; }
 .wx-forecast-date { width:80px; font-size:12px; color:var(--muted); line-height:1.3; flex-shrink:0; }
@@ -1178,7 +1177,7 @@ body {
 <!-- ══ EDIT TRIP SCREEN ══ -->
 <div id="screen-edit" class="screen">
   <div class="app-header">
-    <button class="back-btn" onclick="showScreen(editTripOrigin)">‹</button>
+    <button class="back-btn" onclick="goBackFromEdit()">‹</button>
     <div class="header-titles">
       <div class="header-eyebrow">Edit Trip</div>
       <div class="header-main" id="editTripHeaderName">Trip</div>
@@ -1478,6 +1477,7 @@ let masterPackingList = null;
 let masterPackingAvatarUrls = {};
 let pendingMasterItems = null;
 let editTripOrigin = 'screen-admin';
+let _todayScrolled = false;
 let currentActivityKey = null;
 let currentDayKey = null;
 let selectedPhotoFiles = [];  // multi-photo array
@@ -1596,6 +1596,13 @@ async function initApp() {
     goHome();
   }
 }
+
+window.goBackFromEdit = function() {
+  showScreen(editTripOrigin);
+  if (editTripOrigin === 'screen-trip' && currentTripId && allTrips[currentTripId]) {
+    renderTripItinerary(allTrips[currentTripId]);
+  }
+};
 
 // ════════════════════════════════════════
 //  NAVIGATION
@@ -1777,6 +1784,7 @@ function renderHome() {
 //  TRIP DETAIL
 // ════════════════════════════════════════
 function openTrip(tripId, defaultTab) {
+  _todayScrolled = false;
   currentTripId = tripId;
   const trip = allTrips[tripId];
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
@@ -1845,6 +1853,7 @@ window.switchShareTab = switchShareTab;
 
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
+  const _savedScroll = panel.scrollTop;
   panel.innerHTML = isAdmin ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
 
   // Outbound flights
@@ -2066,6 +2075,7 @@ function renderTripItinerary(trip) {
         </div>
       </div>`;
   }
+  panel.scrollTop = _savedScroll;
 }
 
 function highlightToday(trip) {
@@ -2090,7 +2100,10 @@ function highlightToday(trip) {
     dateCol.appendChild(badge);
   }
   card.classList.add('open');
-  setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  if (!_todayScrolled) {
+    _todayScrolled = true;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  }
 }
 
 let _ntfyCfg = null;
@@ -3919,14 +3932,20 @@ window.addActivityRow = function(act) {
   row.draggable = true;
   row.dataset.idx = idx;
   row.innerHTML = `
-    <span class="act-drag-handle" title="Drag to reorder">⠿</span>
+    <div class="act-move-btns">
+      <button class="act-move-btn" onclick="moveActivityRow(this,-1)" title="Move up">▲</button>
+      <button class="act-move-btn" onclick="moveActivityRow(this,1)" title="Move down">▼</button>
+    </div>
     <button class="act-emoji-btn" onclick="openEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
     <div class="act-main">
       <input class="act-text-input" placeholder="Activity name">
       <div class="act-sub">
         <input class="act-time-input" placeholder="e.g. 3pm">
         <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving to this activity">🚗</button>
-        ${BOOKING_STATUSES.map(s => `<button class="act-booking-opt${booking === s.key ? ' active' : ''}" data-status="${s.key}" title="${s.label}">${s.emoji}</button>`).join('')}
+        <select class="act-booking-select">
+          <option value="">Status</option>
+          ${BOOKING_STATUSES.map(s => `<option value="${s.key}">${s.emoji} ${s.label}</option>`).join('')}
+        </select>
         <button class="act-delete-btn" onclick="removeActivityRow(this)" title="Remove">✕</button>
       </div>
     </div>`;
@@ -3936,17 +3955,11 @@ window.addActivityRow = function(act) {
   var driveBtn  = row.querySelector('.act-drive-btn');
   textInput.value = text;
   timeInput.value = time;
+  row.querySelector('.act-booking-select').value = booking;
   driveBtn.addEventListener('click', function() {
     const active = this.dataset.drive === 'true';
     this.dataset.drive = active ? 'false' : 'true';
     this.classList.toggle('active', !active);
-  });
-  row.querySelectorAll('.act-booking-opt').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const wasActive = this.classList.contains('active');
-      row.querySelectorAll('.act-booking-opt').forEach(b => b.classList.remove('active'));
-      if (!wasActive) this.classList.add('active');
-    });
   });
   // Time input am/pm validation
   function validateTimeInput() {
@@ -4001,9 +4014,20 @@ function reindexRows() {
   });
 }
 
+window.moveActivityRow = function(btn, dir) {
+  const row = btn.closest('.act-row');
+  const container = document.getElementById('editActivityRows');
+  if (dir === -1 && row.previousElementSibling) {
+    container.insertBefore(row, row.previousElementSibling);
+  } else if (dir === 1 && row.nextElementSibling) {
+    container.insertBefore(row.nextElementSibling, row);
+  }
+  reindexRows();
+};
+
 function onDragStart(e) {
-  // Only drag from the handle — prevents interfering with input text selection
-  if (!e.target.classList.contains('act-drag-handle')) {
+  // Only drag from move buttons — prevents interfering with input text selection
+  if (!e.target.classList.contains('act-move-btn') && !e.target.closest('.act-move-btns')) {
     e.preventDefault();
     return;
   }
@@ -4039,8 +4063,8 @@ function onDragEnd() {
 let touchDragSrc = null, touchClone = null, touchOffsetY = 0;
 
 function onTouchStart(e) {
-  // Only drag from the handle
-  if (!e.target.classList.contains('act-drag-handle')) return;
+  // Only drag from the move buttons area
+  if (!e.target.classList.contains('act-move-btn') && !e.target.closest('.act-move-btns')) return;
   touchDragSrc = this;
   const touch = e.touches[0];
   const rect = this.getBoundingClientRect();
@@ -4119,8 +4143,7 @@ window.saveDayEdit = async function() {
     const text  = row.querySelector('.act-text-input').value.trim();
     const time  = row.querySelector('.act-time-input').value.trim();
     const drive = row.querySelector('.act-drive-btn').dataset.drive === 'true';
-    const activeBooking = row.querySelector('.act-booking-opt.active');
-    const bookingStatus = activeBooking ? activeBooking.dataset.status : '';
+    const bookingStatus = row.querySelector('.act-booking-select').value;
     const existActByText = existingByText.get(text);
     const posAct = existingActs[i];
     const posActText = posAct ? (typeof posAct === 'object' ? (posAct.text || '') : String(posAct)) : '';
