@@ -1884,7 +1884,8 @@ function renderTripItinerary(trip) {
         ? '<span class="spend-badge-amount">' + escHtml(trip.currency||'') + Number(day.dailySpend).toLocaleString() + '</span>' +
           (isAdmin
             ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)" title="Add to today\'s spend">+</button>' +
-              '<button class="spend-clear-btn" onclick="clearSpend(\'' + dayId + '\')" title="Clear spend">✕</button>'
+              '<button class="spend-clear-btn" onclick="clearSpend(\'' + dayId + '\')" title="Clear spend">✕</button>' +
+              (day.spendLog && Object.keys(day.spendLog).length > 0 ? '<button class="spend-log-btn" onclick="showSpendLog(\'' + dayId + '\')" title="View spend log">📋</button>' : '')
             : '')
         : (isAdmin ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)">+ add</button>' : '')) +
       '</div>'
