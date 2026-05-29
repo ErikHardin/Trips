@@ -49,6 +49,7 @@ if ('serviceWorker' in navigator) {
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--cream);
@@ -2399,7 +2400,6 @@ async function renderTripOverview(trip) {
       }
       if (!allNotes.length) return;
       allNotes.sort((a,b) => {
-        if (a.actTime !== b.actTime) return a.actTime - b.actTime;
         if (a.actIndex !== b.actIndex) return a.actIndex - b.actIndex;
         return (a.noteId||'').localeCompare(b.noteId||'');
       });
@@ -2606,7 +2606,6 @@ function renderShareHighlights(trip) {
     }
     if (!allNotes.length) return;
     allNotes.sort((a,b) => {
-      if (a.actTime !== b.actTime) return a.actTime - b.actTime;
       if (a.actIndex !== b.actIndex) return a.actIndex - b.actIndex;
       return (a.noteId||'').localeCompare(b.noteId||'');
     });
