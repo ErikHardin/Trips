@@ -437,6 +437,13 @@ body {
   background: var(--cream); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
 }
 .csv-instructions code { background: var(--sand); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+.admin-collapsible-title {
+  cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+}
+.admin-collapsible-chev {
+  font-size: 14px; color: var(--muted); transition: transform 0.2s; padding-left: 4px;
+}
+.admin-collapsible-chev.open { transform: rotate(90deg); }
 
 /* ── COLOR SWATCHES ── */
 .color-swatch {
@@ -1117,12 +1124,23 @@ body {
       </div>
     </div>
 
+    <!-- LOGISTICS PACKING LIST (master template) -->
+    <div class="admin-section">
+      <div class="admin-section-title admin-collapsible-title" onclick="toggleMasterPackingSection()">
+        Logistics Packing List
+        <span id="masterPackingChev" class="admin-collapsible-chev">›</span>
+      </div>
+      <div id="masterPackingBody" style="display:none;padding-bottom:8px;">
+        <div id="masterPackingListContainer"></div>
+      </div>
+    </div>
+
     <!-- IMPORT FROM CSV -->
     <div class="admin-section">
-      <div class="admin-section-title">Import from Google Sheet</div>
+      <div class="admin-section-title">Import from CSV</div>
       <div class="admin-card">
         <div class="csv-instructions">
-          In Google Sheets: <strong>File → Download → CSV</strong>, save to Files app, then pick it below.<br><br>
+          Select a CSV file or paste CSV data below.<br><br>
           Expected columns:<br>
           <code>Date</code> · <code>Day</code> · <code>City</code> · <code>Hotel</code> · <code>Activities</code> · <code>Region</code> · <code>RegionColor</code><br><br>
           Activities separated by <code>|</code> e.g. <code>Dinner at Soma|Wine tasting</code>
@@ -1220,6 +1238,17 @@ body {
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ══ UPCOMING TRIP PACKING LIST MODAL ══ -->
+<div class="modal-overlay" id="upcomingTripModal" onclick="dismissUpcomingModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Add to upcoming trips?</div>
+    <div id="upcomingTripModalBody" style="font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.6;"></div>
+    <button class="form-btn" onclick="confirmUpcomingAdd()">Yes, add to upcoming trips</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissUpcomingModal()">No, just save to settings</button>
   </div>
 </div>
 
@@ -1441,6 +1470,8 @@ let isAdmin = false;
 let adminUser = '';
 let allTrips = {};
 let currentTripId = null;
+let masterPackingList = null;
+let pendingMasterItems = null;
 let editTripOrigin = 'screen-admin';
 let currentActivityKey = null;
 let currentDayKey = null;
@@ -1534,6 +1565,7 @@ async function initApp() {
       checkShareLink();
       populateImportSelect();
       renderAdminTripList();
+      loadMasterPackingList();
       if (editingTripId && allTrips[editingTripId]) {
         renderEditDaysList(allTrips[editingTripId]);
       }
@@ -3278,6 +3310,23 @@ window.createTrip = async function() {
     const dRef = window._push(window._ref(window._db, `trips/${tripId}/days`));
     await window._set(dRef, dayData);
     d.setDate(d.getDate() + 1);
+  }
+
+  // Seed packing list from master template if one exists
+  if (masterPackingList && masterPackingList.length) {
+    let idCounter = Date.now();
+    const tripList = masterPackingList.map(p => ({
+      person: p.person,
+      sections: (p.sections || []).map(s => ({
+        title: s.title,
+        items: (s.items || []).map(item => ({
+          id: 'pi' + (idCounter++),
+          label: item.label,
+          checked: false
+        }))
+      }))
+    }));
+    await window._set(window._ref(window._db, `trips/${tripId}/logistics/packingList`), tripList);
   }
 
   showToast(`${name} created with ${sortOrder} days! 🎉`);
@@ -5480,6 +5529,250 @@ function refreshPackingPct(packingList) {
     if (el) el.textContent = pct + '% packed';
   }
 }
+
+// ════════════════════════════════════════
+//  MASTER PACKING LIST (settings template)
+// ════════════════════════════════════════
+
+window.toggleMasterPackingSection = function() {
+  const body = document.getElementById('masterPackingBody');
+  const chev = document.getElementById('masterPackingChev');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.classList.toggle('open', opening);
+  if (opening && masterPackingList === null) loadMasterPackingList();
+};
+
+async function loadMasterPackingList() {
+  try {
+    const snap = await window._get(window._ref(window._db, 'settings/masterPackingList'));
+    let list = snap.val() ? normalizePackingList(snap.val()) : null;
+
+    if (!list) {
+      // Seed from France 2026 trip packing list if available
+      const france = Object.values(allTrips).find(t => t.name && t.name.includes('France') && t.name.includes('2026'));
+      if (france && france.logistics && france.logistics.packingList) {
+        const raw = normalizePackingList(france.logistics.packingList);
+        if (raw) {
+          let idCounter = Date.now();
+          list = raw.map(p => ({
+            person: p.person,
+            sections: (p.sections || []).map(s => ({
+              title: s.title,
+              items: (s.items || []).filter(Boolean).map(item => ({
+                id: 'mpi' + (idCounter++),
+                label: item.label
+              }))
+            }))
+          }));
+          await window._set(window._ref(window._db, 'settings/masterPackingList'), list);
+        }
+      }
+    }
+
+    if (!list) {
+      // Default empty structure with 3 people
+      list = [
+        { person: 'General', sections: [{ title: 'Documents', items: [] }, { title: 'Electronics', items: [] }, { title: 'Accessories', items: [] }, { title: 'Miscellaneous', items: [] }] },
+        { person: 'Megan',   sections: [{ title: 'Clothing', items: [] }, { title: 'Toiletries', items: [] }, { title: 'Personal Care', items: [] }] },
+        { person: 'Erik',    sections: [{ title: 'Clothing', items: [] }, { title: 'Toiletries', items: [] }, { title: 'Personal Care', items: [] }] }
+      ];
+    }
+
+    masterPackingList = list;
+    renderMasterPackingListUI();
+  } catch(e) {
+    console.error('loadMasterPackingList error:', e);
+  }
+}
+
+function renderMasterPackingListUI() {
+  const container = document.getElementById('masterPackingListContainer');
+  if (!container) return;
+  if (!masterPackingList) {
+    container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
+    return;
+  }
+  container.innerHTML = buildMasterPackingListHTML(masterPackingList);
+}
+
+function buildMasterPackingListHTML(list) {
+  const ORDER = ['General', 'Megan', 'Erik'];
+  const sorted = [...list].sort((a, b) => {
+    const ai = ORDER.indexOf(a.person), bi = ORDER.indexOf(b.person);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return sorted.map(personObj => {
+    const personIcon = personObj.person === 'Erik' ? '👨' : personObj.person === 'Megan' ? '👩' : '🌍';
+    const blockId = 'mpblock-' + personObj.person;
+
+    const sectionsHTML = (personObj.sections || []).map(sec => {
+      const secKey = 'mp-' + personObj.person + '-' + sec.title.replace(/\s+/g, '_');
+      const itemsHTML = (sec.items || []).filter(Boolean).map(item =>
+        '<div class="packing-item" id="mpitem-' + item.id + '">' +
+          '<div class="packing-item-label" style="cursor:default;">' + escHtml(item.label) + '</div>' +
+          '<button class="packing-edit-btn" data-master-edit="' + item.id + '" title="Edit">✏️</button>' +
+          '<button class="packing-delete-btn" data-master-del="' + item.id + '">×</button>' +
+        '</div>'
+      ).join('');
+      return `
+        <div class="packing-section-group">
+          <div class="packing-section-title">${escHtml(sec.title)}</div>
+          <div id="${secKey}">${itemsHTML}</div>
+          <div class="packing-add-row">
+            <input class="packing-add-input" placeholder="Add item…" id="mpadd-${secKey}"
+              onkeydown="if(event.key==='Enter')addMasterPackingItem('${personObj.person}','${escAttr(sec.title)}',this)">
+            <button class="packing-add-btn" onclick="addMasterPackingItem('${personObj.person}','${escAttr(sec.title)}',document.getElementById('mpadd-${secKey}'))">+</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="packing-person-block">
+        <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}')">
+          <div class="packing-person-left">
+            <div class="packing-avatar-placeholder" style="cursor:default;">${personIcon}</div>
+            <span class="packing-person-name" style="font-style:italic;font-family:'Cormorant Garamond',serif;font-size:20px;">${personObj.person}</span>
+          </div>
+          <div class="packing-person-right">
+            <span class="packing-person-chevron" id="chev-${blockId}">›</span>
+          </div>
+        </div>
+        <div class="packing-person-body" id="${blockId}">
+          ${sectionsHTML}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Delegated handlers for master packing list edit/delete
+document.addEventListener('click', function(e) {
+  const delBtn = e.target.closest('[data-master-del]');
+  if (delBtn) { deleteMasterPackingItem(delBtn.dataset.masterDel); return; }
+
+  const editBtn = e.target.closest('[data-master-edit]');
+  if (editBtn) {
+    const itemId = editBtn.dataset.masterEdit;
+    const row = document.getElementById('mpitem-' + itemId);
+    if (!row) return;
+    const labelEl = row.querySelector('.packing-item-label');
+    if (!labelEl) return;
+    const currentText = labelEl.textContent.trim();
+    const input = document.createElement('input');
+    input.className = 'packing-edit-input';
+    input.value = currentText;
+    labelEl.replaceWith(input);
+    input.focus();
+    editBtn.style.display = 'none';
+    const save = async () => {
+      const newLabel = input.value.trim();
+      if (newLabel && newLabel !== currentText) {
+        for (const p of masterPackingList) {
+          for (const s of (p.sections || [])) {
+            const item = (s.items || []).find(i => i && i.id === itemId);
+            if (item) { item.label = newLabel; break; }
+          }
+        }
+        try {
+          await window._set(window._ref(window._db, 'settings/masterPackingList'), masterPackingList);
+        } catch(err) { showToast('Save error'); console.error(err); }
+      }
+      renderMasterPackingListUI();
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } });
+    return;
+  }
+});
+
+window.addMasterPackingItem = async function(person, sectionTitle, inputEl) {
+  const label = inputEl.value.trim();
+  if (!label) return;
+  const newItem = { id: 'mpi' + Date.now(), label };
+
+  const personObj = (masterPackingList || []).find(p => p.person === person);
+  if (!personObj) return;
+  const sec = (personObj.sections || []).find(s => s.title === sectionTitle);
+  if (!sec) return;
+  if (!sec.items) sec.items = [];
+  sec.items.push(newItem);
+
+  try {
+    await window._set(window._ref(window._db, 'settings/masterPackingList'), masterPackingList);
+    inputEl.value = '';
+    renderMasterPackingListUI();
+    // Re-open the person block that was just updated
+    const blockId = 'mpblock-' + person;
+    const body = document.getElementById(blockId);
+    if (body && !body.classList.contains('open')) togglePackingBlock(blockId);
+    // Offer to add to upcoming trips
+    showUpcomingTripModal(person, sectionTitle, newItem);
+  } catch(e) {
+    showToast('Save error');
+    console.error('addMasterPackingItem error:', e);
+  }
+};
+
+async function deleteMasterPackingItem(itemId) {
+  for (const p of (masterPackingList || [])) {
+    for (const s of (p.sections || [])) {
+      const idx = (s.items || []).findIndex(i => i && i.id === itemId);
+      if (idx !== -1) { s.items.splice(idx, 1); break; }
+    }
+  }
+  try {
+    await window._set(window._ref(window._db, 'settings/masterPackingList'), masterPackingList);
+    renderMasterPackingListUI();
+  } catch(e) {
+    showToast('Delete error');
+    console.error('deleteMasterPackingItem error:', e);
+  }
+}
+
+function showUpcomingTripModal(person, sectionTitle, item) {
+  const upcoming = Object.entries(allTrips).filter(([, t]) => t.status === 'upcoming');
+  if (!upcoming.length) return;
+  pendingMasterItems = { person, sectionTitle, item };
+  const names = upcoming.map(([, t]) => '• ' + t.name).join('<br>');
+  document.getElementById('upcomingTripModalBody').innerHTML =
+    'You added <strong>' + escHtml(item.label) + '</strong> to the settings packing list.<br><br>' +
+    'Would you also like to add it to your upcoming trip(s)?<br><br>' + names;
+  document.getElementById('upcomingTripModal').classList.add('open');
+}
+
+window.dismissUpcomingModal = function(event) {
+  if (event && event.target !== document.getElementById('upcomingTripModal')) return;
+  document.getElementById('upcomingTripModal').classList.remove('open');
+  pendingMasterItems = null;
+};
+
+window.confirmUpcomingAdd = async function() {
+  document.getElementById('upcomingTripModal').classList.remove('open');
+  if (!pendingMasterItems) return;
+  const { person, sectionTitle, item } = pendingMasterItems;
+  pendingMasterItems = null;
+
+  const upcoming = Object.entries(allTrips).filter(([, t]) => t.status === 'upcoming');
+  let count = 0;
+  for (const [tripId] of upcoming) {
+    try {
+      const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+      const list = normalizePackingList(snap.val());
+      if (!list) continue;
+      const personObj = list.find(p => p.person === person);
+      if (!personObj) continue;
+      const sec = (personObj.sections || []).find(s => s.title === sectionTitle);
+      if (!sec) continue;
+      if (!sec.items) sec.items = [];
+      sec.items.push({ id: 'pi' + Date.now() + count, label: item.label, checked: false });
+      await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), list);
+      count++;
+    } catch(e) { console.error('confirmUpcomingAdd error for trip', tripId, e); }
+  }
+  if (count > 0) showToast('Added to ' + count + ' upcoming trip' + (count > 1 ? 's' : '') + ' ✓');
+};
 
 // ════════════════════════════════════════
 //  WEATHER
