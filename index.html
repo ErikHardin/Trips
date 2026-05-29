@@ -323,23 +323,6 @@ body {
 }
 #lightbox-prev { left: 12px; }
 #lightbox-next { right: 12px; }
-#lightbox-title {
-  position: absolute; top: 18px; left: 16px; right: 60px;
-  color: white; font-size: 13px; font-weight: 600;
-  letter-spacing: 0.5px; text-transform: uppercase;
-  pointer-events: none; z-index: 10000;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-#lightbox-caption {
-  position: absolute; bottom: 46px; left: 50%; transform: translateX(-50%);
-  width: calc(100% - 48px);
-  color: rgba(255,255,255,0.85); font-size: 14px; line-height: 1.5;
-  text-align: center; pointer-events: none; z-index: 10000;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 
 .note-card-photo { width: 100%; max-height: 220px; object-fit: cover; display: block; }
 .note-card-body { padding: 10px 12px 12px; }
@@ -1350,13 +1333,11 @@ body {
 <!-- ══ TOAST ══ -->
 <div id="lightbox">
   <button id="lightbox-close" onclick="closeLightbox()">✕</button>
-  <div id="lightbox-title"></div>
   <button id="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
   <div id="lightbox-img-wrap">
     <img id="lightbox-img" alt="">
   </div>
   <button id="lightbox-next" onclick="lightboxNav(1)">›</button>
-  <div id="lightbox-caption"></div>
   <div id="lightbox-counter"></div>
 </div>
 <div id="offlineBanner"></div>
@@ -2422,7 +2403,7 @@ async function renderTripOverview(trip) {
             const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
             const photosHTML = photos.length ? `
               <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
-                ${photos.map((url,i)=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i},${JSON.stringify(note.actLabel||'').replace(/"/g,'&quot;')},${JSON.stringify(note.text||'').replace(/"/g,'&quot;')})">`).join('')}
+                ${photos.map((url,i)=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
               </div>` : '';
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
             var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
@@ -2629,7 +2610,7 @@ function renderShareHighlights(trip) {
           const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
           const photosHTML = photos.length ? `
             <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
-              ${photos.map((url,i)=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i},${JSON.stringify(note.actLabel||'').replace(/"/g,'&quot;')},${JSON.stringify(note.text||'').replace(/"/g,'&quot;')})">`).join('')}
+              ${photos.map((url,i)=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
             </div>` : '';
           var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
           var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
@@ -3288,11 +3269,9 @@ function clearPhotos() {
 }
 
 // Full-screen photo viewer
-window.openPhotoViewer = function(url, allPhotosJson, idx, actLabelJson, memTextJson) {
+window.openPhotoViewer = function(url, allPhotosJson, idx) {
   var photos = allPhotosJson ? JSON.parse(allPhotosJson) : [url];
-  var actLabel = actLabelJson ? JSON.parse(actLabelJson) : '';
-  var memText = memTextJson ? JSON.parse(memTextJson) : '';
-  openLightbox(photos, idx || 0, actLabel, memText);
+  openLightbox(photos, idx || 0);
 };
 
 // ════════════════════════════════════════
@@ -4770,13 +4749,11 @@ document.addEventListener('click', function(e) {
 // ════════════════════════════════════════
 //  LIGHTBOX
 // ════════════════════════════════════════
-var _lbPhotos = [], _lbIdx = 0, _lbActLabel = '', _lbMemText = '';
+var _lbPhotos = [], _lbIdx = 0;
 
-function openLightbox(photos, idx, actLabel, memText) {
+function openLightbox(photos, idx) {
   _lbPhotos = Array.isArray(photos) ? photos : [photos];
   _lbIdx = idx || 0;
-  _lbActLabel = actLabel || '';
-  _lbMemText = memText || '';
   document.getElementById('lightbox').classList.add('active');
   document.body.style.overflow = 'hidden';
   _showLightboxPhoto();
@@ -4788,8 +4765,6 @@ function _showLightboxPhoto() {
   document.getElementById('lightbox-prev').style.display = _lbPhotos.length > 1 ? '' : 'none';
   document.getElementById('lightbox-next').style.display = _lbPhotos.length > 1 ? '' : 'none';
   document.getElementById('lightbox-img').src = url;
-  document.getElementById('lightbox-title').textContent = _lbActLabel;
-  document.getElementById('lightbox-caption').textContent = _lbMemText;
   if (window._resetLightboxZoom) window._resetLightboxZoom();
 }
 
