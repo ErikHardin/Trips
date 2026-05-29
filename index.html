@@ -470,6 +470,7 @@ body {
                  color:var(--muted); padding:3px 6px; border-radius:6px; line-height:1.2; min-width:26px; text-align:center;
                  transition:color 0.15s, background 0.15s, border-color 0.15s; -webkit-user-select:none; user-select:none; }
 .act-move-btn:hover { color:var(--terracotta); background:var(--terracotta-light); border-color:var(--terracotta); }
+.act-move-btn:focus { outline:none; }
 .act-emoji-btn {
   font-size:20px; background:none; border:none; cursor:pointer;
   padding:2px 4px; border-radius:6px; flex-shrink:0; margin-top:0;
@@ -4023,6 +4024,7 @@ window.moveActivityRow = function(btn, dir) {
     container.insertBefore(row.nextElementSibling, row);
   }
   reindexRows();
+  btn.blur();
 };
 
 function onDragStart(e) {
