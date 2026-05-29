@@ -5554,7 +5554,7 @@ window.syncMasterFromFrance = async function() {
     }))
   }));
   try {
-    await window._set(window._ref(window._db, 'settings/masterPackingList'), list);
+    await window._set(window._ref(window._db, 'masterPackingList'), list);
     masterPackingList = list;
     renderMasterPackingListUI();
     showToast('Imported from France 2026 ✓');
@@ -5568,7 +5568,7 @@ async function loadMasterPackingList() {
   const container = document.getElementById('masterPackingListContainer');
   if (container) container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
   try {
-    const snap = await window._get(window._ref(window._db, 'settings/masterPackingList'));
+    const snap = await window._get(window._ref(window._db, 'masterPackingList'));
     let list = snap.val() ? normalizePackingList(snap.val()) : null;
 
     if (!list) {
@@ -5588,7 +5588,7 @@ async function loadMasterPackingList() {
               }))
             }))
           }));
-          await window._set(window._ref(window._db, 'settings/masterPackingList'), list);
+          await window._set(window._ref(window._db, 'masterPackingList'), list);
         }
       }
     }
@@ -5718,7 +5718,7 @@ document.addEventListener('click', function(e) {
           }
         }
         try {
-          await window._set(window._ref(window._db, 'settings/masterPackingList'), masterPackingList);
+          await window._set(window._ref(window._db, 'masterPackingList'), masterPackingList);
         } catch(err) { showToast('Save error'); console.error(err); }
       }
       renderMasterPackingListUI();
@@ -5742,7 +5742,7 @@ window.addMasterPackingItem = async function(person, sectionTitle, inputEl) {
   sec.items.push(newItem);
 
   try {
-    await window._set(window._ref(window._db, 'settings/masterPackingList'), masterPackingList);
+    await window._set(window._ref(window._db, 'masterPackingList'), masterPackingList);
     inputEl.value = '';
     renderMasterPackingListUI();
     // Re-open the person block that was just updated
@@ -5765,7 +5765,7 @@ async function deleteMasterPackingItem(itemId) {
     }
   }
   try {
-    await window._set(window._ref(window._db, 'settings/masterPackingList'), masterPackingList);
+    await window._set(window._ref(window._db, 'masterPackingList'), masterPackingList);
     renderMasterPackingListUI();
   } catch(e) {
     showToast('Delete error');
