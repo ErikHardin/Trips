@@ -62,14 +62,23 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App shell: network-first so updates deploy immediately; fall back to cache offline
-  e.respondWith(
-    fetch(e.request).then(res => {
+  // App shell: network-first with 5s timeout so updates deploy immediately;
+  // fall back to cache on poor signal or no network
+  e.respondWith((async () => {
+    const networkFetch = fetch(e.request).then(res => {
       if (res.ok) {
         const clone = res.clone();
         caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
       }
       return res;
-    }).catch(() => caches.match(e.request))
-  );
+    });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 5000)
+    );
+    try {
+      return await Promise.race([networkFetch, timeout]);
+    } catch {
+      return caches.match(e.request);
+    }
+  })());
 });

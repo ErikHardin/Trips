@@ -1455,9 +1455,15 @@ function setupOfflineDetection() {
   // Firebase .info/connected fires false on every startup while the WebSocket
   // is establishing — only treat that as "offline" once we've had a real
   // connection first, or if navigator.onLine also agrees there's no network.
+  // On poor signal navigator.onLine stays true but Firebase never connects —
+  // this timer catches that case and shows the banner after 8s.
+  const _connectTimer = setTimeout(() => {
+    if (!_firebaseEverConnected) showOfflineBanner(true);
+  }, 8000);
   window._onValue(window._ref(window._db, '.info/connected'), snap => {
     const connected = snap.val() === true;
     if (connected) {
+      clearTimeout(_connectTimer);
       _firebaseEverConnected = true;
       showOfflineBanner(false);
     } else if (_firebaseEverConnected || !navigator.onLine) {
