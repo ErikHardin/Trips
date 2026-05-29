@@ -5544,6 +5544,33 @@ window.toggleMasterPackingSection = function() {
   if (opening && masterPackingList === null) loadMasterPackingList();
 };
 
+window.syncMasterFromFrance = async function() {
+  const france = Object.values(allTrips).find(t => t.name && t.name.includes('France') && t.name.includes('2026'));
+  if (!france || !france.logistics || !france.logistics.packingList) {
+    showToast('France 2026 packing list not found');
+    return;
+  }
+  const raw = normalizePackingList(france.logistics.packingList);
+  if (!raw) { showToast('Could not read France 2026 packing list'); return; }
+  let idCounter = Date.now();
+  const list = raw.map(p => ({
+    person: p.person,
+    sections: (p.sections || []).map(s => ({
+      title: s.title,
+      items: (s.items || []).filter(Boolean).map(item => ({ id: 'mpi' + (idCounter++), label: item.label }))
+    }))
+  }));
+  try {
+    await window._set(window._ref(window._db, 'settings/masterPackingList'), list);
+    masterPackingList = list;
+    renderMasterPackingListUI();
+    showToast('Imported from France 2026 ✓');
+  } catch(e) {
+    showToast('Import failed');
+    console.error('syncMasterFromFrance error:', e);
+  }
+};
+
 async function loadMasterPackingList() {
   try {
     const snap = await window._get(window._ref(window._db, 'settings/masterPackingList'));
@@ -5604,7 +5631,20 @@ function buildMasterPackingListHTML(list) {
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 
-  return sorted.map(personObj => {
+  const totalItems = sorted.reduce((n, p) =>
+    n + (p.sections || []).reduce((m, s) => m + (s.items || []).filter(Boolean).length, 0), 0);
+
+  const france = Object.values(allTrips).find(t => t.name && t.name.includes('France') && t.name.includes('2026'));
+  const franceHasList = !!(france && france.logistics && france.logistics.packingList);
+  const emptyNote = totalItems === 0
+    ? '<div style="font-size:12px;color:var(--muted);line-height:1.6;background:var(--cream);border-radius:8px;padding:10px 12px;margin:0 16px 12px;">' +
+        (franceHasList
+          ? 'Tap below to import from France 2026\'s packing list, or add items manually.<br><br><button class="form-btn" style="font-size:13px;padding:10px;" onclick="syncMasterFromFrance()">↓ Import from France 2026</button>'
+          : 'No items yet. Add items manually, or generate a packing list on the France 2026 logistics tab first.') +
+      '</div>'
+    : '';
+
+  return emptyNote + sorted.map(personObj => {
     const personIcon = personObj.person === 'Erik' ? '👨' : personObj.person === 'Megan' ? '👩' : '🌍';
     const blockId = 'mpblock-' + personObj.person;
 
@@ -5637,10 +5677,10 @@ function buildMasterPackingListHTML(list) {
             <span class="packing-person-name" style="font-style:italic;font-family:'Cormorant Garamond',serif;font-size:20px;">${personObj.person}</span>
           </div>
           <div class="packing-person-right">
-            <span class="packing-person-chevron" id="chev-${blockId}">›</span>
+            <span class="packing-person-chevron open" id="chev-${blockId}">›</span>
           </div>
         </div>
-        <div class="packing-person-body" id="${blockId}">
+        <div class="packing-person-body open" id="${blockId}">
           ${sectionsHTML}
         </div>
       </div>`;
