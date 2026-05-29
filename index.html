@@ -4122,9 +4122,23 @@ function onTouchEnd(e) {
 }
 
 window.removeActivityRow = async function(btn) {
-  const confirmed = await showConfirmDialog('Remove activity?', 'This will remove this activity from the day.');
-  if (!confirmed) return;
-  btn.closest('.act-row').remove();
+  const row = btn.closest('.act-row');
+  const result = await showActivityDeleteDialog();
+  if (result === 'cancel') return;
+  if (result === 'wishlist') {
+    const emoji = row.querySelector('.act-emoji-btn').textContent.trim() || '📌';
+    const text  = row.querySelector('.act-text-input').value.trim();
+    if (text) {
+      try {
+        const newRef = window._push(window._ref(window._db, 'trips/' + editingTripId + '/wishlist'));
+        await window._set(newRef, { emoji, text, notes: null, createdAt: Date.now(), createdBy: adminUser || null });
+        showToast('Moved to wishlist ✓');
+      } catch(err) {
+        showToast('Error saving to wishlist — check connection');
+      }
+    }
+  }
+  row.remove();
   reindexRows();
 };
 
@@ -4917,6 +4931,29 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.target === lb && !isDragging) closeLightbox();
   });
 });
+
+function showActivityDeleteDialog() {
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 36px;box-sizing:border-box;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;margin-bottom:8px;">Remove activity?</div>
+        <div style="font-size:14px;color:var(--muted);margin-bottom:24px;">This will remove this activity from the day.</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button id="actDelDelete" style="padding:14px;background:var(--terracotta);color:white;border:none;border-radius:14px;font-size:15px;font-weight:500;cursor:pointer;">Delete</button>
+          <button id="actDelWishlist" style="padding:14px;background:var(--sage);color:white;border:none;border-radius:14px;font-size:15px;font-weight:500;cursor:pointer;">Move to Wishlist</button>
+          <button id="actDelCancel" style="padding:14px;background:none;border:1px solid var(--border);border-radius:14px;font-size:15px;color:var(--muted);cursor:pointer;">Cancel</button>
+        </div>
+      </div>`;
+    const cleanup = (result) => { modal.remove(); resolve(result); };
+    modal.querySelector('#actDelDelete').onclick = () => cleanup('delete');
+    modal.querySelector('#actDelWishlist').onclick = () => cleanup('wishlist');
+    modal.querySelector('#actDelCancel').onclick = () => cleanup('cancel');
+    modal.addEventListener('click', e => { if (e.target === modal) cleanup('cancel'); });
+    document.body.appendChild(modal);
+  });
+}
 
 function showConfirmDialog(title, message) {
   return new Promise(resolve => {
