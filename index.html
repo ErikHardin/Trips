@@ -4160,7 +4160,12 @@ window.addSpendClick = function(dayId, btn) {
     const prev = allTrips[currentTripId]?.days?.[dayId]?.dailySpend || 0;
     const newTotal = prev + added;
     // Optimistic update so the badge shows the new total immediately
-    if (allTrips[currentTripId]?.days?.[dayId]) allTrips[currentTripId].days[dayId].dailySpend = newTotal;
+    if (allTrips[currentTripId]?.days?.[dayId]) {
+      const day = allTrips[currentTripId].days[dayId];
+      day.dailySpend = newTotal;
+      if (!day.spendLog) day.spendLog = {};
+      day.spendLog['_tmp' + Date.now()] = { amount: added, ts: Date.now() };
+    }
     _rebuildSpendBadge(dayId);
     await window._update(window._ref(window._db, `trips/${currentTripId}/days/${dayId}`), { dailySpend: newTotal });
     window._push(window._ref(window._db, `trips/${currentTripId}/days/${dayId}/spendLog`), { amount: added, ts: Date.now() });
