@@ -1236,6 +1236,9 @@ body {
       <div style="padding:0 0 8px;">
         <button class="form-btn secondary" onclick="addNewDay()">＋ Add Day</button>
       </div>
+      <div style="padding:8px 0 0;">
+        <button class="form-btn secondary" style="font-size:12px;opacity:0.7;" onclick="repairActivityKeys(editingTripId)">🔧 Repair duplicate memory keys</button>
+      </div>
     </div>
 
   </div>
@@ -3498,6 +3501,41 @@ window.deleteTrip = async function(tripId) {
   if (!confirm('Delete this trip and all its data?')) return;
   await window._remove(window._ref(window._db, `trips/${tripId}`));
   showToast('Trip deleted');
+};
+
+// Repairs activities that share a duplicate key due to the insertion bug.
+// Processes each day in reverse order so that earlier (typically newly-inserted)
+// duplicates receive fresh keys while the later (original) activity keeps its key.
+window.repairActivityKeys = async function(tripId) {
+  const trip = allTrips[tripId];
+  if (!trip || !trip.days) { showToast('No trip data'); return; }
+  let fixCount = 0;
+  const genKey = () => Math.random().toString(36).slice(2, 8);
+  for (const [dayId, day] of Object.entries(trip.days)) {
+    if (!day.activities) continue;
+    const actsRaw = Array.isArray(day.activities) ? day.activities : Object.values(day.activities);
+    const seenKeys = new Set();
+    let changed = false;
+    // Process in reverse: the last occurrence of a duplicate keeps the original key
+    // (new activities are typically inserted before existing ones)
+    const reversed = [...actsRaw].reverse().map(a => {
+      if (!a || typeof a !== 'object' || !a.key) return a;
+      if (seenKeys.has(a.key)) {
+        changed = true;
+        fixCount++;
+        return { ...a, key: genKey() };
+      }
+      seenKeys.add(a.key);
+      return a;
+    });
+    if (changed) {
+      const fixed = reversed.reverse();
+      await window._set(window._ref(window._db, `trips/${tripId}/days/${dayId}/activities`), fixed);
+    }
+  }
+  showToast(fixCount > 0
+    ? `Fixed ${fixCount} duplicate key${fixCount !== 1 ? 's' : ''} ✓`
+    : 'No duplicate keys found — all clean!');
 };
 
 // ════════════════════════════════════════
