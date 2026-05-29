@@ -1521,7 +1521,7 @@ async function initApp() {
   const _rawRemove = window._remove;
   window._set    = function(r, v) { if (_isOffline) _offlineWriteQueued = true; return _rawSet(r, v); };
   window._update = function(r, v) { if (_isOffline) _offlineWriteQueued = true; return _rawUpdate(r, v); };
-  window._push   = function(r)    { if (_isOffline) _offlineWriteQueued = true; return _rawPush(r); };
+  window._push   = function(r, v)  { if (_isOffline) _offlineWriteQueued = true; return _rawPush(r, v); };
   window._remove = function(r)    { if (_isOffline) _offlineWriteQueued = true; return _rawRemove(r); };
 
   // Sign in anonymously first so Firebase reads work on fresh load
