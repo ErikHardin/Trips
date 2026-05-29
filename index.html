@@ -1471,6 +1471,7 @@ let adminUser = '';
 let allTrips = {};
 let currentTripId = null;
 let masterPackingList = null;
+let masterPackingAvatarUrls = {};
 let pendingMasterItems = null;
 let editTripOrigin = 'screen-admin';
 let currentActivityKey = null;
@@ -5534,7 +5535,7 @@ window.toggleMasterPackingSection = function() {
   const opening = body.style.display === 'none';
   body.style.display = opening ? 'block' : 'none';
   if (chev) chev.classList.toggle('open', opening);
-  if (opening) loadMasterPackingList();
+  if (opening && masterPackingList === null) loadMasterPackingList();
 };
 
 window.syncMasterFromFrance = async function() {
@@ -5602,6 +5603,14 @@ async function loadMasterPackingList() {
       ];
     }
 
+    // Load avatar URLs — filter out masterPackingList (stored here too) by keeping only strings
+    try {
+      const aSnap = await window._get(window._ref(window._db, 'avatarUrls'));
+      const raw = aSnap.val() || {};
+      masterPackingAvatarUrls = {};
+      Object.entries(raw).forEach(([k, v]) => { if (typeof v === 'string') masterPackingAvatarUrls[k] = v; });
+    } catch(e) { /* avatars optional */ }
+
     masterPackingList = list;
     renderMasterPackingListUI();
   } catch(e) {
@@ -5638,17 +5647,25 @@ function buildMasterPackingListHTML(list) {
 
   const france = Object.values(allTrips).find(t => t.name && t.name.includes('France') && t.name.includes('2026'));
   const franceHasList = !!(france && france.logistics && france.logistics.packingList);
-  const emptyNote = totalItems === 0
-    ? '<div style="font-size:12px;color:var(--muted);line-height:1.6;background:var(--cream);border-radius:8px;padding:10px 12px;margin:0 16px 12px;">' +
-        (franceHasList
-          ? 'Tap below to import from France 2026\'s packing list, or add items manually.<br><br><button class="form-btn" style="font-size:13px;padding:10px;" onclick="syncMasterFromFrance()">↓ Import from France 2026</button>'
-          : 'No items yet. Add items manually, or generate a packing list on the France 2026 logistics tab first.') +
-      '</div>'
-    : '';
+
+  let emptyNote = '';
+  if (totalItems === 0) {
+    emptyNote = '<div style="font-size:12px;color:var(--muted);padding:4px 16px 8px;">No items yet — add below or import from France 2026.</div>';
+    if (franceHasList) {
+      emptyNote += '<div class="admin-card" style="margin:0 16px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;border-color:var(--terracotta);" onclick="syncMasterFromFrance()">' +
+        '<div><div style="font-size:13px;font-weight:500;color:var(--terracotta);">Import from France 2026</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Tap to populate all sections</div></div>' +
+        '<div style="font-size:20px;color:var(--terracotta);">↓</div></div>';
+    }
+  }
 
   return emptyNote + sorted.map(personObj => {
     const personIcon = personObj.person === 'Erik' ? '👨' : personObj.person === 'Megan' ? '👩' : '🌍';
     const blockId = 'mpblock-' + personObj.person;
+    const avatarSrc = masterPackingAvatarUrls[personObj.person];
+    const avatarEl = avatarSrc
+      ? '<img class="packing-avatar" src="' + avatarSrc + '" alt="' + personObj.person + '" style="cursor:default;" onclick="event.stopPropagation();">'
+      : '<div class="packing-avatar-placeholder" style="cursor:default;">' + personIcon + '</div>';
 
     const sectionsHTML = (personObj.sections || []).map(sec => {
       const secKey = 'mp-' + personObj.person + '-' + sec.title.replace(/\s+/g, '_');
@@ -5675,14 +5692,14 @@ function buildMasterPackingListHTML(list) {
       <div class="packing-person-block">
         <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}')">
           <div class="packing-person-left">
-            <div class="packing-avatar-placeholder" style="cursor:default;">${personIcon}</div>
+            ${avatarEl}
             <span class="packing-person-name" style="font-style:italic;font-family:'Cormorant Garamond',serif;font-size:20px;">${personObj.person}</span>
           </div>
           <div class="packing-person-right">
-            <span class="packing-person-chevron open" id="chev-${blockId}">›</span>
+            <span class="packing-person-chevron" id="chev-${blockId}">›</span>
           </div>
         </div>
-        <div class="packing-person-body open" id="${blockId}">
+        <div class="packing-person-body" id="${blockId}">
           ${sectionsHTML}
         </div>
       </div>`;
