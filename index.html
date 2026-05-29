@@ -3866,8 +3866,17 @@ function renderEditDaysList(trip) {
       + '<button data-edit-day-id="' + dayId + '" style="' + btnStyle + '">Edit</button>'
     + '</div>';
   }
-  var pastDays = days.filter(function(e) { var iso = e[1].dateISO; return iso && iso < todayISO; });
-  var futureDays = days.filter(function(e) { var iso = e[1].dateISO; return !iso || iso >= todayISO; });
+  var moMap = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  function getDayISO(day) {
+    if (day.dateISO) return day.dateISO;
+    if (day.dateNum && day.dateMonth && trip.year) {
+      var m = moMap[day.dateMonth.slice(0,3)];
+      if (m) return trip.year + '-' + String(m).padStart(2,'0') + '-' + String(day.dateNum).padStart(2,'0');
+    }
+    return null;
+  }
+  var pastDays = days.filter(function(e) { var iso = getDayISO(e[1]); return iso && iso < todayISO; });
+  var futureDays = days.filter(function(e) { var iso = getDayISO(e[1]); return !iso || iso >= todayISO; });
   var html = '';
   if (pastDays.length) {
     html += '<div class="admin-collapsible-title" onclick="toggleEditPastDays()" style="margin-bottom:8px;padding:6px 2px;">'
