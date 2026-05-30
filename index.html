@@ -132,12 +132,18 @@ body {
 .trip-pill.active-pill { background: var(--terracotta-light); color: var(--terracotta); font-weight: 500; }
 
 .trip-card-progress-inline {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  background: var(--sand);
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 .trip-card-progress-track-sm {
-  width: 44px;
+  width: 36px;
   height: 3px;
   background: var(--sand-dark);
   border-radius: 2px;
@@ -150,8 +156,6 @@ body {
   border-radius: 2px;
 }
 .trip-card-progress-label-sm {
-  font-size: 10px;
-  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -1847,7 +1851,7 @@ function renderHome() {
     const progressInlineHTML2 = prog2
       ? '<div class="trip-card-progress-inline">' +
           '<div class="trip-card-progress-track-sm"><div class="trip-card-progress-fill-sm" style="width:' + prog2.pct + '%"></div></div>' +
-          '<span class="trip-card-progress-label-sm">' + prog2.nightsCompleted + '/' + prog2.totalNights + '</span>' +
+          '<span class="trip-card-progress-label-sm">' + prog2.nightsCompleted + '/' + prog2.totalNights + ' nt</span>' +
         '</div>'
       : '';
     const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' + progressInlineHTML2 : '';
