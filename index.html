@@ -3882,12 +3882,14 @@ function renderEditDaysList(trip) {
   var futureDays = days.filter(function(e) { var iso = getDayISO(e[1]); return !iso || iso >= todayISO; });
   var html = '';
   if (pastDays.length) {
-    html += '<div class="admin-collapsible-title" onclick="toggleEditPastDays()" style="margin-bottom:8px;padding:6px 2px;">'
+    html += '<div style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:10px;background:var(--sand);">'
+          + '<div class="admin-collapsible-title" onclick="toggleEditPastDays()" style="padding:2px 0;">'
           + '<span style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Past Days (' + pastDays.length + ')</span>'
           + '<span id="editPastDaysChev" class="admin-collapsible-chev">›</span>'
           + '</div>'
-          + '<div id="editPastDaysBody" style="display:none;">'
+          + '<div id="editPastDaysBody" style="display:none;border-top:1px solid var(--border);margin-top:8px;padding-top:8px;">'
           + pastDays.map(function(e) { return buildDayCard(e[0], e[1]); }).join('')
+          + '</div>'
           + '</div>';
   }
   html += futureDays.map(function(e) { return buildDayCard(e[0], e[1]); }).join('');
