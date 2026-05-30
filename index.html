@@ -131,6 +131,63 @@ body {
 .trip-pill { font-size: 11px; color: var(--muted); background: var(--sand); padding: 3px 9px; border-radius: 20px; }
 .trip-pill.active-pill { background: var(--terracotta-light); color: var(--terracotta); font-weight: 500; }
 
+.trip-card-progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.trip-card-progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--sand-dark);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.trip-card-progress-fill {
+  height: 100%;
+  background: var(--terracotta);
+  border-radius: 2px;
+}
+.trip-card-progress-label {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.trip-detail-progress-wrap {
+  background: var(--terracotta-light);
+  border-bottom: 1px solid rgba(192,106,61,0.2);
+}
+.trip-detail-progress-header {
+  padding: 8px 16px 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.trip-detail-progress-title {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+.trip-detail-progress-count {
+  font-size: 10px;
+  color: var(--terracotta);
+  font-weight: 500;
+}
+.trip-detail-progress-track {
+  height: 5px;
+  background: rgba(192,106,61,0.18);
+}
+.trip-detail-progress-fill {
+  height: 100%;
+  background: var(--terracotta);
+  transition: width 0.4s;
+}
+
 .add-trip-btn {
   margin: 4px 16px 16px;
   width: calc(100% - 32px);
@@ -1733,6 +1790,26 @@ function updatePinDots() {
 // ════════════════════════════════════════
 //  HOME
 // ════════════════════════════════════════
+function getTripProgress(t) {
+  if (t.status !== 'active') return null;
+  const days = t.days ? Object.values(t.days) : [];
+  if (!days.length) return null;
+  const totalNights = days.length;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const moMap = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  function dayISO(d) {
+    if (d.dateISO) return d.dateISO;
+    if (d.dateNum && d.dateMonth && t.year) {
+      const m = moMap[d.dateMonth.slice(0,3)];
+      if (m) return `${t.year}-${String(m).padStart(2,'0')}-${String(d.dateNum).padStart(2,'0')}`;
+    }
+    return null;
+  }
+  const nightsCompleted = days.filter(d => { const iso = dayISO(d); return iso && iso <= todayStr; }).length;
+  const pct = Math.min(100, Math.max(0, Math.round((nightsCompleted / totalNights) * 100)));
+  return { nightsCompleted, totalNights, pct };
+}
+
 function getTripCountdown(t) {
   var startISO = t.startDateISO;
   if (!startISO && t.days) {
@@ -1769,6 +1846,13 @@ function renderHome() {
     const datesHTML2    = t.dates ? '<span class="trip-pill">' + t.dates + '</span>' : '';
     const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : '';
     const countdownHTML2 = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
+    const prog2 = getTripProgress(t);
+    const progressHTML2 = prog2
+      ? '<div class="trip-card-progress">' +
+          '<div class="trip-card-progress-track"><div class="trip-card-progress-fill" style="width:' + prog2.pct + '%"></div></div>' +
+          '<div class="trip-card-progress-label">' + prog2.nightsCompleted + '/' + prog2.totalNights + ' nights</div>' +
+        '</div>'
+      : '';
     card.innerHTML =
       '<div class="trip-card-cover"><span class="trip-card-cover-emoji">' + (t.emoji||'✈️') + '</span></div>' +
       '<div class="trip-card-body">' +
@@ -1777,6 +1861,7 @@ function renderHome() {
           '<span class="trip-pill">' + (t.year||'') + '</span>' +
           datesHTML2 + activeHTML2 + countdownHTML2 +
         '</div>' +
+        progressHTML2 +
       '</div>';
     card.onclick = () => openTrip(k);
     list.appendChild(card);
@@ -1866,6 +1951,19 @@ function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
   panel.innerHTML = isAdmin ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
+
+  // Trip progress bar (active trips only)
+  const _prog = getTripProgress(trip);
+  if (_prog) {
+    panel.innerHTML += `
+      <div class="trip-detail-progress-wrap">
+        <div class="trip-detail-progress-header">
+          <span class="trip-detail-progress-title">In Progress</span>
+          <span class="trip-detail-progress-count">Night ${_prog.nightsCompleted} of ${_prog.totalNights}</span>
+        </div>
+        <div class="trip-detail-progress-track"><div class="trip-detail-progress-fill" style="width:${_prog.pct}%"></div></div>
+      </div>`;
+  }
 
   // Outbound flights
   if (trip.flightOut) {
