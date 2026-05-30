@@ -127,33 +127,32 @@ body {
 .trip-card-cover-emoji { position: relative; z-index: 1; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.12)); }
 .trip-card-body { padding: 14px 16px; }
 .trip-card-name { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 600; color: var(--ink); }
-.trip-card-meta { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+.trip-card-meta { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; align-items: center; }
 .trip-pill { font-size: 11px; color: var(--muted); background: var(--sand); padding: 3px 9px; border-radius: 20px; }
 .trip-pill.active-pill { background: var(--terracotta-light); color: var(--terracotta); font-weight: 500; }
 
-.trip-card-progress {
-  margin-top: 10px;
+.trip-card-progress-inline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
-.trip-card-progress-track {
-  flex: 1;
-  height: 4px;
+.trip-card-progress-track-sm {
+  width: 44px;
+  height: 3px;
   background: var(--sand-dark);
   border-radius: 2px;
   overflow: hidden;
+  flex-shrink: 0;
 }
-.trip-card-progress-fill {
+.trip-card-progress-fill-sm {
   height: 100%;
   background: var(--terracotta);
   border-radius: 2px;
 }
-.trip-card-progress-label {
+.trip-card-progress-label-sm {
   font-size: 10px;
   color: var(--muted);
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .trip-detail-progress-wrap {
@@ -1844,15 +1843,15 @@ function renderHome() {
     const card = document.createElement('div');
     card.className = 'trip-card';
     const datesHTML2    = t.dates ? '<span class="trip-pill">' + t.dates + '</span>' : '';
-    const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' : '';
-    const countdownHTML2 = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
     const prog2 = getTripProgress(t);
-    const progressHTML2 = prog2
-      ? '<div class="trip-card-progress">' +
-          '<div class="trip-card-progress-track"><div class="trip-card-progress-fill" style="width:' + prog2.pct + '%"></div></div>' +
-          '<div class="trip-card-progress-label">' + prog2.nightsCompleted + '/' + prog2.totalNights + ' nights</div>' +
+    const progressInlineHTML2 = prog2
+      ? '<div class="trip-card-progress-inline">' +
+          '<div class="trip-card-progress-track-sm"><div class="trip-card-progress-fill-sm" style="width:' + prog2.pct + '%"></div></div>' +
+          '<span class="trip-card-progress-label-sm">' + prog2.nightsCompleted + '/' + prog2.totalNights + '</span>' +
         '</div>'
       : '';
+    const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' + progressInlineHTML2 : '';
+    const countdownHTML2 = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
     card.innerHTML =
       '<div class="trip-card-cover"><span class="trip-card-cover-emoji">' + (t.emoji||'✈️') + '</span></div>' +
       '<div class="trip-card-body">' +
@@ -1861,7 +1860,6 @@ function renderHome() {
           '<span class="trip-pill">' + (t.year||'') + '</span>' +
           datesHTML2 + activeHTML2 + countdownHTML2 +
         '</div>' +
-        progressHTML2 +
       '</div>';
     card.onclick = () => openTrip(k);
     list.appendChild(card);
