@@ -2173,7 +2173,7 @@ function renderTripItinerary(trip) {
     const _driveDays = trip.status === 'active'
       ? days.filter(([, d]) => { const iso = _dayISO(d); return !iso || iso >= _todayISO; })
       : days;
-    setTimeout(() => fetchTripDriveTimes(_driveDays), 200);
+    setTimeout(() => fetchTripDriveTimes(_driveDays, days), 200);
   }
   if (trip.status === 'active') setTimeout(() => highlightToday(trip), 50);
   // Return flights
@@ -6513,7 +6513,7 @@ function parseActivityDurationMinutes(timeStr) {
   return m ? parseInt(m[1]) : null;
 }
 
-async function fetchTripDriveTimes(days) {
+async function fetchTripDriveTimes(days, allDays) {
   // Shared promise cache — deduplicates concurrent geocoding requests across days
   const coordCache = {};
   const inFlight = {};
@@ -6548,9 +6548,12 @@ async function fetchTripDriveTimes(days) {
     try {
       const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
       const hasDriveActs = acts.some(a => a && a.drive);
-      const prevCity = i > 0 ? extractCity(days[i-1][1]) : extractCity(day);
+      const _allDays = allDays || days;
+      const allIdx = _allDays.findIndex(([id]) => id === dayId);
+      const prevDay = allIdx > 0 ? _allDays[allIdx - 1][1] : null;
+      const prevCity = prevDay ? extractCity(prevDay) : extractCity(day);
       const curCity = extractCity(day);
-      const prevHotel = extractHotel(i > 0 ? days[i-1][1] : day);
+      const prevHotel = prevDay ? extractHotel(prevDay) : null;
       const curHotel = extractHotel(day);
       const region = day.region || day.city || '';
 
