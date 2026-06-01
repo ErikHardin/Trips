@@ -1557,6 +1557,8 @@ let notesUnsubscribe = null;
 let editingNoteId = null;
 let isShareView = false;
 let shareCheckDone = false;
+let autoOpenDone = false;
+let autoOpenNavigated = false;
 let tripWeatherByDay = {};
 
 const BOOKING_STATUSES = [
@@ -1605,6 +1607,16 @@ function checkShareLink() {
   document.documentElement.style.visibility = '';
 }
 
+function autoOpenActiveTrip() {
+  if (autoOpenDone || isShareView) return;
+  autoOpenDone = true;
+  const activeEntry = Object.entries(allTrips).find(([, t]) => t.status === 'active');
+  if (activeEntry) {
+    autoOpenNavigated = true;
+    openTrip(activeEntry[0], 'itinerary');
+  }
+}
+
 async function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
   restoreSession();
@@ -1615,6 +1627,7 @@ async function initApp() {
     allTrips = cached.data;
     renderHome();
     checkShareLink();
+    autoOpenActiveTrip();
     populateImportSelect();
     renderAdminTripList();
   }
@@ -1640,6 +1653,7 @@ async function initApp() {
       OfflineStore.save(allTrips).catch(() => {});
       renderHome();
       checkShareLink();
+      autoOpenActiveTrip();
       populateImportSelect();
       renderAdminTripList();
       if (editingTripId && allTrips[editingTripId]) {
@@ -1664,7 +1678,7 @@ async function initApp() {
       }
     });
   });
-  if (!new URLSearchParams(window.location.search).get('trip')) {
+  if (!new URLSearchParams(window.location.search).get('trip') && !autoOpenNavigated) {
     goHome();
   }
 }
