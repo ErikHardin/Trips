@@ -2544,7 +2544,7 @@ async function renderTripOverview(trip) {
             const photosHTML = photos.length ? `
               <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
                 ${photos.map((url,i)=>isVideoUrl(url)
-                  ? `<video src="${url}" muted playsinline loop autoplay style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})"></video>`
+                  ? `<div style="width:100%;aspect-ratio:1;background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})"><svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="rgba(255,255,255,0.2)"/><polygon points="14,11 28,18 14,25" fill="white"/></svg></div>`
                   : `<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
               </div>` : '';
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
@@ -3212,7 +3212,7 @@ function renderNotesList(dayId, actKey) {
       const photosHTML = count > 0 ? `
         <div class="note-photos-grid ${gridClass}">
           ${photos.map((url,pi)=>isVideoUrl(url)
-            ? `<video src="${escHtml(url)}" muted playsinline controls data-idx="${pi}" data-photos="${photosEscaped}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" onclick="openLightbox(JSON.parse(this.dataset.photos),parseInt(this.dataset.idx))"></video>`
+            ? `<div data-idx="${pi}" data-photos="${photosEscaped}" style="width:100%;height:100%;min-height:80px;background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;" onclick="openLightbox(JSON.parse(this.dataset.photos),parseInt(this.dataset.idx))"><svg width="44" height="44" viewBox="0 0 44 44" fill="none"><circle cx="22" cy="22" r="22" fill="rgba(255,255,255,0.2)"/><polygon points="17,13 35,22 17,31" fill="white"/></svg></div>`
             : `<img src="${escHtml(url)}" alt="Photo" data-idx="${pi}" data-photos="${photosEscaped}" onclick="openLightbox(JSON.parse(this.dataset.photos),${pi})">`).join('')}
         </div>` : '';
       return `
