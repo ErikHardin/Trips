@@ -1078,9 +1078,9 @@ body {
       <div class="add-note-label">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <label class="photo-upload-btn requires-network" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos</label>
+        <label class="photo-upload-btn requires-network" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos & Videos</label>
       </div>
-      <input type="file" id="photoInputMain" accept="image/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
+      <input type="file" id="photoInputMain" accept="image/*,video/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
       <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
       <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
     </div>
@@ -1401,6 +1401,7 @@ body {
   <button id="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
   <div id="lightbox-img-wrap">
     <img id="lightbox-img" alt="">
+    <video id="lightbox-video" controls playsinline style="display:none;max-width:100%;max-height:100vh;object-fit:contain;"></video>
   </div>
   <button id="lightbox-next" onclick="lightboxNav(1)">›</button>
   <div id="lightbox-counter"></div>
@@ -2542,7 +2543,9 @@ async function renderTripOverview(trip) {
             const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
             const photosHTML = photos.length ? `
               <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
-                ${photos.map((url,i)=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
+                ${photos.map((url,i)=>isVideoUrl(url)
+                  ? `<video src="${url}" muted playsinline loop autoplay style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})"></video>`
+                  : `<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
               </div>` : '';
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
             var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
@@ -3184,6 +3187,13 @@ window.toggleRecommended = async function(checked) {
   }
 };
 
+function isVideoUrl(url) {
+  try {
+    const pathname = decodeURIComponent(new URL(url).pathname);
+    return /\.(mov|mp4|avi|webm|mkv)$/i.test(pathname);
+  } catch { return false; }
+}
+
 function renderNotesList(dayId, actKey) {
   const list = document.getElementById('notesList');
   list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;">Loading…</div>';
@@ -3198,9 +3208,12 @@ function renderNotesList(dayId, actKey) {
       const photos = n.photoUrls ? Object.values(n.photoUrls) : (n.photoUrl ? [n.photoUrl] : []);
       const count = photos.length;
       const gridClass = count===1?'count-1':count===2?'count-2':count===3?'count-3':'count-many';
+      const photosEscaped = escHtml(JSON.stringify(photos));
       const photosHTML = count > 0 ? `
         <div class="note-photos-grid ${gridClass}">
-          ${photos.map((url,pi)=>`<img src="${escHtml(url)}" alt="Photo" data-idx="${pi}" data-photos="${escHtml(JSON.stringify(photos))}" onclick="openLightbox(JSON.parse(this.dataset.photos),${pi})">`).join('')}
+          ${photos.map((url,pi)=>isVideoUrl(url)
+            ? `<video src="${escHtml(url)}" muted playsinline controls data-idx="${pi}" data-photos="${photosEscaped}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" onclick="openLightbox(JSON.parse(this.dataset.photos),parseInt(this.dataset.idx))"></video>`
+            : `<img src="${escHtml(url)}" alt="Photo" data-idx="${pi}" data-photos="${photosEscaped}" onclick="openLightbox(JSON.parse(this.dataset.photos),${pi})">`).join('')}
         </div>` : '';
       return `
         <div class="note-card">
@@ -3283,7 +3296,7 @@ window.saveNote = async function() {
   btn.disabled = true;
   const photoCount = selectedPhotoFiles.length;
   btn.innerHTML = photoCount > 0
-    ? `<div class="loading-spinner"></div> Uploading ${photoCount} photo${photoCount>1?'s':''}…`
+    ? `<div class="loading-spinner"></div> Uploading ${photoCount} item${photoCount>1?'s':''}…`
     : '<div class="loading-spinner"></div>';
 
   try {
@@ -3304,10 +3317,18 @@ window.saveNote = async function() {
       const mergedPhotoUrls = { ...existingPhotoUrls };
       if (selectedPhotoFiles.length > 0 && !_isOffline) {
         for (let i = 0; i < selectedPhotoFiles.length; i++) {
-          const compressed = await compressImage(selectedPhotoFiles[i], 1200, 0.8);
-          const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
+          const file = selectedPhotoFiles[i];
+          let uploadBlob, storePath;
+          if (file.type.startsWith('video/')) {
+            uploadBlob = file;
+            const ext = file.name.split('.').pop() || 'mov';
+            storePath = `trips/${currentTripId}/notes/${Date.now()}_${nextIdx + i}.${ext}`;
+          } else {
+            uploadBlob = await compressImage(file, 1200, 0.8);
+            storePath = `trips/${currentTripId}/notes/${Date.now()}_${nextIdx + i}.jpg`;
+          }
           const storageRef = window._sRef(window._storage, storePath);
-          const snap = await window._uploadBytes(storageRef, compressed);
+          const snap = await window._uploadBytes(storageRef, uploadBlob);
           mergedPhotoUrls[`p${nextIdx + i}`] = await window._getDownloadURL(snap.ref);
         }
       }
@@ -3330,11 +3351,17 @@ window.saveNote = async function() {
     if (selectedPhotoFiles.length > 0 && !_isOffline) {
       for (let i = 0; i < selectedPhotoFiles.length; i++) {
         const file = selectedPhotoFiles[i];
-        // Compress to max 1200px, JPEG 80% — drops typical iPhone photo from ~6MB to ~200KB
-        const compressed = await compressImage(file, 1200, 0.8);
-        const storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
+        let uploadBlob, storePath;
+        if (file.type.startsWith('video/')) {
+          uploadBlob = file;
+          const ext = file.name.split('.').pop() || 'mov';
+          storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.${ext}`;
+        } else {
+          uploadBlob = await compressImage(file, 1200, 0.8);
+          storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
+        }
         const storageRef = window._sRef(window._storage, storePath);
-        const snap = await window._uploadBytes(storageRef, compressed);
+        const snap = await window._uploadBytes(storageRef, uploadBlob);
         photoUrls[`p${i}`] = await window._getDownloadURL(snap.ref);
       }
     }
@@ -3352,7 +3379,7 @@ window.saveNote = async function() {
     if (_isOffline) {
       showToast('Memory saved — will sync when back online ✓');
     } else {
-      showToast(photoCount > 0 ? `Saved with ${photoCount} photo${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
+      showToast(photoCount > 0 ? `Saved with ${photoCount} item${photoCount>1?'s':''}! 📸` : 'Memory saved! ✓');
     }
   } catch(e) {
     showToast('Error saving — check connection');
@@ -3367,36 +3394,35 @@ window.handlePhotoSelect = function(e) {
   const files = Array.from(e.target.files);
   if (!files.length) return;
   files.forEach(file => {
-    if (selectedPhotoFiles.length >= 10) { showToast('Max 10 photos per memory'); return; }
+    if (selectedPhotoFiles.length >= 10) { showToast('Max 10 photos/videos per memory'); return; }
     selectedPhotoFiles.push(file);
-    const reader = new FileReader();
-    reader.onload = ev => addPhotoPreview(ev.target.result, selectedPhotoFiles.length - 1);
-    reader.readAsDataURL(file);
+    const capturedIndex = selectedPhotoFiles.length - 1;
+    addPhotoPreview(URL.createObjectURL(file), capturedIndex, file.type.startsWith('video/'));
   });
-  e.target.value = ''; // allow re-selecting same file
+  e.target.value = '';
 };
 
-function addPhotoPreview(src, index) {
+function addPhotoPreview(src, index, isVideo) {
   const grid = document.getElementById('photoPreviewGrid');
   grid.style.display = '';
   if (!grid.classList.contains('photo-preview-grid')) grid.className = 'photo-preview-grid';
   const item = document.createElement('div');
   item.className = 'photo-preview-item';
   item.dataset.index = index;
-  item.innerHTML = `<img src="${src}" alt=""><button class="photo-remove" onclick="removePhoto(${index})">×</button>`;
+  const mediaEl = isVideo
+    ? `<video src="${src}" muted playsinline autoplay loop style="width:100%;height:100%;object-fit:cover;"></video>`
+    : `<img src="${src}" alt="">`;
+  item.innerHTML = `${mediaEl}<button class="photo-remove" onclick="removePhoto(${index})">×</button>`;
   grid.appendChild(item);
 }
 
 window.removePhoto = function(index) {
   selectedPhotoFiles.splice(index, 1);
-  // Re-render all previews
   const grid = document.getElementById('photoPreviewGrid');
   grid.innerHTML = '';
   if (selectedPhotoFiles.length === 0) { grid.style.display = 'none'; return; }
   selectedPhotoFiles.forEach((file, i) => {
-    const reader = new FileReader();
-    reader.onload = ev => addPhotoPreview(ev.target.result, i);
-    reader.readAsDataURL(file);
+    addPhotoPreview(URL.createObjectURL(file), i, file.type.startsWith('video/'));
   });
 };
 
@@ -4956,7 +4982,21 @@ function _showLightboxPhoto() {
   document.getElementById('lightbox-counter').textContent = _lbPhotos.length > 1 ? (_lbIdx + 1) + ' / ' + _lbPhotos.length : '';
   document.getElementById('lightbox-prev').style.display = _lbPhotos.length > 1 ? '' : 'none';
   document.getElementById('lightbox-next').style.display = _lbPhotos.length > 1 ? '' : 'none';
-  document.getElementById('lightbox-img').src = url;
+  var img = document.getElementById('lightbox-img');
+  var vid = document.getElementById('lightbox-video');
+  if (isVideoUrl(url)) {
+    img.style.display = 'none';
+    img.src = '';
+    vid.style.display = '';
+    vid.src = url;
+    vid.play().catch(function(){});
+  } else {
+    vid.style.display = 'none';
+    vid.pause();
+    vid.src = '';
+    img.style.display = '';
+    img.src = url;
+  }
   if (window._resetLightboxZoom) window._resetLightboxZoom();
 }
 
@@ -4968,6 +5008,9 @@ function lightboxNav(delta) {
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('active');
   document.body.style.overflow = '';
+  var vid = document.getElementById('lightbox-video');
+  vid.pause();
+  vid.src = '';
 }
 
 // Wire up lightbox events after DOM ready
