@@ -2395,12 +2395,16 @@ async function shareTrip() {
     await ensureDaySummaries(currentTripId);
   } catch(e) { /* proceed even if AI fails */ }
 
+  // Re-fetch button: Firebase write in ensureDaySummaries triggers a re-render
+  // that replaces the DOM node, making the original `btn` reference stale.
+  const liveBtn = document.getElementById('shareItineraryBtn') || btn;
+
   const url = `${window.location.origin}${window.location.pathname}?trip=${currentTripId}`;
   const trip = allTrips[currentTripId];
 
   if (navigator.share) {
-    btn.disabled = false;
-    btn.textContent = '🔗 Share';
+    liveBtn.disabled = false;
+    liveBtn.textContent = '🔗 Share';
     await navigator.share({ title: trip.name || 'Trip Itinerary', url });
   } else {
     // Desktop fallback: copy to clipboard
@@ -2420,11 +2424,11 @@ async function shareTrip() {
       } catch {}
     }
     if (copied) {
-      btn.textContent = '✅ Copied!';
-      setTimeout(() => { btn.disabled = false; btn.textContent = '🔗 Share'; }, 2500);
+      liveBtn.textContent = '✅ Copied!';
+      setTimeout(() => { liveBtn.disabled = false; liveBtn.textContent = '🔗 Share'; }, 2500);
     } else {
-      btn.disabled = false;
-      btn.textContent = '🔗 Share';
+      liveBtn.disabled = false;
+      liveBtn.textContent = '🔗 Share';
       window.prompt('Copy this link:', url);
     }
   }
