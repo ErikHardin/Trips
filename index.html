@@ -470,8 +470,44 @@ body {
 /* ══════════════════════════════
    ADMIN SCREEN
 ══════════════════════════════ */
-.admin-section { padding: 20px 16px 0; }
-.admin-section-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; margin-bottom: 12px; color: var(--ink); }
+.admin-section { padding: 0 16px; margin-top: 12px; margin-bottom: 0; }
+.admin-panel {
+  background: var(--warm-white); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.admin-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+}
+.admin-panel-header:active { background: var(--sand); }
+.admin-section-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; color: var(--ink); margin: 0; }
+.admin-panel-toggle {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1.5px solid var(--border); background: var(--sand);
+  color: var(--muted); font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background 0.15s, color 0.15s;
+}
+.admin-panel-header.open .admin-panel-toggle {
+  background: var(--terracotta-light); border-color: #e8c0aa; color: var(--terracotta);
+}
+.admin-panel-body { display: none; border-top: 1px solid var(--border); padding: 14px 16px 16px; }
+.admin-panel-body.no-pad { padding: 0; }
+#screen-edit .admin-section { padding: 20px 16px 0; margin-top: 0; }
+/* Trip status subsections */
+.admin-trip-group { border-bottom: 1px solid var(--border); }
+.admin-trip-group:last-child { border-bottom: none; }
+.admin-trip-group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+}
+.admin-trip-group-header:active { background: var(--sand); }
+.admin-trip-group-label { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+.admin-trip-group-count { font-size: 11px; color: var(--muted); margin-left: 6px; }
+.admin-trip-group-body { padding: 0 12px 10px; }
+.admin-trip-group-empty { font-size: 13px; color: var(--muted); font-style: italic; padding: 6px 0 10px; }
 .admin-card {
   background: var(--warm-white); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
@@ -1100,62 +1136,69 @@ body {
 
     <!-- AI ASSISTANT -->
     <div class="admin-section">
-      <div class="admin-section-title">AI Trip Assistant</div>
-      <div class="admin-card">
-        <label class="form-label">Trip</label>
-        <select class="form-input" id="aiTripSelect" onchange="updateAIMode()">
-          <option value="">— Select a trip —</option>
-        </select>
-        <!-- Edit mode (trip has days) -->
-        <div id="aiEditMode">
-          <div style="font-size:12px;color:var(--muted);margin:8px 0 10px;line-height:1.6;">
-            Describe what to change. Examples:<br>
-            <em>"Add dinner at Le Bernardin at 7:30pm on day 3"</em><br>
-            <em>"Update outbound flight to UA100 DEN-LIS 8am-10pm"</em><br>
-            <em>"Move the wine tasting on May 26 to 3pm"</em>
-          </div>
-          <textarea id="aiInput" class="form-input" style="min-height:80px;resize:none;" placeholder="What would you like to change?"></textarea>
-          <button class="form-btn" id="aiSubmitBtn" onclick="runAIAssistant()" style="margin-top:8px;">✨ Ask Assistant</button>
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="aiSectionHeader" onclick="toggleAdminSection('aiSection')">
+          <div class="admin-section-title">AI Trip Assistant</div>
+          <span class="admin-panel-toggle" id="aiSectionToggle">+</span>
         </div>
-
-        <!-- Generate mode (trip has no days) -->
-        <div id="aiGenerateMode" style="display:none;">
-          <div style="font-size:12px;color:var(--muted);margin:4px 0 12px;line-height:1.6;">
-            This trip has no itinerary yet. Tell the AI about your preferences and it will plan the whole trip for you.
-          </div>
-          <div class="itinerary-gen-field">
-            <label>Travel Style & Interests</label>
-            <textarea class="form-input" id="genPreferences" style="min-height:70px;resize:none;" placeholder="e.g. Fine dining, wine, boutique hotels, history and culture, walking tours. We avoid tourist traps and prefer local experiences."></textarea>
-          </div>
-          <div class="itinerary-gen-field">
-            <label>Pace</label>
-            <select class="form-input" id="genPace">
-              <option value="relaxed">Relaxed — 2-3 activities per day</option>
-              <option value="moderate" selected>Moderate — 3-4 activities per day</option>
-              <option value="packed">Packed — 5+ activities per day</option>
+        <div class="admin-panel-body" id="aiSectionBody" style="display:none;">
+          <div class="admin-card">
+            <label class="form-label">Trip</label>
+            <select class="form-input" id="aiTripSelect" onchange="updateAIMode()">
+              <option value="">— Select a trip —</option>
             </select>
-          </div>
-          <div class="itinerary-gen-field">
-            <label>Anything to avoid?</label>
-            <textarea class="form-input" id="genAvoid" style="min-height:50px;resize:none;" placeholder="e.g. Crowded tourist spots, early mornings, budget restaurants…"></textarea>
-          </div>
-          <div class="itinerary-gen-field">
-            <label>Any specific requests?</label>
-            <textarea class="form-input" id="genSpecific" style="min-height:50px;resize:none;" placeholder="e.g. We must visit the Louvre. Include a day trip to Versailles. We have dinner booked at…"></textarea>
-          </div>
-          <button class="form-btn" id="aiGenerateBtn" onclick="runItineraryGenerator()" style="margin-top:4px;">🗺️ Generate Itinerary</button>
-        </div>
-      </div>
+            <!-- Edit mode (trip has days) -->
+            <div id="aiEditMode">
+              <div style="font-size:12px;color:var(--muted);margin:8px 0 10px;line-height:1.6;">
+                Describe what to change. Examples:<br>
+                <em>"Add dinner at Le Bernardin at 7:30pm on day 3"</em><br>
+                <em>"Update outbound flight to UA100 DEN-LIS 8am-10pm"</em><br>
+                <em>"Move the wine tasting on May 26 to 3pm"</em>
+              </div>
+              <textarea id="aiInput" class="form-input" style="min-height:80px;resize:none;" placeholder="What would you like to change?"></textarea>
+              <button class="form-btn" id="aiSubmitBtn" onclick="runAIAssistant()" style="margin-top:8px;">✨ Ask Assistant</button>
+            </div>
 
-      <!-- AI Preview / Response -->
-      <div id="aiPreview" style="display:none;margin-top:10px;">
-        <div class="admin-card" style="border:2px solid var(--terracotta);">
-          <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--terracotta);margin-bottom:8px;">Proposed Changes</div>
-          <div id="aiPreviewText" style="font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-wrap;"></div>
-          <div id="aiError" style="display:none;font-size:13px;color:var(--terracotta);margin-top:6px;"></div>
-          <div id="aiConfirmBtns" style="display:flex;gap:8px;margin-top:12px;">
-            <button class="form-btn" onclick="confirmAIChange()" style="flex:1;">Apply Changes</button>
-            <button class="form-btn secondary" onclick="cancelAIChange()" style="flex:1;">Cancel</button>
+            <!-- Generate mode (trip has no days) -->
+            <div id="aiGenerateMode" style="display:none;">
+              <div style="font-size:12px;color:var(--muted);margin:4px 0 12px;line-height:1.6;">
+                This trip has no itinerary yet. Tell the AI about your preferences and it will plan the whole trip for you.
+              </div>
+              <div class="itinerary-gen-field">
+                <label>Travel Style & Interests</label>
+                <textarea class="form-input" id="genPreferences" style="min-height:70px;resize:none;" placeholder="e.g. Fine dining, wine, boutique hotels, history and culture, walking tours. We avoid tourist traps and prefer local experiences."></textarea>
+              </div>
+              <div class="itinerary-gen-field">
+                <label>Pace</label>
+                <select class="form-input" id="genPace">
+                  <option value="relaxed">Relaxed — 2-3 activities per day</option>
+                  <option value="moderate" selected>Moderate — 3-4 activities per day</option>
+                  <option value="packed">Packed — 5+ activities per day</option>
+                </select>
+              </div>
+              <div class="itinerary-gen-field">
+                <label>Anything to avoid?</label>
+                <textarea class="form-input" id="genAvoid" style="min-height:50px;resize:none;" placeholder="e.g. Crowded tourist spots, early mornings, budget restaurants…"></textarea>
+              </div>
+              <div class="itinerary-gen-field">
+                <label>Any specific requests?</label>
+                <textarea class="form-input" id="genSpecific" style="min-height:50px;resize:none;" placeholder="e.g. We must visit the Louvre. Include a day trip to Versailles. We have dinner booked at…"></textarea>
+              </div>
+              <button class="form-btn" id="aiGenerateBtn" onclick="runItineraryGenerator()" style="margin-top:4px;">🗺️ Generate Itinerary</button>
+            </div>
+          </div>
+
+          <!-- AI Preview / Response -->
+          <div id="aiPreview" style="display:none;margin-top:10px;">
+            <div class="admin-card" style="border:2px solid var(--terracotta);">
+              <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--terracotta);margin-bottom:8px;">Proposed Changes</div>
+              <div id="aiPreviewText" style="font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-wrap;"></div>
+              <div id="aiError" style="display:none;font-size:13px;color:var(--terracotta);margin-top:6px;"></div>
+              <div id="aiConfirmBtns" style="display:flex;gap:8px;margin-top:12px;">
+                <button class="form-btn" onclick="confirmAIChange()" style="flex:1;">Apply Changes</button>
+                <button class="form-btn secondary" onclick="cancelAIChange()" style="flex:1;">Cancel</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1163,78 +1206,101 @@ body {
 
     <!-- ADD NEW TRIP -->
     <div class="admin-section">
-      <div class="admin-section-title">Add New Trip</div>
-      <div class="admin-card">
-        <label class="form-label">Trip Name</label>
-        <input class="form-input" id="newTripName" placeholder="e.g. Italy Spring 2027">
-        <label class="form-label">Cover Emoji</label>
-        <input class="form-input" id="newTripEmoji" placeholder="🇮🇹 or 🇮🇹🇫🇷 for multiple">
-        <label class="form-label">Status</label>
-        <select class="form-input" id="newTripStatus">
-          <option value="upcoming">Upcoming</option>
-          <option value="active">Active (in progress)</option>
-          <option value="past">Past</option>
-        </select>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div>
-            <label class="form-label">Start Date</label>
-            <input class="form-input" id="newTripStart" type="date">
-          </div>
-          <div>
-            <label class="form-label">End Date</label>
-            <input class="form-input" id="newTripEnd" type="date">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="addTripSectionHeader" onclick="toggleAdminSection('addTripSection')">
+          <div class="admin-section-title">Add New Trip</div>
+          <span class="admin-panel-toggle" id="addTripSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="addTripSectionBody" style="display:none;">
+          <div class="admin-card">
+            <label class="form-label">Trip Name</label>
+            <input class="form-input" id="newTripName" placeholder="e.g. Italy Spring 2027">
+            <label class="form-label">Cover Emoji</label>
+            <input class="form-input" id="newTripEmoji" placeholder="🇮🇹 or 🇮🇹🇫🇷 for multiple">
+            <label class="form-label">Status</label>
+            <select class="form-input" id="newTripStatus">
+              <option value="upcoming">Upcoming</option>
+              <option value="active">Active (in progress)</option>
+              <option value="past">Past</option>
+            </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <label class="form-label">Start Date</label>
+                <input class="form-input" id="newTripStart" type="date">
+              </div>
+              <div>
+                <label class="form-label">End Date</label>
+                <input class="form-input" id="newTripEnd" type="date">
+              </div>
+            </div>
+            <div id="newTripDayPreview" style="font-size:12px;color:var(--sage);margin:-4px 0 8px;min-height:16px;"></div>
+            <button class="form-btn" onclick="createTrip()">Create Trip & Generate Days</button>
           </div>
         </div>
-        <div id="newTripDayPreview" style="font-size:12px;color:var(--sage);margin:-4px 0 8px;min-height:16px;"></div>
-        <button class="form-btn" onclick="createTrip()">Create Trip & Generate Days</button>
       </div>
     </div>
 
     <!-- LOGISTICS PACKING LIST (master template) -->
     <div class="admin-section">
-      <div class="admin-section-title admin-collapsible-title" onclick="toggleMasterPackingSection()">
-        Logistics Packing List
-        <span id="masterPackingChev" class="admin-collapsible-chev">›</span>
-      </div>
-      <div id="masterPackingBody" style="display:none;padding-bottom:8px;">
-        <div id="masterPackingListContainer"></div>
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="packingSectionHeader" onclick="toggleAdminSection('packingSection')">
+          <div class="admin-section-title">Logistics Packing List</div>
+          <span class="admin-panel-toggle" id="packingSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="packingSectionBody" style="display:none;padding-bottom:8px;">
+          <div id="masterPackingListContainer"></div>
+        </div>
       </div>
     </div>
 
     <!-- IMPORT FROM CSV -->
     <div class="admin-section">
-      <div class="admin-section-title">Import from CSV</div>
-      <div class="admin-card">
-        <div class="csv-instructions">
-          Select a CSV file or paste CSV data below.<br><br>
-          Expected columns:<br>
-          <code>Date</code> · <code>Day</code> · <code>City</code> · <code>Hotel</code> · <code>Activities</code> · <code>Region</code> · <code>RegionColor</code><br><br>
-          Activities separated by <code>|</code> e.g. <code>Dinner at Soma|Wine tasting</code>
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="importSectionHeader" onclick="toggleAdminSection('importSection')">
+          <div class="admin-section-title">Import from CSV</div>
+          <span class="admin-panel-toggle" id="importSectionToggle">+</span>
         </div>
-        <label class="form-label">Select Trip to Import Into</label>
-        <select class="form-input" id="importTripSelect"></select>
-        <label class="form-label">Import Method</label>
-        <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <button id="importMethodFile" class="form-btn" style="flex:1;padding:10px;" onclick="setImportMethod('file')">📁 Pick CSV File</button>
-          <button id="importMethodPaste" class="form-btn secondary" style="flex:1;padding:10px;" onclick="setImportMethod('paste')">📋 Paste CSV</button>
+        <div class="admin-panel-body" id="importSectionBody" style="display:none;">
+          <div class="admin-card">
+            <div class="csv-instructions">
+              Select a CSV file or paste CSV data below.<br><br>
+              Expected columns:<br>
+              <code>Date</code> · <code>Day</code> · <code>City</code> · <code>Hotel</code> · <code>Activities</code> · <code>Region</code> · <code>RegionColor</code><br><br>
+              Activities separated by <code>|</code> e.g. <code>Dinner at Soma|Wine tasting</code>
+            </div>
+            <label class="form-label">Select Trip to Import Into</label>
+            <select class="form-input" id="importTripSelect"></select>
+            <label class="form-label">Import Method</label>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+              <button id="importMethodFile" class="form-btn" style="flex:1;padding:10px;" onclick="setImportMethod('file')">📁 Pick CSV File</button>
+              <button id="importMethodPaste" class="form-btn secondary" style="flex:1;padding:10px;" onclick="setImportMethod('paste')">📋 Paste CSV</button>
+            </div>
+            <div id="importFileSection">
+              <label class="photo-upload-btn" for="csvFileInput" style="margin-bottom:8px;display:flex;">📄 Choose CSV from Files</label>
+              <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none" onchange="handleCSVFile(event)">
+              <div id="csvFileNameDisplay" style="font-size:12px;color:var(--sage);padding:4px 0;min-height:18px;"></div>
+            </div>
+            <div id="importPasteSection" style="display:none;">
+              <textarea class="form-input form-textarea" id="csvData" placeholder="Date,Day,City,Hotel,Activities,Region,RegionColor&#10;24-May,Sunday,Lyon,Intercontinental Lyon Hotel Dieu,Land in afternoon|Wine at Octobre caviste,Lyon,#c06a3d"></textarea>
+            </div>
+            <button class="form-btn" style="margin-top:8px;" onclick="importCSV()">Import Days</button>
+          </div>
         </div>
-        <div id="importFileSection">
-          <label class="photo-upload-btn" for="csvFileInput" style="margin-bottom:8px;display:flex;">📄 Choose CSV from Files</label>
-          <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none" onchange="handleCSVFile(event)">
-          <div id="csvFileNameDisplay" style="font-size:12px;color:var(--sage);padding:4px 0;min-height:18px;"></div>
-        </div>
-        <div id="importPasteSection" style="display:none;">
-          <textarea class="form-input form-textarea" id="csvData" placeholder="Date,Day,City,Hotel,Activities,Region,RegionColor&#10;24-May,Sunday,Lyon,Intercontinental Lyon Hotel Dieu,Land in afternoon|Wine at Octobre caviste,Lyon,#c06a3d"></textarea>
-        </div>
-        <button class="form-btn" style="margin-top:8px;" onclick="importCSV()">Import Days</button>
       </div>
     </div>
 
 
     <!-- MANAGE TRIPS -->
     <div class="admin-section" style="padding-bottom:20px;">
-      <div class="admin-section-title">Manage Existing Trips</div>
-      <div id="adminTripList"></div>
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="manageTripsSectionHeader" onclick="toggleAdminSection('manageTripsSection')">
+          <div class="admin-section-title">Manage Existing Trips</div>
+          <span class="admin-panel-toggle" id="manageTripsSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body no-pad" id="manageTripsSectionBody" style="display:none;">
+          <div id="adminTripList"></div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -3652,17 +3718,46 @@ function renderAdminTripList() {
   const list = document.getElementById('adminTripList');
   if (!list) return;
   const keys = Object.keys(allTrips);
-  if (!keys.length) { list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:0 0 12px;">No trips yet.</p>'; return; }
-  list.innerHTML = keys.map(k=>`
-    <div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;">
-      <span style="font-size:22px;">${allTrips[k].emoji||'✈️'}</span>
+  if (!keys.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:12px 16px;">No trips yet.</p>';
+    return;
+  }
+  const active   = keys.filter(k => allTrips[k].status === 'active');
+  const upcoming = keys.filter(k => allTrips[k].status === 'upcoming');
+  const past     = keys.filter(k => !allTrips[k].status || allTrips[k].status === 'past');
+
+  function tripCard(k) {
+    const t = allTrips[k];
+    return `<div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;">
+      <span style="font-size:22px;">${t.emoji||'✈️'}</span>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${allTrips[k].name||'Untitled'}</div>
-        <div style="font-size:12px;color:var(--muted);">${allTrips[k].year||''} · ${allTrips[k].dates||''}</div>
+        <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name||'Untitled'}</div>
+        <div style="font-size:12px;color:var(--muted);">${t.year||''} · ${t.dates||''}</div>
       </div>
       <button onclick="openEditTrip('${k}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;">Edit</button>
       <button onclick="deleteTrip('${k}')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);">🗑️</button>
-    </div>`).join('');
+    </div>`;
+  }
+
+  function group(groupId, label, tripKeys, defaultOpen) {
+    const content = tripKeys.length
+      ? tripKeys.map(tripCard).join('')
+      : '<p class="admin-trip-group-empty">No trips.</p>';
+    return `<div class="admin-trip-group">
+      <div class="admin-trip-group-header" onclick="toggleTripGroup('${groupId}')">
+        <span class="admin-trip-group-label">${label}<span class="admin-trip-group-count">(${tripKeys.length})</span></span>
+        <span id="${groupId}Chev" class="admin-collapsible-chev${defaultOpen ? ' open' : ''}">›</span>
+      </div>
+      <div id="${groupId}Body" class="admin-trip-group-body" style="display:${defaultOpen ? 'block' : 'none'};">
+        ${content}
+      </div>
+    </div>`;
+  }
+
+  list.innerHTML =
+    group('tripGroupActive',   'Active',   active,   true)  +
+    group('tripGroupUpcoming', 'Upcoming', upcoming, true)  +
+    group('tripGroupPast',     'Past',     past,     false);
 }
 
 window.deleteTrip = async function(tripId) {
@@ -5822,14 +5917,31 @@ window.toggleEditPastDays = function() {
   if (chev) chev.classList.toggle('open', opening);
 };
 
-window.toggleMasterPackingSection = function() {
-  const body = document.getElementById('masterPackingBody');
-  const chev = document.getElementById('masterPackingChev');
+window.toggleAdminSection = function(sectionId) {
+  const body   = document.getElementById(sectionId + 'Body');
+  const toggle = document.getElementById(sectionId + 'Toggle');
+  const header = document.getElementById(sectionId + 'Header');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (toggle) toggle.textContent = opening ? '−' : '+';
+  if (header) header.classList.toggle('open', opening);
+  if (sectionId === 'packingSection' && opening && masterPackingList === null) {
+    loadMasterPackingList();
+  }
+};
+
+window.toggleTripGroup = function(groupId) {
+  const body = document.getElementById(groupId + 'Body');
+  const chev = document.getElementById(groupId + 'Chev');
   if (!body) return;
   const opening = body.style.display === 'none';
   body.style.display = opening ? 'block' : 'none';
   if (chev) chev.classList.toggle('open', opening);
-  if (opening && masterPackingList === null) loadMasterPackingList();
+};
+
+window.toggleMasterPackingSection = function() {
+  window.toggleAdminSection('packingSection');
 };
 
 window.syncMasterFromFrance = async function() {
