@@ -1289,6 +1289,18 @@ body {
       </div>
     </div>
 
+    <!-- CREATE TRIP PDF -->
+    <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="pdfSectionHeader" onclick="toggleAdminSection('pdfSection')">
+          <div class="admin-section-title">Create Trip PDF</div>
+          <span class="admin-panel-toggle" id="pdfSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="pdfSectionBody" style="display:none;">
+          <div id="pdfTripList"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- MANAGE TRIPS -->
     <div class="admin-section" style="padding-bottom:20px;">
@@ -1697,6 +1709,7 @@ async function initApp() {
     autoOpenActiveTrip();
     populateImportSelect();
     renderAdminTripList();
+    renderPDFTripList();
   }
 
   // setupOfflineDetection needs window._ref + window._db, so must run after initApp starts
@@ -1723,6 +1736,7 @@ async function initApp() {
       autoOpenActiveTrip();
       populateImportSelect();
       renderAdminTripList();
+      renderPDFTripList();
       if (editingTripId && allTrips[editingTripId]) {
         renderEditDaysList(allTrips[editingTripId]);
       }
@@ -3763,6 +3777,288 @@ function renderAdminTripList() {
     group('tripGroupUpcoming', 'Upcoming', upcoming, true)  +
     group('tripGroupPast',     'Past',     past,     false);
 }
+
+function renderPDFTripList() {
+  const list = document.getElementById('pdfTripList');
+  if (!list) return;
+  const keys = Object.keys(allTrips);
+  if (!keys.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:12px 16px;">No trips yet.</p>';
+    return;
+  }
+  const active   = keys.filter(k => allTrips[k].status === 'active');
+  const upcoming = keys.filter(k => allTrips[k].status === 'upcoming');
+  const past     = keys.filter(k => !allTrips[k].status || allTrips[k].status === 'past');
+
+  function pdfTripCard(k) {
+    const t = allTrips[k];
+    return `<div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;">
+      <span style="font-size:22px;">${t.emoji||'✈️'}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name||'Untitled'}</div>
+        <div style="font-size:12px;color:var(--muted);">${t.year||''} · ${t.dates||''}</div>
+      </div>
+      <button id="pdfBtn-${k}" onclick="generateTripPDF('${k}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">📄 Create PDF</button>
+    </div>`;
+  }
+
+  function pdfGroup(groupId, label, tripKeys, defaultOpen) {
+    const content = tripKeys.length
+      ? tripKeys.map(pdfTripCard).join('')
+      : '<p class="admin-trip-group-empty">No trips.</p>';
+    return `<div class="admin-trip-group">
+      <div class="admin-trip-group-header" onclick="toggleTripGroup('${groupId}PDF')">
+        <span class="admin-trip-group-label">${label}<span class="admin-trip-group-count">(${tripKeys.length})</span></span>
+        <span id="${groupId}PDFChev" class="admin-collapsible-chev${defaultOpen ? ' open' : ''}">›</span>
+      </div>
+      <div id="${groupId}PDFBody" class="admin-trip-group-body" style="display:${defaultOpen ? 'block' : 'none'};">
+        ${content}
+      </div>
+    </div>`;
+  }
+
+  list.innerHTML =
+    pdfGroup('tripGroupActive',   'Active',   active,   true)  +
+    pdfGroup('tripGroupUpcoming', 'Upcoming', upcoming, true)  +
+    pdfGroup('tripGroupPast',     'Past',     past,     false);
+}
+
+window.generateTripPDF = async function(tripId) {
+  const btn = document.getElementById('pdfBtn-' + tripId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing…'; }
+
+  const trip = allTrips[tripId];
+  if (!trip) { if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; } return; }
+
+  // 1. Ensure AI summaries exist
+  try { await ensureDaySummaries(tripId); } catch(e) { /* proceed without summaries */ }
+
+  // 2. Fetch summaries
+  let daySummaries = {};
+  try {
+    const snap = await window._get(window._ref(window._db, `trips/${tripId}/daySummaries`));
+    daySummaries = snap.val() || {};
+  } catch(e) {}
+
+  // 3. Sort days
+  const sortedDays = (trip.days ? Object.entries(trip.days) : [])
+    .sort(([,a],[,b]) => (a.sortOrder||0) - (b.sortOrder||0));
+
+  // 4. Pre-collect city coordinates for the map
+  const seenCities = new Set();
+  const cityPoints = [];
+  for (const [, day] of sortedDays) {
+    if (!day.city) continue;
+    const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
+    if (!clean || seenCities.has(clean)) continue;
+    seenCities.add(clean);
+    try {
+      const coords = await getCityCoords(clean);
+      if (coords) cityPoints.push({ coords, city: clean, color: day.regionColor||'#c06a3d', region: day.region||'' });
+    } catch(e) {}
+  }
+
+  // 5. Build day cards HTML
+  const _esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  let bodyHTML = '';
+  let currentRegion = null;
+
+  for (const [dayId, day] of sortedDays) {
+    // Region header
+    if (day.region && day.region !== currentRegion) {
+      currentRegion = day.region;
+      bodyHTML += `<div class="region-header">
+        <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
+        <div class="region-name">${_esc(day.region)}</div>
+        <div class="region-dates">${_esc(day.regionDates||'')}</div>
+      </div>`;
+    }
+
+    const loc = day.description || day.city || '';
+    const city = day.city && day.city !== loc ? day.city : '';
+    const summary = daySummaries[dayId] || '';
+    const dowFull = day.dateISO
+      ? new Date(day.dateISO+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'})
+      : (day.dayName ? day.dayName.slice(0,3) : '');
+
+    // Collect highlights for this day
+    const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+    let highlightsHTML = '';
+    if (day.notes && Object.keys(day.notes).length) {
+      const noteGroups = [];
+      Object.entries(day.notes).forEach(([actKey, actNotes]) => {
+        if (!actNotes || typeof actNotes !== 'object') return;
+        let actLabel = '', actTime = Infinity, actIndex = Infinity;
+        if (actKey === '__daily__') {
+          actLabel = 'Day Memory';
+          actTime = Infinity;
+          actIndex = Infinity;
+        } else {
+          const isLegacyIndex = /^\d+$/.test(actKey);
+          const idx = isLegacyIndex ? parseInt(actKey) : acts.findIndex(a => a && a.key === actKey);
+          const act = isLegacyIndex ? acts[idx] : (idx >= 0 ? acts[idx] : null);
+          if (act) {
+            actLabel = typeof act === 'string' ? act : (act.text || '');
+            actIndex = idx >= 0 ? idx : Infinity;
+          }
+        }
+        const notes = Object.entries(actNotes)
+          .filter(([,n]) => n && (n.text || n.photoUrls || n.photoUrl))
+          .map(([noteId, n]) => Object.assign({}, n, { noteId, actLabel, actKey, actIndex }));
+        if (notes.length) noteGroups.push({ actKey, actLabel, actIndex, notes });
+      });
+      noteGroups.sort((a,b) => a.actIndex - b.actIndex);
+
+      if (noteGroups.length) {
+        highlightsHTML = '<div class="day-highlights">';
+        for (const group of noteGroups) {
+          const isRecommended = group.actKey !== '__daily__' && day.recommended && day.recommended[group.actKey];
+          if (group.actLabel) {
+            highlightsHTML += `<div class="hl-act-label">${_esc(group.actLabel)}${isRecommended ? '<span class="hl-recommended">⭐ Recommended</span>' : ''}</div>`;
+          }
+          for (const note of group.notes) {
+            const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
+            if (photos.length) {
+              const cols = Math.min(photos.length, 3);
+              highlightsHTML += `<div class="hl-photos" style="grid-template-columns:repeat(${cols},1fr);">`;
+              photos.forEach(url => { highlightsHTML += `<img src="${_esc(url)}" class="hl-photo">`; });
+              highlightsHTML += `</div>`;
+            }
+            if (note.text) {
+              highlightsHTML += `<div class="hl-note-text">${_esc(note.text)}</div>`;
+            }
+          }
+        }
+        highlightsHTML += '</div>';
+      }
+    }
+
+    bodyHTML += `<div class="ov-day-card">
+      <div class="ov-day-header">
+        <div class="ov-day-date">
+          <span class="ov-day-num">${_esc(day.dateNum||'–')}</span>
+          <span class="ov-day-month">${_esc(day.dateMonth||'')}</span>
+          ${dowFull ? `<span class="ov-day-dow">${_esc(dowFull)}</span>` : ''}
+        </div>
+        <div class="ov-day-info">
+          ${loc ? `<div class="ov-day-loc">${_esc(loc)}</div>` : ''}
+          ${city ? `<div class="ov-day-city">${_esc(city)}</div>` : ''}
+          ${summary ? `<div class="ov-day-summary">${_esc(summary)}</div>` : ''}
+        </div>
+      </div>
+      ${highlightsHTML}
+    </div>`;
+  }
+
+  // 6. Outbound flights HTML
+  let flightsHTML = '';
+  if (trip.flightOut) {
+    const rows = trip.flightOut.split('\n').map(f => {
+      const code = f.split(' ')[0];
+      const rest = f.slice(f.indexOf(' ')+1);
+      return `<div class="flight-row"><span class="flight-code">${_esc(code)}</span> ${_esc(rest)}</div>`;
+    }).join('');
+    flightsHTML = `<div class="flight-banner"><div class="flight-icon">✈️</div><div><div class="flight-label">Outbound Flights · ${_esc(trip.flightOutDate||'')}</div>${rows}</div></div>`;
+  }
+
+  // 7. Build full print document
+  const mapScript = `
+    (function() {
+      var points = ${JSON.stringify(cityPoints)};
+      if (!points.length) { document.getElementById('pdfMapWrap').style.display='none'; return; }
+      var map = L.map('pdfMap', { zoomControl: false, attributionControl: false, scrollWheelZoom: false });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(map);
+      var bounds = [];
+      points.forEach(function(p, i) {
+        var isEnd = i === 0 || i === points.length - 1;
+        var size = isEnd ? 14 : 11;
+        var border = isEnd ? 2.5 : 2;
+        var icon = L.divIcon({ className: '', html: '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:'+p.color+';border:'+border+'px solid white;box-shadow:0 1px 5px rgba(0,0,0,0.35);"></div>', iconSize: [size,size], iconAnchor: [size/2,size/2] });
+        L.marker(p.coords, { icon: icon }).addTo(map);
+        bounds.push(p.coords);
+      });
+      if (bounds.length === 1) { map.setView(bounds[0], 6); } else { map.fitBounds(bounds, { padding: [30,30] }); }
+      if (points.length > 1) {
+        var allCoords = points.map(function(p){ return p.coords; });
+        L.polyline(allCoords, { color: '#c06a3d', weight: 1.5, opacity: 0.15, dashArray: '4,6' }).addTo(map);
+        L.polyline(allCoords, { color: '#c06a3d', weight: 2, opacity: 0.7, dashArray: '6,5' }).addTo(map);
+      }
+      map.whenReady(function(){ map.invalidateSize(); });
+      setTimeout(function(){ window.print(); }, 1800);
+    })();
+  `;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${_esc((trip.emoji||'')+(trip.name||'Trip'))}</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2c2418;background:#fff;padding:24px 28px;max-width:760px;margin:0 auto;}
+  h1{font-family:'Georgia',serif;font-size:26px;font-weight:700;color:#2c2418;margin-bottom:4px;}
+  .trip-meta{font-size:13px;color:#8a7e72;margin-bottom:20px;}
+  .flight-banner{display:flex;gap:10px;align-items:flex-start;background:#fdf6ee;border:1px solid #e8d5c0;border-radius:10px;padding:10px 14px;margin-bottom:16px;}
+  .flight-icon{font-size:18px;flex-shrink:0;}
+  .flight-label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#8a7e72;margin-bottom:4px;}
+  .flight-row{font-size:13px;color:#2c2418;}
+  .flight-code{font-weight:600;font-family:monospace;}
+  #pdfMapWrap{height:280px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid #e8d5c0;}
+  #pdfMap{height:100%;width:100%;}
+  .section-label{font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#8a7e72;padding:8px 0 10px;}
+  .region-header{display:flex;align-items:center;gap:8px;margin:16px 0 8px;}
+  .region-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .region-name{font-size:13px;font-weight:600;letter-spacing:0.5px;color:#2c2418;}
+  .region-dates{font-size:12px;color:#8a7e72;margin-left:auto;}
+  .ov-day-card{background:#fdf6ee;border:1px solid #e8d5c0;border-radius:12px;overflow:hidden;margin-bottom:10px;page-break-inside:avoid;}
+  .ov-day-header{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;}
+  .ov-day-date{text-align:center;min-width:38px;flex-shrink:0;}
+  .ov-day-num{display:block;font-family:'Georgia',serif;font-size:22px;font-weight:700;color:#c06a3d;line-height:1;}
+  .ov-day-month{display:block;font-size:10px;color:#8a7e72;text-transform:uppercase;letter-spacing:1px;}
+  .ov-day-dow{display:block;font-size:9px;color:#c06a3d;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+  .ov-day-info{flex:1;min-width:0;padding-top:2px;}
+  .ov-day-loc{font-size:14px;font-weight:500;color:#2c2418;}
+  .ov-day-city{font-size:12px;color:#8a7e72;margin-top:1px;}
+  .ov-day-summary{font-size:13px;color:#5a5148;margin-top:4px;line-height:1.55;}
+  .day-highlights{border-top:1px solid #e8d5c0;padding:10px 14px 12px;}
+  .hl-act-label{font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#c06a3d;margin:8px 0 4px;}
+  .hl-act-label:first-child{margin-top:0;}
+  .hl-recommended{font-size:11px;font-weight:500;color:#c06a3d;margin-left:8px;text-transform:none;letter-spacing:0;}
+  .hl-photos{display:grid;gap:3px;margin-bottom:6px;}
+  .hl-photo{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;}
+  .hl-note-text{font-size:13px;color:#2c2418;line-height:1.55;margin-bottom:8px;}
+  @media print{
+    body{padding:0;}
+    #pdfMapWrap{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .ov-day-card{page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .region-header{page-break-after:avoid;}
+    @page{margin:0.65in;}
+  }
+</style>
+</head>
+<body>
+<h1>${_esc((trip.emoji ? trip.emoji+' ' : '')+(trip.name||'Trip'))}</h1>
+<div class="trip-meta">${_esc([trip.year, trip.dates].filter(Boolean).join(' · '))}</div>
+${flightsHTML}
+<div id="pdfMapWrap"><div id="pdfMap"></div></div>
+<div class="section-label">Itinerary</div>
+${bodyHTML}
+<script>${mapScript}<\/script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) {
+    showToast('Allow pop-ups to generate PDFs');
+    if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; }
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+  if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; }
+};
 
 window.deleteTrip = async function(tripId) {
   if (!confirm('Delete this trip and all its data?')) return;
