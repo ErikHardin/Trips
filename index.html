@@ -3886,6 +3886,7 @@ window.generateTripPDF = async function(tripId) {
     let highlightsHTML = '';
     if (day.notes && Object.keys(day.notes).length) {
       const noteGroups = [];
+      const _isVideo = url => /\.(mov|mp4|avi|webm|mkv)(\?|$|%)/i.test(url);
       Object.entries(day.notes).forEach(([actKey, actNotes]) => {
         if (!actNotes || typeof actNotes !== 'object') return;
         let actLabel = '', actTime = Infinity, actIndex = Infinity;
@@ -3913,20 +3914,23 @@ window.generateTripPDF = async function(tripId) {
         highlightsHTML = '<div class="day-highlights">';
         for (const group of noteGroups) {
           const isRecommended = group.actKey !== '__daily__' && day.recommended && day.recommended[group.actKey];
-          if (group.actLabel) {
-            highlightsHTML += `<div class="hl-act-label">${_esc(group.actLabel)}${isRecommended ? '<span class="hl-recommended">⭐ Recommended</span>' : ''}</div>`;
-          }
+          let groupInner = '';
           for (const note of group.notes) {
-            const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
+            const photos = (note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []))
+              .filter(url => !_isVideo(url));
             if (photos.length) {
               const cols = Math.min(photos.length, 3);
-              highlightsHTML += `<div class="hl-photos" style="grid-template-columns:repeat(${cols},1fr);">`;
-              photos.forEach(url => { highlightsHTML += `<img src="${_esc(url)}" class="hl-photo">`; });
-              highlightsHTML += `</div>`;
+              groupInner += `<div class="hl-photos" style="grid-template-columns:repeat(${cols},1fr);">`;
+              photos.forEach(url => { groupInner += `<img src="${_esc(url)}" class="hl-photo">`; });
+              groupInner += `</div>`;
             }
-            if (note.text) {
-              highlightsHTML += `<div class="hl-note-text">${_esc(note.text)}</div>`;
-            }
+            if (note.text) groupInner += `<div class="hl-note-text">${_esc(note.text)}</div>`;
+          }
+          if (groupInner) {
+            highlightsHTML += `<div class="hl-group">
+              ${group.actLabel ? `<div class="hl-group-header">${_esc(group.actLabel)}${isRecommended ? '<span class="hl-recommended">⭐ Recommended</span>' : ''}</div>` : ''}
+              <div class="hl-group-body">${groupInner}</div>
+            </div>`;
           }
         }
         highlightsHTML += '</div>';
@@ -4016,7 +4020,7 @@ window.generateTripPDF = async function(tripId) {
   .region-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
   .region-name{font-size:13px;font-weight:600;letter-spacing:0.5px;color:#2c2418;}
   .region-dates{font-size:12px;color:#8a7e72;margin-left:auto;}
-  .ov-day-card{background:#fdf6ee;border:1.5px solid #ddc9b4;border-radius:14px;overflow:hidden;margin-bottom:18px;box-shadow:0 2px 8px rgba(0,0,0,0.07);page-break-inside:avoid;}
+  .ov-day-card{background:#fdf6ee;border:1.5px solid #ddc9b4;border-radius:14px;overflow:hidden;margin-bottom:28px;box-shadow:0 2px 10px rgba(0,0,0,0.09);page-break-inside:avoid;}
   .ov-day-header{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;}
   .ov-day-date{text-align:center;min-width:40px;flex-shrink:0;}
   .ov-day-num{display:block;font-family:'Georgia',serif;font-size:24px;font-weight:700;color:#c06a3d;line-height:1;}
@@ -4027,13 +4031,14 @@ window.generateTripPDF = async function(tripId) {
   .ov-day-loc{font-size:15px;font-weight:600;color:#2c2418;}
   .ov-day-city{font-size:12px;color:#8a7e72;margin-top:1px;}
   .ov-day-summary{font-size:13px;color:#5a5148;margin-top:5px;line-height:1.6;}
-  .day-highlights{border-top:1.5px solid #ddc9b4;background:#fff;padding:12px 16px 14px;}
-  .hl-act-label{font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#c06a3d;margin:12px 0 5px;}
-  .hl-act-label:first-child{margin-top:0;}
-  .hl-recommended{font-size:11px;font-weight:500;color:#c06a3d;margin-left:8px;text-transform:none;letter-spacing:0;}
-  .hl-photos{display:grid;gap:3px;margin-bottom:7px;}
+  .day-highlights{border-top:1.5px solid #ddc9b4;background:#fff;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;}
+  .hl-group{border:1px solid #ddc9b4;border-radius:10px;overflow:hidden;background:#fffaf6;}
+  .hl-group-header{font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#c06a3d;padding:8px 12px;border-bottom:1px solid #e8d5c0;background:#fdf6ee;}
+  .hl-recommended{font-size:10px;font-weight:500;color:#c06a3d;margin-left:8px;text-transform:none;letter-spacing:0;}
+  .hl-group-body{padding:10px 12px 6px;}
+  .hl-photos{display:grid;gap:3px;margin-bottom:8px;}
   .hl-photo{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;}
-  .hl-note-text{font-size:13px;color:#2c2418;line-height:1.6;margin-bottom:10px;}
+  .hl-note-text{font-size:13px;color:#2c2418;line-height:1.6;margin-bottom:8px;}
   @media print{
     body{padding:0;}
     .action-bar{display:none;}
