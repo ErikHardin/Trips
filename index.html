@@ -3862,16 +3862,19 @@ window.generateTripPDF = async function(tripId) {
   const _esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   let bodyHTML = '';
   let currentRegion = null;
+  let isFirstDay = true;
 
   for (const [dayId, day] of sortedDays) {
-    // Region header
+    // Region header — carries the page break when it precedes a non-first day
+    let dayNeedsBreak = !isFirstDay;
     if (day.region && day.region !== currentRegion) {
       currentRegion = day.region;
-      bodyHTML += `<div class="region-header">
+      bodyHTML += `<div class="region-header${!isFirstDay ? ' day-break' : ''}">
         <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
         <div class="region-name">${_esc(day.region)}</div>
         <div class="region-dates">${_esc(day.regionDates||'')}</div>
       </div>`;
+      dayNeedsBreak = false; // region header already carries the break
     }
 
     const loc = day.description || day.city || '';
@@ -3919,8 +3922,7 @@ window.generateTripPDF = async function(tripId) {
             const photos = (note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []))
               .filter(url => !_isVideo(url));
             if (photos.length) {
-              const cols = Math.min(photos.length, 3);
-              groupInner += `<div class="hl-photos" style="grid-template-columns:repeat(${cols},1fr);">`;
+              groupInner += `<div class="hl-photos">`;
               photos.forEach(url => { groupInner += `<img src="${_esc(url)}" class="hl-photo">`; });
               groupInner += `</div>`;
             }
@@ -3937,7 +3939,7 @@ window.generateTripPDF = async function(tripId) {
       }
     }
 
-    bodyHTML += `<div class="ov-day-card">
+    bodyHTML += `<div class="ov-day-card${dayNeedsBreak ? ' day-break' : ''}">
       <div class="ov-day-header">
         <div class="ov-day-date">
           <span class="ov-day-num">${_esc(day.dateNum||'–')}</span>
@@ -3953,6 +3955,7 @@ window.generateTripPDF = async function(tripId) {
       </div>
       ${highlightsHTML}
     </div>`;
+    isFirstDay = false;
   }
 
   // 6. Outbound flights HTML
@@ -4036,15 +4039,15 @@ window.generateTripPDF = async function(tripId) {
   .hl-group-header{font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#c06a3d;padding:8px 12px;border-bottom:1px solid #e8d5c0;background:#fdf6ee;}
   .hl-recommended{font-size:10px;font-weight:500;color:#c06a3d;margin-left:8px;text-transform:none;letter-spacing:0;}
   .hl-group-body{padding:10px 12px 6px;}
-  .hl-photos{display:grid;gap:3px;margin-bottom:8px;}
-  .hl-photo{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;}
+  .hl-photos{display:flex;flex-direction:row;gap:4px;height:100px;margin-bottom:8px;overflow:hidden;}
+  .hl-photo{height:100%;width:auto;min-width:70px;max-width:160px;object-fit:cover;border-radius:5px;flex-shrink:0;}
   .hl-note-text{font-size:13px;color:#2c2418;line-height:1.6;margin-bottom:8px;}
   @media print{
     body{padding:0;}
     .action-bar{display:none;}
+    .day-break{break-before:page;page-break-before:always;}
     #pdfMapWrap{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .ov-day-card{page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .region-header{page-break-after:avoid;}
+    .ov-day-card{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     @page{margin:0.65in;}
   }
 </style>
