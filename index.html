@@ -5635,7 +5635,7 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2800);
 }
 
-async function saveAppName() {
+window.saveAppName = async function() {
   const name = (document.getElementById('appNameInput').value || '').trim();
   if (!name) { showToast('Enter a name'); return; }
   await window._set(window._ref(window._db, 'config/appName'), name);
