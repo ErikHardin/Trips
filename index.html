@@ -3873,6 +3873,7 @@ window.generateTripPDF = async function(tripId) {
         <div class="region-name">${_esc(day.region)}</div>
         <div class="region-dates">${_esc(day.regionDates||'')}</div>
       </div>`;
+    }
 
     const loc = day.description || day.city || '';
     const city = day.city && day.city !== loc ? day.city : '';
