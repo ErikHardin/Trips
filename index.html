@@ -471,6 +471,7 @@ body {
    ADMIN SCREEN
 ══════════════════════════════ */
 .admin-section { padding: 0 16px; margin-top: 12px; margin-bottom: 0; }
+.admin-group-header { padding: 20px 16px 6px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
 .admin-panel {
   background: var(--warm-white); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden;
@@ -1134,6 +1135,58 @@ body {
   </div>
   <div class="scroll-content">
 
+    <!-- TRIPS GROUP -->
+    <div class="admin-group-header">Trips</div>
+
+    <!-- ADD NEW TRIP -->
+    <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="addTripSectionHeader" onclick="toggleAdminSection('addTripSection')">
+          <div class="admin-section-title">Add New Trip</div>
+          <span class="admin-panel-toggle" id="addTripSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="addTripSectionBody" style="display:none;">
+          <div class="admin-card">
+            <label class="form-label">Trip Name</label>
+            <input class="form-input" id="newTripName" placeholder="e.g. Italy Spring 2027">
+            <label class="form-label">Cover Emoji</label>
+            <input class="form-input" id="newTripEmoji" placeholder="🇮🇹 or 🇮🇹🇫🇷 for multiple">
+            <label class="form-label">Status</label>
+            <select class="form-input" id="newTripStatus">
+              <option value="upcoming">Upcoming</option>
+              <option value="active">Active (in progress)</option>
+              <option value="past">Past</option>
+            </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <label class="form-label">Start Date</label>
+                <input class="form-input" id="newTripStart" type="date">
+              </div>
+              <div>
+                <label class="form-label">End Date</label>
+                <input class="form-input" id="newTripEnd" type="date">
+              </div>
+            </div>
+            <div id="newTripDayPreview" style="font-size:12px;color:var(--sage);margin:-4px 0 8px;min-height:16px;"></div>
+            <button class="form-btn" onclick="createTrip()">Create Trip & Generate Days</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MANAGE TRIPS -->
+    <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="manageTripsSectionHeader" onclick="toggleAdminSection('manageTripsSection')">
+          <div class="admin-section-title">Manage Existing Trips</div>
+          <span class="admin-panel-toggle" id="manageTripsSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body no-pad" id="manageTripsSectionBody" style="display:none;">
+          <div id="adminTripList"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- AI ASSISTANT -->
     <div class="admin-section">
       <div class="admin-panel">
@@ -1204,54 +1257,8 @@ body {
       </div>
     </div>
 
-    <!-- ADD NEW TRIP -->
-    <div class="admin-section">
-      <div class="admin-panel">
-        <div class="admin-panel-header" id="addTripSectionHeader" onclick="toggleAdminSection('addTripSection')">
-          <div class="admin-section-title">Add New Trip</div>
-          <span class="admin-panel-toggle" id="addTripSectionToggle">+</span>
-        </div>
-        <div class="admin-panel-body" id="addTripSectionBody" style="display:none;">
-          <div class="admin-card">
-            <label class="form-label">Trip Name</label>
-            <input class="form-input" id="newTripName" placeholder="e.g. Italy Spring 2027">
-            <label class="form-label">Cover Emoji</label>
-            <input class="form-input" id="newTripEmoji" placeholder="🇮🇹 or 🇮🇹🇫🇷 for multiple">
-            <label class="form-label">Status</label>
-            <select class="form-input" id="newTripStatus">
-              <option value="upcoming">Upcoming</option>
-              <option value="active">Active (in progress)</option>
-              <option value="past">Past</option>
-            </select>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <label class="form-label">Start Date</label>
-                <input class="form-input" id="newTripStart" type="date">
-              </div>
-              <div>
-                <label class="form-label">End Date</label>
-                <input class="form-input" id="newTripEnd" type="date">
-              </div>
-            </div>
-            <div id="newTripDayPreview" style="font-size:12px;color:var(--sage);margin:-4px 0 8px;min-height:16px;"></div>
-            <button class="form-btn" onclick="createTrip()">Create Trip & Generate Days</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- LOGISTICS PACKING LIST (master template) -->
-    <div class="admin-section">
-      <div class="admin-panel">
-        <div class="admin-panel-header" id="packingSectionHeader" onclick="toggleAdminSection('packingSection')">
-          <div class="admin-section-title">Logistics Packing List</div>
-          <span class="admin-panel-toggle" id="packingSectionToggle">+</span>
-        </div>
-        <div class="admin-panel-body" id="packingSectionBody" style="display:none;padding-bottom:8px;">
-          <div id="masterPackingListContainer"></div>
-        </div>
-      </div>
-    </div>
+    <!-- UTILITIES GROUP -->
+    <div class="admin-group-header">Utilities</div>
 
     <!-- IMPORT FROM CSV -->
     <div class="admin-section">
@@ -1289,8 +1296,21 @@ body {
       </div>
     </div>
 
-    <!-- CREATE TRIP PDF -->
+    <!-- LOGISTICS PACKING LIST (master template) -->
     <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="packingSectionHeader" onclick="toggleAdminSection('packingSection')">
+          <div class="admin-section-title">Logistics Packing List</div>
+          <span class="admin-panel-toggle" id="packingSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="packingSectionBody" style="display:none;padding-bottom:8px;">
+          <div id="masterPackingListContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE TRIP PDF -->
+    <div class="admin-section" style="padding-bottom:20px;">
       <div class="admin-panel">
         <div class="admin-panel-header" id="pdfSectionHeader" onclick="toggleAdminSection('pdfSection')">
           <div class="admin-section-title">Create Trip PDF</div>
@@ -1298,19 +1318,6 @@ body {
         </div>
         <div class="admin-panel-body" id="pdfSectionBody" style="display:none;">
           <div id="pdfTripList"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MANAGE TRIPS -->
-    <div class="admin-section" style="padding-bottom:20px;">
-      <div class="admin-panel">
-        <div class="admin-panel-header" id="manageTripsSectionHeader" onclick="toggleAdminSection('manageTripsSection')">
-          <div class="admin-section-title">Manage Existing Trips</div>
-          <span class="admin-panel-toggle" id="manageTripsSectionToggle">+</span>
-        </div>
-        <div class="admin-panel-body no-pad" id="manageTripsSectionBody" style="display:none;">
-          <div id="adminTripList"></div>
         </div>
       </div>
     </div>
