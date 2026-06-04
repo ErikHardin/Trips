@@ -1767,7 +1767,8 @@ async function initApp() {
   window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
     // Load app name config
     window._onValue(window._ref(window._db, 'config/appName'), snap => {
-      if (snap.val()) { appName = snap.val(); renderAppName(); }
+      if (snap.val()) appName = snap.val();
+      renderAppName();
     });
     // Load trips
     window._onValue(window._ref(window._db, 'trips'), snap => {
