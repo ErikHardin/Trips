@@ -5639,8 +5639,10 @@ function showToast(msg) {
 window.saveAppName = async function() {
   const name = (document.getElementById('appNameInput').value || '').trim();
   if (!name) { showToast('Enter a name'); return; }
-  await window._set(window._ref(window._db, 'config/appName'), name);
-  showToast('App name updated ✓');
+  try {
+    await window._set(window._ref(window._db, 'config/appName'), name);
+    showToast('App name updated ✓');
+  } catch(e) { showToast('Save failed — check connection'); console.error(e); }
 }
 
 
