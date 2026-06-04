@@ -1260,6 +1260,24 @@ body {
     <!-- UTILITIES GROUP -->
     <div class="admin-group-header">Utilities</div>
 
+    <!-- APP NAME -->
+    <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="appNameSectionHeader" onclick="toggleAdminSection('appNameSection')">
+          <div class="admin-section-title">App Name</div>
+          <span class="admin-panel-toggle" id="appNameSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="appNameSectionBody" style="display:none;">
+          <div class="admin-card">
+            <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">The family name shown throughout the app (e.g. "Hardin Trips").</p>
+            <label class="form-label">Family Name</label>
+            <input class="form-input" type="text" id="appNameInput" placeholder="Hardin">
+            <button class="form-btn" style="margin-top:8px;" onclick="saveAppName()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- IMPORT FROM CSV -->
     <div class="admin-section">
       <div class="admin-panel">
@@ -1629,6 +1647,7 @@ function setupOfflineDetection() {
 let pinEntry = '';
 let isAdmin = false;
 let adminUser = '';
+let appName = 'Hardin';
 let allTrips = {};
 let currentTripId = null;
 let masterPackingList = null;
@@ -1653,6 +1672,18 @@ const BOOKING_STATUSES = [
   { key: 'no_reservations', emoji: '🚫',   label: 'No reservations' },
   { key: 'walking_in',      emoji: '🚶🏼', label: 'Walking in' },
 ];
+
+function renderAppName() {
+  const pinLogo = document.querySelector('.pin-logo');
+  if (pinLogo) pinLogo.innerHTML = `<em>${appName}</em> Trips`;
+  const secretBtn = document.getElementById('secretHardinBtn');
+  if (secretBtn) secretBtn.innerHTML = `<em>${appName}</em>`;
+  const homeLogo = document.querySelector('.home-logo');
+  if (homeLogo) homeLogo.innerHTML = `<em>${appName}</em> Trips`;
+  document.title = `${appName} Trips`;
+  const input = document.getElementById('appNameInput');
+  if (input) input.value = appName;
+}
 
 // ════════════════════════════════════════
 //  INIT
@@ -1734,6 +1765,10 @@ async function initApp() {
 
   // Sign in anonymously first so Firebase reads work on fresh load
   window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
+    // Load app name config
+    window._onValue(window._ref(window._db, 'config/appName'), snap => {
+      if (snap.val()) { appName = snap.val(); renderAppName(); }
+    });
     // Load trips
     window._onValue(window._ref(window._db, 'trips'), snap => {
       allTrips = snap.val() || {};
@@ -3198,7 +3233,7 @@ window.generateTripJournal = async function(tripId) {
     return line;
   }).join('\n');
 
-  const systemPrompt = `You are writing a warm, vivid travel journal for the Hardin family. Write in first-person plural ("we"). Use flowing paragraphs — no bullet points, no markdown headers, no JSON. Group naturally by region or day cluster. Weave in specific places, meals, and any memorable moments from the notes. Make it feel personal, evocative, and joyful to read back years later.`;
+  const systemPrompt = `You are writing a warm, vivid travel journal for the ${appName} family. Write in first-person plural ("we"). Use flowing paragraphs — no bullet points, no markdown headers, no JSON. Group naturally by region or day cluster. Weave in specific places, meals, and any memorable moments from the notes. Make it feel personal, evocative, and joyful to read back years later.`;
   const userMsg = `Write a travel journal entry for our trip: "${trip.name}" (${trip.dates||trip.year||''}).\n\nDay-by-day itinerary and memories:\n${dayLines}`;
 
   startProgress();
@@ -5598,6 +5633,13 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+async function saveAppName() {
+  const name = (document.getElementById('appNameInput').value || '').trim();
+  if (!name) { showToast('Enter a name'); return; }
+  await window._set(window._ref(window._db, 'config/appName'), name);
+  showToast('App name updated ✓');
 }
 
 
