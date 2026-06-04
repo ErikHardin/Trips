@@ -3862,20 +3862,17 @@ window.generateTripPDF = async function(tripId) {
   const _esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   let bodyHTML = '';
   let currentRegion = null;
-  let isFirstDay = true;
 
   for (const [dayId, day] of sortedDays) {
-    // Region header — carries the page break when it precedes a non-first day
-    let dayNeedsBreak = !isFirstDay;
+    // Region header goes inside day-wrap so it always shares the day's page
+    let regionPrefixHTML = '';
     if (day.region && day.region !== currentRegion) {
       currentRegion = day.region;
-      bodyHTML += `<div class="region-header${!isFirstDay ? ' day-break' : ''}">
+      regionPrefixHTML = `<div class="region-header">
         <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
         <div class="region-name">${_esc(day.region)}</div>
         <div class="region-dates">${_esc(day.regionDates||'')}</div>
       </div>`;
-      dayNeedsBreak = false; // region header already carries the break
-    }
 
     const loc = day.description || day.city || '';
     const city = day.city && day.city !== loc ? day.city : '';
@@ -3939,7 +3936,8 @@ window.generateTripPDF = async function(tripId) {
       }
     }
 
-    bodyHTML += `<div class="day-wrap${dayNeedsBreak ? ' day-break' : ''}">
+    bodyHTML += `<div class="day-wrap day-break">
+      ${regionPrefixHTML}
       <div class="ov-day-card${highlightsHTML ? ' card-with-hl' : ''}">
         <div class="ov-day-header">
           <div class="ov-day-date">
@@ -3957,7 +3955,6 @@ window.generateTripPDF = async function(tripId) {
       </div>
       ${highlightsHTML}
     </div>`;
-    isFirstDay = false;
   }
 
   // 6. Outbound flights HTML
@@ -4006,53 +4003,56 @@ window.generateTripPDF = async function(tripId) {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2c2418;background:#fff;padding:24px 28px;max-width:760px;margin:0 auto;}
-  h1{font-family:'Georgia',serif;font-size:26px;font-weight:700;color:#2c2418;margin-bottom:4px;}
-  .trip-meta{font-size:13px;color:#8a7e72;margin-bottom:20px;}
-  .action-bar{display:flex;gap:10px;margin-bottom:22px;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#2c2418;background:#fff;padding:20px 24px;max-width:720px;margin:0 auto;}
+  .action-bar{display:flex;gap:10px;margin-bottom:18px;}
   .action-btn{flex:1;padding:12px 16px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
   .action-btn-save{background:#c06a3d;color:#fff;}
   .action-btn-close{background:#f0ebe4;color:#2c2418;}
-  .flight-banner{display:flex;gap:10px;align-items:flex-start;background:#fdf6ee;border:1px solid #e8d5c0;border-radius:10px;padding:10px 14px;margin-bottom:16px;}
-  .flight-icon{font-size:18px;flex-shrink:0;}
-  .flight-label{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#8a7e72;margin-bottom:4px;}
-  .flight-row{font-size:13px;color:#2c2418;}
+  .cover-title{display:flex;align-items:center;gap:14px;padding-bottom:14px;border-bottom:2px solid #ddc9b4;margin-bottom:14px;}
+  .cover-emoji{font-size:48px;line-height:1;flex-shrink:0;}
+  .cover-name{font-family:'Georgia',serif;font-size:34px;font-weight:700;color:#2c2418;line-height:1.1;}
+  .cover-meta{font-size:13px;color:#8a7e72;margin-top:5px;}
+  .flight-banner{display:flex;gap:10px;align-items:flex-start;background:#fdf6ee;border:1px solid #e8d5c0;border-radius:10px;padding:9px 13px;margin-bottom:12px;}
+  .flight-icon{font-size:17px;flex-shrink:0;}
+  .flight-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#8a7e72;margin-bottom:3px;}
+  .flight-row{font-size:12px;color:#2c2418;}
   .flight-code{font-weight:600;font-family:monospace;}
-  #pdfMapWrap{height:280px;border-radius:12px;overflow:hidden;margin-bottom:20px;border:1px solid #e8d5c0;}
+  #pdfMapWrap{height:210px;border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid #e8d5c0;}
   #pdfMap{height:100%;width:100%;}
-  .section-label{font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#8a7e72;padding:8px 0 12px;}
-  .region-header{display:flex;align-items:center;gap:8px;margin:20px 0 10px;}
-  .region-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-  .region-name{font-size:13px;font-weight:600;letter-spacing:0.5px;color:#2c2418;}
-  .region-dates{font-size:12px;color:#8a7e72;margin-left:auto;}
-  .day-wrap{margin-bottom:28px;}
-  .ov-day-card{background:#fdf6ee;border:1.5px solid #ddc9b4;border-radius:14px;page-break-inside:avoid;}
-  .ov-day-card.card-with-hl{border-radius:14px 14px 0 0;border-bottom:none;}
-  .ov-day-header{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;}
-  .ov-day-date{text-align:center;min-width:40px;flex-shrink:0;}
-  .ov-day-num{display:block;font-family:'Georgia',serif;font-size:24px;font-weight:700;color:#c06a3d;line-height:1;}
-  .ov-day-month{display:block;font-size:10px;color:#8a7e72;text-transform:uppercase;letter-spacing:1px;}
-  .ov-day-dow{display:block;font-size:9px;color:#c06a3d;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+  .section-label{font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#8a7e72;padding:6px 0 0;}
+  .region-header{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
+  .region-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .region-name{font-size:12px;font-weight:600;color:#2c2418;}
+  .region-dates{font-size:11px;color:#8a7e72;margin-left:auto;}
+  .day-wrap{margin-bottom:0;}
+  .ov-day-card{background:#fdf6ee;border:1.5px solid #ddc9b4;border-radius:12px;page-break-inside:avoid;}
+  .ov-day-card.card-with-hl{border-radius:12px 12px 0 0;border-bottom:none;}
+  .ov-day-header{display:flex;align-items:flex-start;gap:10px;padding:10px 13px;}
+  .ov-day-date{text-align:center;min-width:36px;flex-shrink:0;}
+  .ov-day-num{display:block;font-family:'Georgia',serif;font-size:22px;font-weight:700;color:#c06a3d;line-height:1;}
+  .ov-day-month{display:block;font-size:9px;color:#8a7e72;text-transform:uppercase;letter-spacing:1px;}
+  .ov-day-dow{display:block;font-size:8px;color:#c06a3d;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
   .ov-day-vdivider{width:1px;background:#ddc9b4;align-self:stretch;flex-shrink:0;margin:2px 0;}
-  .ov-day-info{flex:1;min-width:0;padding-top:2px;}
-  .ov-day-loc{font-size:15px;font-weight:600;color:#2c2418;}
-  .ov-day-city{font-size:12px;color:#8a7e72;margin-top:1px;}
-  .ov-day-summary{font-size:13px;color:#5a5148;margin-top:5px;line-height:1.6;}
-  .day-highlights{border:1.5px solid #ddc9b4;border-top:none;border-radius:0 0 14px 14px;background:#fff;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;}
-  .hl-group{border:1px solid #ddc9b4;border-radius:10px;overflow:hidden;background:#fffaf6;page-break-inside:avoid;}
-  .hl-group-header{font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#c06a3d;padding:8px 12px;border-bottom:1px solid #e8d5c0;background:#fdf6ee;}
-  .hl-recommended{font-size:10px;font-weight:500;color:#c06a3d;margin-left:8px;text-transform:none;letter-spacing:0;}
-  .hl-group-body{padding:10px 12px 6px;}
-  .hl-photos{display:flex;flex-direction:row;gap:4px;height:100px;margin-bottom:8px;overflow:hidden;}
-  .hl-photo{height:100%;width:auto;min-width:70px;max-width:160px;object-fit:cover;border-radius:5px;flex-shrink:0;}
-  .hl-note-text{font-size:13px;color:#2c2418;line-height:1.6;margin-bottom:8px;}
+  .ov-day-info{flex:1;min-width:0;padding-top:1px;}
+  .ov-day-loc{font-size:14px;font-weight:600;color:#2c2418;}
+  .ov-day-city{font-size:11px;color:#8a7e72;margin-top:1px;}
+  .ov-day-summary{font-size:12px;color:#5a5148;margin-top:4px;line-height:1.5;}
+  .day-highlights{border:1.5px solid #ddc9b4;border-top:none;border-radius:0 0 12px 12px;background:#fff;padding:8px 10px 10px;display:flex;flex-direction:column;gap:7px;}
+  .hl-group{border:1px solid #ddc9b4;border-radius:8px;overflow:hidden;background:#fffaf6;page-break-inside:avoid;}
+  .hl-group-header{font-size:10px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;color:#c06a3d;padding:6px 10px;border-bottom:1px solid #e8d5c0;background:#fdf6ee;}
+  .hl-recommended{font-size:9px;font-weight:500;color:#c06a3d;margin-left:7px;text-transform:none;letter-spacing:0;}
+  .hl-group-body{padding:7px 10px 4px;}
+  .hl-photos{display:flex;flex-direction:row;gap:3px;height:72px;margin-bottom:6px;overflow:hidden;}
+  .hl-photo{height:100%;width:auto;min-width:60px;max-width:130px;object-fit:cover;border-radius:4px;flex-shrink:0;}
+  .hl-note-text{font-size:11px;color:#2c2418;line-height:1.5;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
   @media print{
     body{padding:0;}
     .action-bar{display:none;}
+    .cover{page-break-after:always;}
     .day-break{break-before:page;page-break-before:always;}
     #pdfMapWrap{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .ov-day-card,.hl-group{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    @page{margin:0.65in;}
+    .ov-day-card,.hl-group,.day-highlights{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{margin:0.45in;}
   }
 </style>
 </head>
@@ -4061,11 +4061,18 @@ window.generateTripPDF = async function(tripId) {
   <button class="action-btn action-btn-save" onclick="window.print()">📥 Save as PDF</button>
   <button class="action-btn action-btn-close" onclick="window.close()">✕ Close</button>
 </div>
-<h1>${_esc((trip.emoji ? trip.emoji+' ' : '')+(trip.name||'Trip'))}</h1>
-<div class="trip-meta">${_esc([trip.year, trip.dates].filter(Boolean).join(' · '))}</div>
-${flightsHTML}
-<div id="pdfMapWrap"><div id="pdfMap"></div></div>
-<div class="section-label">Itinerary</div>
+<div class="cover">
+  <div class="cover-title">
+    ${trip.emoji ? `<div class="cover-emoji">${trip.emoji}</div>` : ''}
+    <div>
+      <div class="cover-name">${_esc(trip.name||'Trip')}</div>
+      <div class="cover-meta">${_esc([trip.year, trip.dates].filter(Boolean).join(' · '))}</div>
+    </div>
+  </div>
+  ${flightsHTML}
+  <div id="pdfMapWrap"><div id="pdfMap"></div></div>
+  <div class="section-label">Itinerary</div>
+</div>
 ${bodyHTML}
 <script>${mapScript}<\/script>
 </body>
