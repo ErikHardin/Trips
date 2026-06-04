@@ -5640,7 +5640,12 @@ window.saveAppName = async function() {
   const name = (document.getElementById('appNameInput').value || '').trim();
   if (!name) { showToast('Enter a name'); return; }
   try {
-    await window._set(window._ref(window._db, 'config/appName'), name);
+    const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/set-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'appName', value: name })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     showToast('App name updated ✓');
   } catch(e) { showToast('Save failed — check connection'); console.error(e); }
 }

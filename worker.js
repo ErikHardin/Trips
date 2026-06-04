@@ -35,6 +35,19 @@ export default {
       }});
     }
 
+    // Write a value to config/ in Firebase
+    if (url.pathname === '/set-config') {
+      const { key, value } = body;
+      const fbResp = await fetch(
+        `${env.FIREBASE_URL}/config/${key}.json?auth=${env.FIREBASE_SECRET}`,
+        { method: 'PUT', body: JSON.stringify(value), headers: { 'Content-Type': 'application/json' } }
+      );
+      if (!fbResp.ok) throw new Error('Firebase write failed: ' + fbResp.status);
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
     // Flight lookup — AeroDataBox via RapidAPI
     // Requires AERODATABOX_KEY set as a Worker secret in Cloudflare dashboard
     if (url.pathname === '/flight-lookup') {
