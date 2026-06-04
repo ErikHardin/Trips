@@ -1766,7 +1766,7 @@ async function initApp() {
   // Sign in anonymously first so Firebase reads work on fresh load
   window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
     // Load app name config
-    window._onValue(window._ref(window._db, 'avatarUrls/appName'), snap => {
+    window._onValue(window._ref(window._db, 'config/appName'), snap => {
       if (snap.val()) appName = snap.val();
       renderAppName();
     });
@@ -5640,7 +5640,7 @@ window.saveAppName = async function() {
   const name = (document.getElementById('appNameInput').value || '').trim();
   if (!name) { showToast('Enter a name'); return; }
   try {
-    await window._set(window._ref(window._db, 'avatarUrls/appName'), name);
+    await window._set(window._ref(window._db, 'config/appName'), name);
     showToast('App name updated ✓');
   } catch(e) { showToast('Save failed — check connection'); console.error(e); }
 }
