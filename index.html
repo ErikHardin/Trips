@@ -4018,9 +4018,8 @@ window.generateTripPDF = async function(tripId) {
   .flight-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#8a7e72;margin-bottom:3px;}
   .flight-row{font-size:12px;color:#2c2418;}
   .flight-code{font-weight:600;font-family:monospace;}
-  #pdfMapWrap{height:210px;border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid #e8d5c0;}
+  #pdfMapWrap{height:300px;border-radius:10px;overflow:hidden;margin-bottom:14px;border:1px solid #e8d5c0;}
   #pdfMap{height:100%;width:100%;}
-  .section-label{font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#8a7e72;padding:6px 0 0;}
   .region-header{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
   .region-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
   .region-name{font-size:12px;font-weight:600;color:#2c2418;}
@@ -4047,13 +4046,13 @@ window.generateTripPDF = async function(tripId) {
   .hl-photo{height:100%;width:auto;min-width:60px;max-width:130px;object-fit:cover;border-radius:4px;flex-shrink:0;}
   .hl-note-text{font-size:11px;color:#2c2418;line-height:1.5;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
   @media print{
-    body{padding:0;}
+    body{padding:6px 16px;}
     .action-bar{display:none;}
     .cover{page-break-after:always;}
     .day-break{break-before:page;page-break-before:always;}
     #pdfMapWrap{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .ov-day-card,.hl-group,.day-highlights{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    @page{margin:0.45in;}
+    @page{margin:0;}
   }
 </style>
 </head>
@@ -4072,7 +4071,6 @@ window.generateTripPDF = async function(tripId) {
   </div>
   ${flightsHTML}
   <div id="pdfMapWrap"><div id="pdfMap"></div></div>
-  <div class="section-label">Itinerary</div>
 </div>
 ${bodyHTML}
 <script>${mapScript}<\/script>
