@@ -1072,6 +1072,7 @@ body {
       <div class="header-eyebrow" id="tripDetailEyebrow">Trip</div>
       <div class="header-main" id="tripDetailTitle">–</div>
     </div>
+    <button class="header-action" id="tripRefreshBtn" onclick="refreshCurrentTab()" style="display:none;">🔄</button>
     <button class="header-action" id="tripAdminBtn" onclick="showTripAdmin()" style="display:none;">✏️</button>
   </div>
   <div class="tab-nav" id="regularTabNav">
@@ -1338,6 +1339,10 @@ body {
           <div id="pdfTripList"></div>
         </div>
       </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);text-align:center;padding:4px 0 16px;letter-spacing:0.02em;">
+      Deployed: PR #<span id="buildPrNumber">–</span>
     </div>
 
   </div>
@@ -1640,6 +1645,9 @@ function setupOfflineDetection() {
 </script>
 
 <script>
+window.BUILD_INFO = { prNumber: 207 };
+(function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
+
 // ════════════════════════════════════════
 //  APP STATE
 // ════════════════════════════════════════
@@ -1844,6 +1852,7 @@ window.lockApp = function() {
   try { localStorage.removeItem('adminsession'); } catch(e) {}
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
+  document.getElementById('tripRefreshBtn').style.display = 'none';
   document.getElementById('tripAdminBtn').style.display = 'none';
   document.getElementById('logisticsTabBtn').style.display = 'none';
   document.getElementById('changesTabBtn').style.display = 'none';
@@ -2026,6 +2035,7 @@ function openTrip(tripId, defaultTab) {
   const trip = allTrips[tripId];
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
+  document.getElementById('tripRefreshBtn').style.display = '';
   document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
   document.getElementById('logisticsTabBtn').style.display = (isAdmin && isUpcomingOrActive) ? '' : 'none';
@@ -2064,6 +2074,25 @@ function switchTripTab(name, btn) {
   }
 }
 window.switchTripTab = switchTripTab;
+
+window.refreshCurrentTab = function() {
+  if (!currentTripId || !allTrips[currentTripId]) return;
+  const trip = allTrips[currentTripId];
+  if (document.getElementById('tripItineraryPanel').classList.contains('active')) {
+    renderTripItinerary(trip);
+  } else if (document.getElementById('tripOverviewPanel').classList.contains('active')) {
+    renderTripOverview(trip);
+  } else if (document.getElementById('tripLogisticsPanel').classList.contains('active')) {
+    renderLogisticsPanel(currentTripId);
+  } else if (document.getElementById('tripChangesPanel').classList.contains('active')) {
+    renderChangesPanel(currentTripId);
+  } else if (document.getElementById('tripWishlistPanel').classList.contains('active')) {
+    renderWishlistPanel(currentTripId);
+  } else if (document.getElementById('tripShareHighlightsPanel').classList.contains('active')) {
+    renderShareHighlights(trip);
+  }
+  showToast('Refreshed ✓');
+};
 
 function switchShareTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
