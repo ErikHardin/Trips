@@ -521,6 +521,19 @@ body {
   color: var(--ink); background: var(--cream); outline: none; margin-bottom: 10px;
 }
 .form-input:focus { border-color: var(--terracotta); }
+input[type="date"].form-input {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 42px;
+  color: var(--ink);
+  display: block;
+}
+input[type="date"].form-input::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+}
+input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+.date-fields-grid .form-input { margin-bottom: 0; }
 .form-textarea { min-height: 120px; resize: vertical; }
 .form-btn {
   width: 100%; padding: 12px;
@@ -1158,7 +1171,7 @@ body {
               <option value="active">Active (in progress)</option>
               <option value="past">Past</option>
             </select>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="date-fields-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
               <div>
                 <label class="form-label">Start Date</label>
                 <input class="form-input" id="newTripStart" type="date">
