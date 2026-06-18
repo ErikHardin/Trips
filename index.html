@@ -612,32 +612,27 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 
 
 /* ══════════════════════════════
-   PIN SCREEN
+   LOGIN SCREEN
 ══════════════════════════════ */
-.pin-screen {
+.login-screen {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   min-height: 100vh; padding: 40px 20px;
   background: var(--cream);
 }
-.pin-logo { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
-.pin-logo em { color: var(--terracotta); font-style: italic; }
-.pin-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
-.pin-dots { display: flex; gap: 14px; margin-bottom: 28px; }
-.pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--sand-dark); background: transparent; transition: background 0.15s; }
-.pin-dot.filled { background: var(--terracotta); border-color: var(--terracotta); }
-.pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 240px; }
-.pin-key {
-  padding: 16px; background: var(--warm-white); border: 1px solid var(--border);
-  border-radius: 14px; font-family: 'Cormorant Garamond', serif;
-  font-size: 24px; font-weight: 600; color: var(--ink); cursor: pointer;
-  text-align: center; box-shadow: var(--shadow-sm);
+.login-logo { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.login-logo em { color: var(--terracotta); font-style: italic; }
+.login-tagline { font-size: 13px; color: var(--muted); margin-bottom: 40px; }
+.google-signin-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 24px; background: var(--warm-white);
+  border: 1px solid var(--border); border-radius: 14px;
+  font-size: 15px; font-weight: 500; color: var(--ink);
+  cursor: pointer; box-shadow: var(--shadow-sm);
   transition: background 0.1s, transform 0.1s;
-  -webkit-user-select: none; user-select: none;
 }
-.pin-key:active { background: var(--sand); transform: scale(0.94); }
-.pin-key.delete { font-size: 18px; color: var(--muted); }
-.pin-error { color: var(--terracotta); font-size: 13px; margin-top: 12px; min-height: 20px; }
+.google-signin-btn:active { background: var(--sand); transform: scale(0.97); }
+.login-error { color: var(--terracotta); font-size: 13px; margin-top: 16px; text-align: center; max-width: 280px; line-height: 1.5; }
 
 /* ══════════════════════════════
    ADD TRIP MODAL
@@ -1006,47 +1001,37 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 </head>
 <body>
 
-<!-- ══ PIN SCREEN ══ -->
-<div id="screen-pin" class="screen">
-  <div class="pin-screen">
-    <div class="pin-logo"><em>Hardin</em> Trips</div>
-    <div class="pin-subtitle">Enter PIN to unlock editing</div>
-    <div class="pin-dots" id="pinDots">
-      <div class="pin-dot" id="d0"></div>
-      <div class="pin-dot" id="d1"></div>
-      <div class="pin-dot" id="d2"></div>
-      <div class="pin-dot" id="d3"></div>
-    </div>
-    <div class="pin-keypad">
-      <div class="pin-key" onclick="pinKey('1')">1</div>
-      <div class="pin-key" onclick="pinKey('2')">2</div>
-      <div class="pin-key" onclick="pinKey('3')">3</div>
-      <div class="pin-key" onclick="pinKey('4')">4</div>
-      <div class="pin-key" onclick="pinKey('5')">5</div>
-      <div class="pin-key" onclick="pinKey('6')">6</div>
-      <div class="pin-key" onclick="pinKey('7')">7</div>
-      <div class="pin-key" onclick="pinKey('8')">8</div>
-      <div class="pin-key" onclick="pinKey('9')">9</div>
-      <div class="pin-key" onclick="goHome()" style="font-size:13px;color:var(--muted);">Cancel</div>
-      <div class="pin-key" onclick="pinKey('0')">0</div>
-      <div class="pin-key delete" onclick="pinDelete()">⌫</div>
-    </div>
-    <div class="pin-error" id="pinError"></div>
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="screen-login" class="screen active">
+  <div class="login-screen">
+    <div class="login-logo"><em>Hardin</em> Trips</div>
+    <div class="login-tagline">Every journey, remembered</div>
+    <button class="google-signin-btn" id="googleSignInBtn" onclick="signInWithGoogle()">
+      <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <div id="loginError" class="login-error" style="display:none;"></div>
+    <button id="loginSignOutBtn" onclick="signOutAndReset()" style="display:none;margin-top:8px;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;">Sign in with a different account</button>
   </div>
 </div>
 
 <!-- ══ HOME SCREEN ══ -->
-<div id="screen-home" class="screen active">
+<div id="screen-home" class="screen">
   <div class="app-header">
     <div class="header-titles">
       <div class="header-eyebrow">Your Journeys</div>
       <div class="header-main">
-        <span id="secretHardinBtn" onclick="handleSecretTap()" style="cursor:default;-webkit-user-select:none;user-select:none;"><em>Hardin</em></span> Trips
+        <span><em>Hardin</em></span> Trips
       </div>
     </div>
     <button class="header-action" onclick="showWorldMap()" title="World Map" style="font-size:22px;">🌏</button>
     <button class="header-action" id="adminNavBtn" onclick="showScreen('screen-admin')" style="display:none;" title="Admin">⚙️</button>
-    <button class="header-action" id="lockBtn" onclick="lockApp()" style="display:none;font-size:15px;color:var(--muted);" title="Lock">🔒</button>
+    <button class="header-action" id="lockBtn" onclick="lockApp()" style="display:none;font-size:15px;color:var(--muted);" title="Sign out">🔒</button>
   </div>
   <div class="scroll-content" id="homeContent">
     <div class="home-hero">
@@ -1358,6 +1343,32 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       Deployed: PR #<span id="buildPrNumber">–</span>
     </div>
 
+    <!-- USER ACCESS -->
+    <div class="admin-section" style="padding-bottom:20px;">
+      <div class="admin-section-title admin-collapsible-title" onclick="toggleUserAccessSection()">
+        User Access
+        <span id="userAccessChev" class="admin-collapsible-chev">›</span>
+      </div>
+      <div id="userAccessBody" style="display:none;padding-bottom:8px;">
+        <div id="userAccessList" class="admin-card" style="padding:0;overflow:hidden;margin-bottom:12px;"></div>
+        <div class="admin-card">
+          <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add User</div>
+          <input class="form-input" id="newUserName" placeholder="Name" style="margin-bottom:8px;">
+          <input class="form-input" id="newUserEmail" placeholder="Email address" style="margin-bottom:8px;">
+          <label class="form-label">Role</label>
+          <select class="form-input" id="newUserRole" onchange="toggleNewUserTripSelect()" style="margin-bottom:8px;">
+            <option value="guest">Guest</option>
+            <option value="admin">Admin</option>
+          </select>
+          <div id="newUserTripSection">
+            <label class="form-label">Trip Access</label>
+            <div id="newUserTripChecks" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;"></div>
+          </div>
+          <button class="form-btn" onclick="addUser()">Add User</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1535,7 +1546,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
 import { getDatabase, ref, set, update, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAM2Bm8PgkCk6c6uAiySuclKLkIq06HMxQ",
@@ -1567,10 +1578,13 @@ window._remove = remove;
 window._get = get;
 window._uploadBytes = uploadBytes;
 window._getDownloadURL = getDownloadURL;
-window._signInAnonymously = signInAnonymously;
+window._GoogleAuthProvider = GoogleAuthProvider;
+window._signInWithPopup = signInWithPopup;
+window._onAuthStateChanged = onAuthStateChanged;
+window._signOut = signOut;
 
 // ── Bootstrap ──
-window.addEventListener('load', () => { initApp(); });
+window.addEventListener('load', () => { setupAuth(); });
 </script>
 
 <!-- ══ OFFLINE STORE ══ -->
@@ -1664,10 +1678,10 @@ window.BUILD_INFO = { prNumber: 207 };
 // ════════════════════════════════════════
 //  APP STATE
 // ════════════════════════════════════════
-// PIN is verified server-side via Cloudflare Worker — not stored in client code
-let pinEntry = '';
-let isAdmin = false;
-let adminUser = '';
+let currentUser = null;      // Firebase User object
+let userRole = null;         // "admin" | "guest" | null
+let guestTripIds = [];       // trip IDs accessible to guests
+let adminUser = '';          // display name for attribution
 let appName = 'Hardin';
 let allTrips = {};
 let currentTripId = null;
@@ -1695,10 +1709,8 @@ const BOOKING_STATUSES = [
 ];
 
 function renderAppName() {
-  const pinLogo = document.querySelector('.pin-logo');
-  if (pinLogo) pinLogo.innerHTML = `<em>${appName}</em> Trips`;
-  const secretBtn = document.getElementById('secretHardinBtn');
-  if (secretBtn) secretBtn.innerHTML = `<em>${appName}</em>`;
+  const loginLogo = document.querySelector('.login-logo');
+  if (loginLogo) loginLogo.innerHTML = `<em>${appName}</em> Trips`;
   const homeLogo = document.querySelector('.home-logo');
   if (homeLogo) homeLogo.innerHTML = `<em>${appName}</em> Trips`;
   document.title = `${appName} Trips`;
@@ -1709,23 +1721,71 @@ function renderAppName() {
 // ════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════
-function restoreSession() {
-  try {
-    const raw = localStorage.getItem('adminsession');
-    if (!raw) return;
-    const session = JSON.parse(raw);
-    if (!session?.user || !session?.expires || Date.now() > session.expires) {
-      localStorage.removeItem('adminsession');
+function setupAuth() {
+  window._onAuthStateChanged(window._auth, async (user) => {
+    if (!user) {
+      currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+      document.documentElement.style.visibility = '';
+      showScreen('screen-login');
+      document.getElementById('loginError').style.display = 'none';
+      document.getElementById('loginSignOutBtn').style.display = 'none';
       return;
     }
-    isAdmin = true;
-    adminUser = session.user;
-    document.getElementById('adminNavBtn').style.display = '';
-    document.getElementById('lockBtn').style.display = '';
-  } catch(e) {
-    try { localStorage.removeItem('adminsession'); } catch(_) {}
-  }
+    currentUser = user;
+    const emailKey = user.email.replace(/\./g, ',');
+    try {
+      const snap = await window._get(window._ref(window._db, `access/${emailKey}`));
+      let access = snap.val();
+      if (!access) {
+        // Bootstrap: auto-create record for primary admin on first sign-in
+        if (user.email === 'erikchardin@gmail.com') {
+          const record = { role: 'admin', name: 'Erik', email: user.email };
+          await window._set(window._ref(window._db, `access/${emailKey}`), record);
+          access = record;
+        } else {
+          document.documentElement.style.visibility = '';
+          document.getElementById('loginError').textContent =
+            `${user.email} isn't authorized. Contact Erik to request access.`;
+          document.getElementById('loginError').style.display = '';
+          document.getElementById('loginSignOutBtn').style.display = '';
+          showScreen('screen-login');
+          return;
+        }
+      }
+      userRole = access.role;
+      adminUser = access.name || user.displayName || user.email;
+      guestTripIds = access.trips ? Object.keys(access.trips) : [];
+      document.getElementById('lockBtn').style.display = '';
+      document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
+      initApp();
+    } catch(e) {
+      console.error('Auth lookup failed:', e);
+      document.documentElement.style.visibility = '';
+      document.getElementById('loginError').textContent = 'Connection error — please try again.';
+      document.getElementById('loginError').style.display = '';
+      showScreen('screen-login');
+    }
+  });
 }
+
+window.signInWithGoogle = async function() {
+  const provider = new window._GoogleAuthProvider();
+  document.getElementById('googleSignInBtn').disabled = true;
+  try {
+    await window._signInWithPopup(window._auth, provider);
+  } catch(e) {
+    if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+      document.getElementById('loginError').textContent = 'Sign-in failed — please try again.';
+      document.getElementById('loginError').style.display = '';
+    }
+  } finally {
+    document.getElementById('googleSignInBtn').disabled = false;
+  }
+};
+
+window.signOutAndReset = async function() {
+  try { await window._signOut(window._auth); } catch(e) {}
+};
 
 function checkShareLink() {
   if (shareCheckDone) return;
@@ -1757,7 +1817,6 @@ function autoOpenActiveTrip() {
 
 async function initApp() {
   if (!window._db) { setTimeout(initApp, 200); return; }
-  restoreSession();
 
   // Load cached snapshot immediately — shown while Firebase connects (or if offline)
   const cached = await OfflineStore.load().catch(() => null);
@@ -1769,6 +1828,7 @@ async function initApp() {
     populateImportSelect();
     renderAdminTripList();
     renderPDFTripList();
+    if (userRole === 'admin') renderUserManagement();
   }
 
   // setupOfflineDetection needs window._ref + window._db, so must run after initApp starts
@@ -1784,44 +1844,41 @@ async function initApp() {
   window._push   = function(r, v)  { if (_isOffline) _offlineWriteQueued = true; return _rawPush(r, v); };
   window._remove = function(r)    { if (_isOffline) _offlineWriteQueued = true; return _rawRemove(r); };
 
-  // Sign in anonymously first so Firebase reads work on fresh load
-  window._signInAnonymously(window._auth).catch(e => console.warn('Anon auth failed:', e)).finally(() => {
-    // Load app name config
-    window._onValue(window._ref(window._db, 'config/appName'), snap => {
-      if (snap.val()) appName = snap.val();
-      renderAppName();
-    });
-    // Load trips
-    window._onValue(window._ref(window._db, 'trips'), snap => {
-      allTrips = snap.val() || {};
-      OfflineStore.save(allTrips).catch(() => {});
-      renderHome();
-      checkShareLink();
-      autoOpenActiveTrip();
-      populateImportSelect();
-      renderAdminTripList();
-      renderPDFTripList();
-      if (editingTripId && allTrips[editingTripId]) {
-        renderEditDaysList(allTrips[editingTripId]);
-      }
-      if (currentTripId && allTrips[currentTripId]) {
-        const tripScreen = document.getElementById('screen-trip');
-        if (tripScreen && tripScreen.classList.contains('active')) {
-          const trip = allTrips[currentTripId];
-          if (document.getElementById('tripItineraryPanel').classList.contains('active')) {
-            renderTripItinerary(trip);
-          } else if (document.getElementById('tripOverviewPanel').classList.contains('active')) {
-            renderTripOverview(trip);
-          } else if (document.getElementById('tripLogisticsPanel').classList.contains('active')) {
-            renderLogisticsPanel(currentTripId);
-          } else if (document.getElementById('tripChangesPanel').classList.contains('active')) {
-            renderChangesPanel(currentTripId);
-          } else if (document.getElementById('tripWishlistPanel').classList.contains('active')) {
-            renderWishlistPanel(currentTripId);
-          }
+  // Load app name config and trips (user is already authenticated via Google Sign-In)
+  window._onValue(window._ref(window._db, 'config/appName'), snap => {
+    if (snap.val()) appName = snap.val();
+    renderAppName();
+  });
+  window._onValue(window._ref(window._db, 'trips'), snap => {
+    allTrips = snap.val() || {};
+    OfflineStore.save(allTrips).catch(() => {});
+    renderHome();
+    checkShareLink();
+    autoOpenActiveTrip();
+    populateImportSelect();
+    renderAdminTripList();
+    renderPDFTripList();
+    if (userRole === 'admin') renderUserManagement();
+    if (editingTripId && allTrips[editingTripId]) {
+      renderEditDaysList(allTrips[editingTripId]);
+    }
+    if (currentTripId && allTrips[currentTripId]) {
+      const tripScreen = document.getElementById('screen-trip');
+      if (tripScreen && tripScreen.classList.contains('active')) {
+        const trip = allTrips[currentTripId];
+        if (document.getElementById('tripItineraryPanel').classList.contains('active')) {
+          renderTripItinerary(trip);
+        } else if (document.getElementById('tripOverviewPanel').classList.contains('active')) {
+          renderTripOverview(trip);
+        } else if (document.getElementById('tripLogisticsPanel').classList.contains('active')) {
+          renderLogisticsPanel(currentTripId);
+        } else if (document.getElementById('tripChangesPanel').classList.contains('active')) {
+          renderChangesPanel(currentTripId);
+        } else if (document.getElementById('tripWishlistPanel').classList.contains('active')) {
+          renderWishlistPanel(currentTripId);
         }
       }
-    });
+    }
   });
   if (!new URLSearchParams(window.location.search).get('trip') && !autoOpenNavigated) {
     goHome();
@@ -1843,26 +1900,9 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
-window.showPin = function() { pinEntry = ''; updatePinDots(); document.getElementById('pinError').textContent=''; showScreen('screen-pin'); };
 
-// ── Secret tap logic: 3 taps within 1.5s ──
-let secretTapCount = 0;
-let secretTapTimer = null;
-window.handleSecretTap = function() {
-  secretTapCount++;
-  clearTimeout(secretTapTimer);
-  secretTapTimer = setTimeout(() => { secretTapCount = 0; }, 1500);
-  if (secretTapCount >= 3) {
-    secretTapCount = 0;
-    clearTimeout(secretTapTimer);
-    showPin();
-  }
-};
-
-window.lockApp = function() {
-  isAdmin = false;
-  adminUser = '';
-  try { localStorage.removeItem('adminsession'); } catch(e) {}
+window.lockApp = async function() {
+  currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripRefreshBtn').style.display = 'none';
@@ -1870,14 +1910,12 @@ window.lockApp = function() {
   document.getElementById('logisticsTabBtn').style.display = 'none';
   document.getElementById('changesTabBtn').style.display = 'none';
   document.getElementById('addNoteForm').style.display = 'none';
-  // Switch away from admin-only tabs if active
   if (document.getElementById('tripLogisticsPanel').classList.contains('active') ||
       document.getElementById('tripChangesPanel').classList.contains('active')) {
     switchTripTab('itinerary', document.querySelector('.tab-btn'));
   }
-  renderHome();
-  goHome();
-  showToast('Locked 🔒');
+  try { await window._signOut(window._auth); } catch(e) {}
+  showToast('Signed out');
 };
 
 function goBackFromNotes() {
@@ -1891,65 +1929,6 @@ function goBackFromNotes() {
   showScreen('screen-trip');
 }
 window.goBackFromNotes = goBackFromNotes;
-
-// ════════════════════════════════════════
-//  PIN
-// ════════════════════════════════════════
-window.pinKey = function(digit) {
-  if (pinEntry.length >= 4) return;
-  pinEntry += digit;
-  updatePinDots();
-  if (pinEntry.length === 4) {
-    setTimeout(async () => {
-      try {
-        const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/verify-pin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin: pinEntry })
-        });
-        const data = await res.json();
-        if (data.valid) {
-          try {
-            await window._signInAnonymously(window._auth);
-          } catch(e) {
-            console.warn('Auth error:', e);
-          }
-          isAdmin = true;
-          adminUser = data.user || 'Admin';
-          try {
-            localStorage.setItem('adminsession', JSON.stringify({
-              user: adminUser,
-              expires: Date.now() + 30 * 24 * 60 * 60 * 1000
-            }));
-          } catch(e) {}
-          document.getElementById('adminNavBtn').style.display = '';
-          document.getElementById('lockBtn').style.display = '';
-          document.getElementById('tripAdminBtn').style.display = currentTripId ? '' : 'none';
-          document.getElementById('logisticsTabBtn').style.display = currentTripId ? '' : 'none';
-          document.getElementById('changesTabBtn').style.display = currentTripId ? '' : 'none';
-          renderHome();
-          goHome();
-          showToast('Unlocked ✓');
-        } else {
-          document.getElementById('pinError').textContent = 'Incorrect PIN';
-          pinEntry = '';
-          updatePinDots();
-        }
-      } catch(e) {
-        console.error('PIN verification failed', e);
-        document.getElementById('pinError').textContent = 'Connection error — try again';
-        pinEntry = '';
-        updatePinDots();
-      }
-    }, 200);
-  }
-};
-window.pinDelete = function() { pinEntry = pinEntry.slice(0,-1); updatePinDots(); };
-function updatePinDots() {
-  for (let i=0;i<4;i++) {
-    document.getElementById('d'+i).classList.toggle('filled', i < pinEntry.length);
-  }
-}
 
 // ════════════════════════════════════════
 //  HOME
@@ -1987,10 +1966,17 @@ function getTripCountdown(t) {
   return '🗓️ ' + diff + ' days away';
 }
 
+function canEditCurrentTrip() {
+  return userRole === 'admin' || guestTripIds.includes(currentTripId);
+}
+
 function renderHome() {
   const list = document.getElementById('tripsList');
   const empty = document.getElementById('homeEmpty');
-  const keys = Object.keys(allTrips);
+  // Guests only see their assigned trips; admins see all
+  let keys = Object.keys(allTrips).filter(id =>
+    userRole === 'admin' || guestTripIds.includes(id)
+  );
 
   // Sort by year desc
   keys.sort((a,b) => (allTrips[b].year||0) - (allTrips[a].year||0));
@@ -2030,7 +2016,7 @@ function renderHome() {
     list.appendChild(card);
   });
 
-  if (isAdmin) {
+  if (userRole === 'admin') {
     const btn = document.createElement('button');
     btn.className = 'add-trip-btn';
     btn.innerHTML = '＋ Add New Trip';
@@ -2049,11 +2035,12 @@ function openTrip(tripId, defaultTab) {
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
   document.getElementById('tripRefreshBtn').style.display = '';
-  document.getElementById('tripAdminBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('tripAdminBtn').style.display = userRole === 'admin' ? '' : 'none';
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
-  document.getElementById('logisticsTabBtn').style.display = (isAdmin && isUpcomingOrActive) ? '' : 'none';
-  document.getElementById('changesTabBtn').style.display = isAdmin ? '' : 'none';
-  document.getElementById('wishlistTabBtn').style.display = isAdmin ? '' : 'none';
+  const hasAccess = userRole === 'admin' || guestTripIds.includes(tripId);
+  document.getElementById('logisticsTabBtn').style.display = (userRole === 'admin' && isUpcomingOrActive) ? '' : 'none';
+  document.getElementById('changesTabBtn').style.display = hasAccess ? '' : 'none';
+  document.getElementById('wishlistTabBtn').style.display = hasAccess ? '' : 'none';
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -2133,7 +2120,7 @@ window.switchShareTab = switchShareTab;
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
-  panel.innerHTML = isAdmin ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
+  panel.innerHTML = canEditCurrentTrip() ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
 
   // Trip progress bar (active trips only)
   const _prog = getTripProgress(trip);
@@ -2208,23 +2195,24 @@ function renderTripItinerary(trip) {
               style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;opacity:0.5;">📝</button>
             ${actNoteCount > 0 ? `<div class="activity-notes-count">${actNoteCount}</div>` : ''}
           </div>
-          ${isAdmin && time && trip.status === 'active' ? `<button class="act-bell-btn" title="Set reminder" onclick="onBellClick(event)">🔔</button>` : ''}
+          ${canEditCurrentTrip() && time && trip.status === 'active' ? `<button class="act-bell-btn" title="Set reminder" onclick="onBellClick(event)">🔔</button>` : ''}
         </div>`;
     }).join('');
 
     const cardId = 'dc-'+dayId;
-    const spendBadge = (isAdmin || day.dailySpend != null) ? (
+    const _canEdit = canEditCurrentTrip();
+    const spendBadge = (_canEdit || day.dailySpend != null) ? (
       '<div class="spend-badge" id="spend-' + dayId + '">' +
       '<span>💰</span>' +
       '<span class="spend-badge-label">Daily spend</span>' +
       (day.dailySpend != null
         ? '<span class="spend-badge-amount">' + escHtml(trip.currency||'') + Number(day.dailySpend).toLocaleString() + '</span>' +
-          (isAdmin
+          (_canEdit
             ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)" title="Add to today\'s spend">+</button>' +
               '<button class="spend-clear-btn" onclick="clearSpend(\'' + dayId + '\')" title="Clear spend">✕</button>' +
               (day.spendLog && Object.keys(day.spendLog).length > 0 ? '<button class="spend-log-btn" onclick="showSpendLog(\'' + dayId + '\')" title="View spend log">📋</button>' : '')
             : '')
-        : (isAdmin ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)">+ add</button>' : '')) +
+        : (_canEdit ? '<button class="spend-add-btn" onclick="addSpendClick(\'' + dayId + '\',this)">+ add</button>' : '')) +
       '</div>'
     ) : '';
     // Derive day of week from ISO date if available, else fall back to stored dayName
@@ -2728,7 +2716,7 @@ async function renderTripOverview(trip) {
 
   // ── Journal (past trips only) ──
   let journalHTML = '';
-  if (trip.status === 'past' && isAdmin) {
+  if (trip.status === 'past' && userRole === 'admin') {
     const savedText = trip.journal && trip.journal.text ? trip.journal.text : '';
     const journalBodyHTML = savedText
       ? savedText.split('\n\n').map(p => `<p style="margin:0 0 14px;font-family:'Cormorant Garamond',serif;font-size:17px;line-height:1.75;color:var(--ink);">${escHtml(p)}</p>`).join('')
@@ -3021,7 +3009,8 @@ async function renderWishlistPanel(tripId) {
     // Cache items by ID so promoteWishlistItem can look them up without passing JSON through onclick
     _wishlistCache[tripId] = raw;
 
-    const addFormHTML = isAdmin ? `
+    const _wishCanEdit = userRole === 'admin' || guestTripIds.includes(tripId);
+    const addFormHTML = _wishCanEdit ? `
       <div id="wishlistAddForm" class="requires-network" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
         <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Idea</div>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -3047,12 +3036,12 @@ async function renderWishlistPanel(tripId) {
             ${item.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(item.notes)}</div>` : ''}
             ${item.createdBy ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Added by ${escHtml(item.createdBy)}</div>` : ''}
           </div>
-          ${isAdmin ? `
+          ${_wishCanEdit ? `
           <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-            <button onclick="promoteWishlistItem('${tripId}','${id}')"
+            ${userRole === 'admin' ? `<button onclick="promoteWishlistItem('${tripId}','${id}')"
               style="background:var(--sage);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">
               → Add to Day
-            </button>
+            </button>` : ''}
             <button onclick="editWishlistItem('${tripId}','${id}')"
               style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--ink);cursor:pointer;">
               Edit
@@ -3064,7 +3053,7 @@ async function renderWishlistPanel(tripId) {
           </div>` : ''}
         </div>
       </div>`).join('') :
-      '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;font-style:italic;">No ideas yet' + (isAdmin ? ' — add some above!' : '.') + '</div>';
+      '<div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;font-style:italic;">No ideas yet' + (_wishCanEdit ? ' — add some above!' : '.') + '</div>';
 
     panel.innerHTML = '<div style="height:16px;"></div>' + addFormHTML + itemsHTML + '<div style="height:32px;"></div>';
   } catch(err) {
@@ -3325,11 +3314,11 @@ window.openNotes = function(dayId, actKey, actText) {
   document.getElementById('noteText').value = '';
   document.getElementById('saveNoteBtn').textContent = 'Save Memory';
   clearPhotos();
-  // Show add form only if authenticated
-  document.getElementById('addNoteForm').style.display = isAdmin ? '' : 'none';
+  // Show add form only if user can edit this trip
+  document.getElementById('addNoteForm').style.display = canEditCurrentTrip() ? '' : 'none';
   // Recommend checkbox — admin only, not for day-level memories
   const recommendRow = document.getElementById('recommendRow');
-  if (isAdmin && actKey !== '__daily__') {
+  if (userRole === 'admin' && actKey !== '__daily__') {
     recommendRow.style.display = 'flex';
     document.getElementById('recommendCheck').checked = !!(allTrips[currentTripId]?.days?.[dayId]?.recommended?.[actKey]);
   } else {
@@ -3343,7 +3332,6 @@ window.toggleRecommended = async function(checked) {
   if (!currentTripId || !currentDayKey || !currentActivityKey) return;
   const path = `trips/${currentTripId}/days/${currentDayKey}/recommended/${currentActivityKey}`;
   try {
-    if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
     if (checked) {
       await window._set(window._ref(window._db, path), true);
     } else {
@@ -3370,7 +3358,7 @@ function renderNotesList(dayId, actKey) {
   function renderNotesData(notes) {
     const entries = Object.entries(notes).sort((a,b)=>(a[1].ts||0)-(b[1].ts||0));
     if (entries.length === 0) {
-      list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet${isAdmin ? ' — be the first to add one!' : '.'}</div>`;
+      list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet${canEditCurrentTrip() ? ' — be the first to add one!' : '.'}</div>`;
       return;
     }
     list.innerHTML = entries.map(([noteId, n]) => {
@@ -3391,7 +3379,7 @@ function renderNotesList(dayId, actKey) {
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
               <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-              ${isAdmin ? `<div style="display:flex;gap:4px;">${n.text ? `<button data-noteid="${noteId}" data-notetext="${escAttr(n.text)}" onclick="editNote(this.dataset.noteid,this.dataset.notetext)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button>` : ''}<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
+              ${canEditCurrentTrip() ? `<div style="display:flex;gap:4px;">${n.text ? `<button data-noteid="${noteId}" data-notetext="${escAttr(n.text)}" onclick="editNote(this.dataset.noteid,this.dataset.notetext)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button>` : ''}<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
             </div>
           </div>
         </div>`;
@@ -3415,7 +3403,6 @@ function renderNotesList(dayId, actKey) {
 window.deleteNote = async function(noteId) {
   if (!confirm('Delete this memory?')) return;
   try {
-    if (!window._auth.currentUser) await window._signInAnonymously(window._auth);
     const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}/${noteId}`;
     await window._remove(window._ref(window._db, notePath));
     showToast('Memory deleted');
@@ -3469,7 +3456,6 @@ window.saveNote = async function() {
     : '<div class="loading-spinner"></div>';
 
   try {
-    if (!window._auth.currentUser && !_isOffline) await window._signInAnonymously(window._auth);
 
     // Edit mode: update existing note's text and optionally add more photos
     if (editingNoteId) {
@@ -4177,6 +4163,108 @@ window.deleteTrip = async function(tripId) {
   if (!confirm('Delete this trip and all its data?')) return;
   await window._remove(window._ref(window._db, `trips/${tripId}`));
   showToast('Trip deleted');
+};
+
+// ════════════════════════════════════════
+//  USER ACCESS MANAGEMENT
+// ════════════════════════════════════════
+window.toggleUserAccessSection = function() {
+  const body = document.getElementById('userAccessBody');
+  const chev = document.getElementById('userAccessChev');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  chev.textContent = open ? '⌄' : '›';
+  if (open) {
+    renderUserManagement();
+    populateNewUserTripChecks();
+  }
+};
+
+window.toggleNewUserTripSelect = function() {
+  const role = document.getElementById('newUserRole').value;
+  document.getElementById('newUserTripSection').style.display = role === 'guest' ? '' : 'none';
+};
+
+function populateNewUserTripChecks() {
+  const container = document.getElementById('newUserTripChecks');
+  if (!container) return;
+  container.innerHTML = Object.entries(allTrips)
+    .sort(([,a],[,b]) => (b.year||0)-(a.year||0))
+    .map(([id, t]) => `
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
+        <input type="checkbox" value="${id}" style="accent-color:var(--terracotta);width:16px;height:16px;">
+        ${escHtml(t.emoji||'')} ${escHtml(t.name||'Trip')} (${t.year||''})
+      </label>`).join('');
+}
+
+async function renderUserManagement() {
+  const list = document.getElementById('userAccessList');
+  if (!list) return;
+  list.innerHTML = '<div style="padding:12px 14px;color:var(--muted);font-size:13px;">Loading…</div>';
+  try {
+    const snap = await window._get(window._ref(window._db, 'access'));
+    const data = snap.val() || {};
+    const entries = Object.entries(data);
+    if (!entries.length) {
+      list.innerHTML = '<div style="padding:12px 14px;color:var(--muted);font-size:13px;font-style:italic;">No users configured.</div>';
+      return;
+    }
+    list.innerHTML = entries.map(([emailKey, u]) => {
+      const tripNames = u.trips
+        ? Object.keys(u.trips).map(tid => allTrips[tid]?.name || tid).join(', ')
+        : '';
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:500;color:var(--ink);">${escHtml(u.name||emailKey)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;">${escHtml(u.email||emailKey.replace(/,/g,'.'))} · ${u.role==='admin'?'Admin':'Guest'}</div>
+            ${tripNames ? `<div style="font-size:11px;color:var(--sage);margin-top:2px;">${escHtml(tripNames)}</div>` : ''}
+          </div>
+          ${u.role !== 'admin' ? `<button onclick="removeUser('${escAttr(emailKey)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0;">Remove</button>` : ''}
+        </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="padding:12px 14px;color:var(--terracotta);font-size:13px;">Error loading users.</div>';
+  }
+}
+
+window.addUser = async function() {
+  const name = document.getElementById('newUserName').value.trim();
+  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+  const role = document.getElementById('newUserRole').value;
+  if (!name || !email) { showToast('Name and email required'); return; }
+  if (!email.includes('@')) { showToast('Enter a valid email address'); return; }
+  const emailKey = email.replace(/\./g, ',');
+  const data = { name, email, role };
+  if (role === 'guest') {
+    const checks = document.querySelectorAll('#newUserTripChecks input[type=checkbox]:checked');
+    if (!checks.length) { showToast('Select at least one trip for guest access'); return; }
+    data.trips = {};
+    checks.forEach(cb => { data.trips[cb.value] = true; });
+  }
+  try {
+    await window._set(window._ref(window._db, `access/${emailKey}`), data);
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserEmail').value = '';
+    document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => { cb.checked = false; });
+    await renderUserManagement();
+    showToast('User added ✓');
+  } catch(e) {
+    showToast('Error adding user — try again');
+    console.error('addUser error:', e);
+  }
+};
+
+window.removeUser = async function(emailKey) {
+  if (!confirm('Remove this user\'s access?')) return;
+  try {
+    await window._remove(window._ref(window._db, `access/${emailKey}`));
+    await renderUserManagement();
+    showToast('User removed');
+  } catch(e) {
+    showToast('Error removing user');
+    console.error('removeUser error:', e);
+  }
 };
 
 // Repairs activities that share a duplicate key due to the insertion bug.
@@ -4933,7 +5021,7 @@ function _rebuildSpendBadge(dayId) {
     amt.className = 'spend-badge-amount';
     amt.textContent = (currency || '') + Number(current).toLocaleString();
     badge.appendChild(amt);
-    if (isAdmin) {
+    if (canEditCurrentTrip()) {
       const addBtn = document.createElement('button');
       addBtn.className = 'spend-add-btn';
       addBtn.title = "Add to today's spend";
@@ -4956,7 +5044,7 @@ function _rebuildSpendBadge(dayId) {
         badge.appendChild(logBtn);
       }
     }
-  } else if (isAdmin) {
+  } else if (canEditCurrentTrip()) {
     const addBtn = document.createElement('button');
     addBtn.className = 'spend-add-btn';
     addBtn.textContent = '+ add';
@@ -4966,7 +5054,7 @@ function _rebuildSpendBadge(dayId) {
 }
 
 window.addSpendClick = function(dayId, btn) {
-  if (!isAdmin) return;
+  if (!canEditCurrentTrip()) return;
   const input = document.createElement('input');
   input.type = 'number';
   input.className = 'spend-badge-input';

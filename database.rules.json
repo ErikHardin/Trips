@@ -1,0 +1,23 @@
+{
+  "rules": {
+    "trips": {
+      "$tripId": {
+        ".read": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists())",
+        ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists())",
+        "logistics": {
+          ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+        }
+      }
+    },
+    "access": {
+      ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
+      "$emailKey": {
+        ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (!data.exists() && !root.child('access').exists() && auth.token.email.replace('.', ',') == $emailKey))"
+      }
+    },
+    "geocache": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+    }
+  }
+}
