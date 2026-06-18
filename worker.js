@@ -23,18 +23,6 @@ export default {
     // All other routes expect a JSON POST body
     const body = await request.json();
 
-    // PIN verification
-    if (url.pathname === '/verify-pin') {
-      let user = null;
-      if (body.pin === env.ADMIN_PIN)        user = 'Erik';
-      else if (body.pin === env.ADMIN_PIN_2) user = 'Megan';
-      const valid = user !== null;
-      return new Response(JSON.stringify({ valid, user: valid ? user : null }), { headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }});
-    }
-
     // Flight lookup — AeroDataBox via RapidAPI
     // Requires AERODATABOX_KEY set as a Worker secret in Cloudflare dashboard
     if (url.pathname === '/flight-lookup') {
