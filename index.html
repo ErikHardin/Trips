@@ -1259,6 +1259,35 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     <!-- UTILITIES GROUP -->
     <div class="admin-group-header">Utilities</div>
 
+    <!-- USER ACCESS -->
+    <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="userAccessSectionHeader" onclick="toggleUserAccessSection()">
+          <div class="admin-section-title">User Access</div>
+          <span class="admin-panel-toggle" id="userAccessSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="userAccessSectionBody" style="display:none;padding-bottom:8px;">
+          <div id="userAccessList" class="admin-card" style="padding:0;overflow:hidden;margin-bottom:12px;"></div>
+          <div class="admin-card">
+            <div id="newUserFormTitle" style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add User</div>
+            <input class="form-input" id="newUserName" placeholder="Name" style="margin-bottom:8px;">
+            <input class="form-input" id="newUserEmail" placeholder="Email address" style="margin-bottom:8px;">
+            <label class="form-label">Role</label>
+            <select class="form-input" id="newUserRole" onchange="toggleNewUserTripSelect()" style="margin-bottom:8px;">
+              <option value="guest">Guest</option>
+              <option value="admin">Admin</option>
+            </select>
+            <div id="newUserTripSection">
+              <label class="form-label">Trip Access</label>
+              <div id="newUserTripChecks" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;"></div>
+            </div>
+            <button id="addUserBtn" class="form-btn" onclick="addUser()">Add User</button>
+            <button id="cancelEditUserBtn" class="form-btn" onclick="cancelEditUser()" style="display:none;background:none;color:var(--muted);border:1px solid var(--border);margin-top:8px;">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- APP NAME -->
     <div class="admin-section">
       <div class="admin-panel">
@@ -1341,32 +1370,6 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 
     <div style="font-size:11px;color:var(--muted);text-align:center;padding:4px 0 16px;letter-spacing:0.02em;">
       Deployed: PR #<span id="buildPrNumber">–</span>
-    </div>
-
-    <!-- USER ACCESS -->
-    <div class="admin-section" style="padding-bottom:20px;">
-      <div class="admin-section-title admin-collapsible-title" onclick="toggleUserAccessSection()">
-        User Access
-        <span id="userAccessChev" class="admin-collapsible-chev">›</span>
-      </div>
-      <div id="userAccessBody" style="display:none;padding-bottom:8px;">
-        <div id="userAccessList" class="admin-card" style="padding:0;overflow:hidden;margin-bottom:12px;"></div>
-        <div class="admin-card">
-          <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add User</div>
-          <input class="form-input" id="newUserName" placeholder="Name" style="margin-bottom:8px;">
-          <input class="form-input" id="newUserEmail" placeholder="Email address" style="margin-bottom:8px;">
-          <label class="form-label">Role</label>
-          <select class="form-input" id="newUserRole" onchange="toggleNewUserTripSelect()" style="margin-bottom:8px;">
-            <option value="guest">Guest</option>
-            <option value="admin">Admin</option>
-          </select>
-          <div id="newUserTripSection">
-            <label class="form-label">Trip Access</label>
-            <div id="newUserTripChecks" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;"></div>
-          </div>
-          <button class="form-btn" onclick="addUser()">Add User</button>
-        </div>
-      </div>
     </div>
 
   </div>
@@ -1672,7 +1675,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 207 };
+window.BUILD_INFO = { prNumber: 210 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4169,12 +4172,15 @@ window.deleteTrip = async function(tripId) {
 //  USER ACCESS MANAGEMENT
 // ════════════════════════════════════════
 window.toggleUserAccessSection = function() {
-  const body = document.getElementById('userAccessBody');
-  const chev = document.getElementById('userAccessChev');
-  const open = body.style.display === 'none';
-  body.style.display = open ? '' : 'none';
-  chev.textContent = open ? '⌄' : '›';
-  if (open) {
+  const body = document.getElementById('userAccessSectionBody');
+  const toggle = document.getElementById('userAccessSectionToggle');
+  const header = document.getElementById('userAccessSectionHeader');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (toggle) toggle.textContent = opening ? '−' : '+';
+  if (header) header.classList.toggle('open', opening);
+  if (opening) {
     renderUserManagement();
     populateNewUserTripChecks();
   }
@@ -4183,6 +4189,40 @@ window.toggleUserAccessSection = function() {
 window.toggleNewUserTripSelect = function() {
   const role = document.getElementById('newUserRole').value;
   document.getElementById('newUserTripSection').style.display = role === 'guest' ? '' : 'none';
+};
+
+let _editingUserKey = null;
+
+window.editUser = function(emailKey, name, role, tripsJson) {
+  _editingUserKey = emailKey;
+  const trips = tripsJson ? JSON.parse(tripsJson) : {};
+  document.getElementById('newUserFormTitle').textContent = 'Edit User';
+  document.getElementById('newUserName').value = name;
+  document.getElementById('newUserEmail').value = emailKey.replace(/,/g, '.');
+  document.getElementById('newUserEmail').readOnly = true;
+  document.getElementById('newUserEmail').style.opacity = '0.6';
+  document.getElementById('newUserRole').value = role;
+  document.getElementById('newUserTripSection').style.display = role === 'guest' ? '' : 'none';
+  document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => {
+    cb.checked = !!trips[cb.value];
+  });
+  document.getElementById('addUserBtn').textContent = 'Save Changes';
+  document.getElementById('cancelEditUserBtn').style.display = '';
+  document.getElementById('newUserFormTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+window.cancelEditUser = function() {
+  _editingUserKey = null;
+  document.getElementById('newUserFormTitle').textContent = 'Add User';
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserEmail').value = '';
+  document.getElementById('newUserEmail').readOnly = false;
+  document.getElementById('newUserEmail').style.opacity = '';
+  document.getElementById('newUserRole').value = 'guest';
+  document.getElementById('newUserTripSection').style.display = '';
+  document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  document.getElementById('addUserBtn').textContent = 'Add User';
+  document.getElementById('cancelEditUserBtn').style.display = 'none';
 };
 
 function populateNewUserTripChecks() {
@@ -4220,7 +4260,10 @@ async function renderUserManagement() {
             <div style="font-size:11px;color:var(--muted);margin-top:1px;">${escHtml(u.email||emailKey.replace(/,/g,'.'))} · ${u.role==='admin'?'Admin':'Guest'}</div>
             ${tripNames ? `<div style="font-size:11px;color:var(--sage);margin-top:2px;">${escHtml(tripNames)}</div>` : ''}
           </div>
-          ${u.role !== 'admin' ? `<button onclick="removeUser('${escAttr(emailKey)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0;">Remove</button>` : ''}
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button onclick="editUser('${escAttr(emailKey)}','${escAttr(u.name||'')}','${u.role}','${escAttr(JSON.stringify(u.trips||{}))}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Edit</button>
+            ${u.role !== 'admin' ? `<button onclick="removeUser('${escAttr(emailKey)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Remove</button>` : ''}
+          </div>
         </div>`;
     }).join('');
   } catch(e) {
@@ -4234,7 +4277,7 @@ window.addUser = async function() {
   const role = document.getElementById('newUserRole').value;
   if (!name || !email) { showToast('Name and email required'); return; }
   if (!email.includes('@')) { showToast('Enter a valid email address'); return; }
-  const emailKey = email.replace(/\./g, ',');
+  const emailKey = _editingUserKey || email.replace(/\./g, ',');
   const data = { name, email, role };
   if (role === 'guest') {
     const checks = document.querySelectorAll('#newUserTripChecks input[type=checkbox]:checked');
@@ -4244,13 +4287,12 @@ window.addUser = async function() {
   }
   try {
     await window._set(window._ref(window._db, `access/${emailKey}`), data);
-    document.getElementById('newUserName').value = '';
-    document.getElementById('newUserEmail').value = '';
-    document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => { cb.checked = false; });
+    const wasEditing = !!_editingUserKey;
+    cancelEditUser();
     await renderUserManagement();
-    showToast('User added ✓');
+    showToast(wasEditing ? 'User updated ✓' : 'User added ✓');
   } catch(e) {
-    showToast('Error adding user — try again');
+    showToast('Error saving user — try again');
     console.error('addUser error:', e);
   }
 };
