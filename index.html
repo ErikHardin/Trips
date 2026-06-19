@@ -240,6 +240,10 @@ body {
 .flight-row { font-size: 12.5px; color: var(--ink); margin-bottom: 1px; }
 .flight-code { font-weight: 500; color: var(--gold); }
 .flight-traveler-name { font-size: 10px; color: var(--muted); font-style: italic; margin-left: 6px; }
+.flight-traveler-group { border: 1px solid rgba(191,163,105,0.45); border-radius: 6px; padding: 6px 8px; margin-bottom: 5px; background: rgba(255,255,255,0.3); }
+.flight-traveler-group:last-child { margin-bottom: 0; }
+.flight-traveler-group-name { font-size: 9px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gold); margin-bottom: 2px; }
+.flight-next-day { font-size: 9px; color: var(--terracotta); font-weight: 700; margin-left: 2px; vertical-align: super; line-height: 1; }
 
 /* Flight form — entry rows and saved chips */
 .flight-entry-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
@@ -1677,7 +1681,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 210 };
+window.BUILD_INFO = { prNumber: 213 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -2164,7 +2168,7 @@ function renderTripItinerary(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Outbound Flights · ${trip.flightOutDate||''}</div>
-          ${trip.flightOut.split('\n').map((f,i)=>{const n=(trip.flightOutNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
+          ${_buildFlightRows(trip.flightOut, trip.flightOutNames)}
         </div>
       </div>`;
   }
@@ -2373,7 +2377,7 @@ function renderTripItinerary(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return Flights · ${trip.flightReturnDate||''}</div>
-          ${trip.flightReturn.split('\n').map((f,i)=>{const n=(trip.flightReturnNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
+          ${_buildFlightRows(trip.flightReturn, trip.flightReturnNames)}
         </div>
       </div>`;
   }
@@ -2599,7 +2603,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Outbound · ${trip.flightOutDate||''}</div>
-          ${trip.flightOut.split('\n').map((f,i)=>{const n=(trip.flightOutNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
+          ${_buildFlightRows(trip.flightOut, trip.flightOutNames)}
         </div>
       </div>`;
   }
@@ -2614,7 +2618,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Flight${_flights.length > 1 ? 's' : ''} · ${_flights[0]?.date||''}</div>
-          ${_flights.map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}${fi.travelerName?`<span class="flight-traveler-name">${fi.travelerName}</span>`:''}</div>`).join('')}
+          ${_buildFlightRowsFromInfos(_flights)}
         </div>
       </div>`;
   });
@@ -2624,7 +2628,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return · ${trip.flightReturnDate||''}</div>
-          ${trip.flightReturn.split('\n').map((f,i)=>{const n=(trip.flightReturnNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
+          ${_buildFlightRows(trip.flightReturn, trip.flightReturnNames)}
         </div>
       </div>`;
   }
@@ -4057,7 +4061,8 @@ window.generateTripPDF = async function(tripId) {
     const rows = trip.flightOut.split('\n').map(f => {
       const code = f.split(' ')[0];
       const rest = f.slice(f.indexOf(' ')+1);
-      return `<div class="flight-row"><span class="flight-code">${_esc(code)}</span> ${_esc(rest)}</div>`;
+      const on = _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
+      return `<div class="flight-row"><span class="flight-code">${_esc(code)}</span> ${_esc(rest)}${on}</div>`;
     }).join('');
     flightsHTML = `<div class="flight-banner"><div class="flight-icon">✈️</div><div><div class="flight-label">Outbound Flights · ${_esc(trip.flightOutDate||'')}</div>${rows}</div></div>`;
   }
@@ -5586,6 +5591,58 @@ function getEmoji(text) {
 
 function escHtml(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _isOvernightFlight(f) {
+  const m = f.match(/(\d{1,2}:\d{2}(?:am|pm))\s*[–\-]\s*(\d{1,2}:\d{2}(?:am|pm))/i);
+  if (!m) return false;
+  const toMin = s => {
+    const t = s.match(/(\d{1,2}):(\d{2})(am|pm)/i);
+    if (!t) return null;
+    let h = parseInt(t[1]); const mn = parseInt(t[2]); const ap = t[3].toLowerCase();
+    if (ap === 'pm' && h !== 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    return h * 60 + mn;
+  };
+  const dep = toMin(m[1]), arr = toMin(m[2]);
+  return dep !== null && arr !== null && arr < dep;
+}
+
+function _buildFlightRows(flightStr, names) {
+  const flights = (flightStr || '').split('\n').filter(Boolean);
+  if (!flights.length) return '';
+  const on = f => _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
+  const fRow = f => `<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${on(f)}</div>`;
+  const hasNames = (names || []).some(n => n);
+  if (!hasNames) return flights.map(fRow).join('');
+  const groups = [];
+  let cur = null;
+  flights.forEach((f, i) => {
+    const name = (names[i] || '');
+    if (!cur || cur.name !== name) { cur = {name, flights: []}; groups.push(cur); }
+    cur.flights.push(f);
+  });
+  return groups.map(g =>
+    `<div class="flight-traveler-group">${g.name ? `<div class="flight-traveler-group-name">${g.name}</div>` : ''}${g.flights.map(fRow).join('')}</div>`
+  ).join('');
+}
+
+function _buildFlightRowsFromInfos(flightInfos) {
+  if (!flightInfos || !flightInfos.length) return '';
+  const on = f => _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
+  const fRow = f => `<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${on(f)}</div>`;
+  const hasNames = flightInfos.some(fi => fi.travelerName);
+  if (!hasNames) return flightInfos.map(fi => fRow(fi.formatted)).join('');
+  const groups = [];
+  let cur = null;
+  flightInfos.forEach(fi => {
+    const name = fi.travelerName || '';
+    if (!cur || cur.name !== name) { cur = {name, flights: []}; groups.push(cur); }
+    cur.flights.push(fi.formatted);
+  });
+  return groups.map(g =>
+    `<div class="flight-traveler-group">${g.name ? `<div class="flight-traveler-group-name">${g.name}</div>` : ''}${g.flights.map(fRow).join('')}</div>`
+  ).join('');
 }
 
 function escAttr(s) {
