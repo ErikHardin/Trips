@@ -239,6 +239,7 @@ body {
 .flight-label { font-size: 10px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); margin-bottom: 3px; }
 .flight-row { font-size: 12.5px; color: var(--ink); margin-bottom: 1px; }
 .flight-code { font-weight: 500; color: var(--gold); }
+.flight-traveler-name { font-size: 10px; color: var(--muted); font-style: italic; margin-left: 6px; }
 
 /* Flight form — entry rows and saved chips */
 .flight-entry-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
@@ -247,6 +248,7 @@ body {
 .flight-chip .flight-code { font-weight:500; color:var(--gold); flex-shrink:0; cursor:pointer; }
 .flight-chip-text { flex:1; color:var(--ink); cursor:pointer; }
 .flight-chip-date { font-size:11px; color:var(--muted); flex-shrink:0; }
+.flight-chip-traveler { font-size:10px; color:var(--muted); font-style:italic; flex-shrink:0; }
 .flight-chip-del { background:none; border:none; cursor:pointer; color:var(--muted); font-size:16px; padding:0 2px; line-height:1; }
 .flight-chip-del:hover { color:var(--terracotta); }
 .flight-dir-label { font-size:10px; font-weight:500; letter-spacing:2px; text-transform:uppercase; color:var(--gold); margin:10px 0 5px; }
@@ -1981,8 +1983,25 @@ function renderHome() {
     userRole === 'admin' || guestTripIds.includes(id)
   );
 
-  // Sort by year desc
-  keys.sort((a,b) => (allTrips[b].year||0) - (allTrips[a].year||0));
+  // Sort: active first, then upcoming (soonest first), then past (newest first)
+  const _statusOrder = { active: 0, upcoming: 1, past: 2 };
+  function _getTripStartISO(t) {
+    if (t.startDateISO) return t.startDateISO;
+    if (t.days) {
+      const dates = Object.values(t.days).map(d => d.dateISO).filter(Boolean).sort();
+      if (dates.length) return dates[0];
+    }
+    return String(t.year || 0);
+  }
+  keys.sort((a, b) => {
+    const ta = allTrips[a], tb = allTrips[b];
+    const sa = _statusOrder[ta.status] ?? 2;
+    const sb = _statusOrder[tb.status] ?? 2;
+    if (sa !== sb) return sa - sb;
+    const ia = _getTripStartISO(ta);
+    const ib = _getTripStartISO(tb);
+    return sa === 2 ? ib.localeCompare(ia) : ia.localeCompare(ib);
+  });
 
   if (keys.length === 0) {
     list.innerHTML = '';
@@ -2145,7 +2164,7 @@ function renderTripItinerary(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Outbound Flights · ${trip.flightOutDate||''}</div>
-          ${trip.flightOut.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+          ${trip.flightOut.split('\n').map((f,i)=>{const n=(trip.flightOutNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
         </div>
       </div>`;
   }
@@ -2354,7 +2373,7 @@ function renderTripItinerary(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return Flights · ${trip.flightReturnDate||''}</div>
-          ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+          ${trip.flightReturn.split('\n').map((f,i)=>{const n=(trip.flightReturnNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
         </div>
       </div>`;
   }
@@ -2580,7 +2599,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Outbound · ${trip.flightOutDate||''}</div>
-          ${trip.flightOut.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+          ${trip.flightOut.split('\n').map((f,i)=>{const n=(trip.flightOutNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
         </div>
       </div>`;
   }
@@ -2595,7 +2614,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Flight${_flights.length > 1 ? 's' : ''} · ${_flights[0]?.date||''}</div>
-          ${_flights.map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}
+          ${_flights.map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}${fi.travelerName?`<span class="flight-traveler-name">${fi.travelerName}</span>`:''}</div>`).join('')}
         </div>
       </div>`;
   });
@@ -2605,7 +2624,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return · ${trip.flightReturnDate||''}</div>
-          ${trip.flightReturn.split('\n').map(f=>`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}</div>`).join('')}
+          ${trip.flightReturn.split('\n').map((f,i)=>{const n=(trip.flightReturnNames||[])[i]||'';return`<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${n?`<span class="flight-traveler-name">${n}</span>`:''}</div>`;}).join('')}
         </div>
       </div>`;
   }
@@ -4367,9 +4386,9 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   document.getElementById('editTripCurrency').value = trip.currency || '';
   // Parse existing trip-level flight strings into chip arrays
   _editFlightsOut = (trip.flightOut || '').split('\n').filter(Boolean)
-    .map(f => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '' }));
+    .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '' }));
   _editFlightsRet = (trip.flightReturn || '').split('\n').filter(Boolean)
-    .map(f => ({ formatted: f, date: trip.flightReturnDate || '', isoDate: '' }));
+    .map((f, i) => ({ formatted: f, date: trip.flightReturnDate || '', isoDate: '', travelerName: (trip.flightReturnNames || [])[i] || '' }));
   // Collect in-trip flights stored on individual days
   _editFlightsIntrip = [];
   const _sortedDays = trip.days ? Object.entries(trip.days) : [];
@@ -4383,6 +4402,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
           formatted: fi.formatted,
           date: fi.date || '',
           isoDate: day.dateISO || '',
+          travelerName: fi.travelerName || '',
           dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
         });
       });
@@ -4409,8 +4429,10 @@ window.saveEditedTrip = async function() {
     currency: document.getElementById('editTripCurrency').value.trim(),
     flightOutDate:    _editFlightsOut[0]?.date || '',
     flightOut:        _editFlightsOut.map(f => f.formatted).join('\n'),
+    flightOutNames:   _editFlightsOut.map(f => f.travelerName || ''),
     flightReturnDate: _editFlightsRet[0]?.date || '',
     flightReturn:     _editFlightsRet.map(f => f.formatted).join('\n'),
+    flightReturnNames: _editFlightsRet.map(f => f.travelerName || ''),
   };
   await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
 
@@ -4431,7 +4453,7 @@ window.saveEditedTrip = async function() {
 
 // ── Flight form functions ──────────────────────────────────────────────────
 
-window.addFlightRow = function(numVal, dateVal, dirVal) {
+window.addFlightRow = function(numVal, dateVal, dirVal, nameVal) {
   const n = _flightRowCount++;
   const row = document.createElement('div');
   row.className = 'flight-entry-row';
@@ -4444,6 +4466,7 @@ window.addFlightRow = function(numVal, dateVal, dirVal) {
       '<option value="ret"' + (dirVal==='ret'?' selected':'') + '>Return</option>' +
       '<option value="intrip"' + (dirVal==='intrip'?' selected':'') + '>In-trip</option>' +
     '</select>' +
+    '<input class="form-input fr-traveler" placeholder="Traveler (optional)" value="' + (nameVal||'') + '" style="flex:1;min-width:80px;">' +
     '<button class="flight-chip-del" onclick="removeFlightRow(' + n + ')">×</button>';
   document.getElementById('flightEntryRows').appendChild(row);
 };
@@ -4465,6 +4488,7 @@ window.lookupAllFlights = async function() {
     const num  = row.querySelector('.fr-num').value.trim().toUpperCase();
     const date = row.querySelector('.fr-date').value;
     const dir  = row.querySelector('.fr-dir').value;
+    const travelerName = (row.querySelector('.fr-traveler')?.value || '').trim();
     if (!num || !date) { failCount++; _markFlightRowFailed(row, 'Missing flight number or date'); continue; }
     try {
       const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/flight-lookup', {
@@ -4476,7 +4500,7 @@ window.lookupAllFlights = async function() {
       const data = await res.json();
       if (!data.formatted) throw new Error();
       const humanDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
-      await _addFlightEntry(dir, date, humanDate, data.formatted);
+      await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName);
       row.remove();
       added++;
     } catch(e) {
@@ -4519,18 +4543,20 @@ window.addManualFromRow = async function(btn) {
   const dest = row.querySelector('.fr-dest').value.trim().toUpperCase();
   const dep  = row.querySelector('.fr-dep').value.trim();
   const arr  = row.querySelector('.fr-arr').value.trim();
+  const travelerName = (row.querySelector('.fr-traveler')?.value || '').trim();
   if (!num || !orig || !dest) { showToast('Enter flight #, origin, and destination'); return; }
   const formatted = num + ' ' + orig + ' → ' + dest + (dep && arr ? ' · ' + dep + ' – ' + arr : '');
   const humanDate = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '';
-  await _addFlightEntry(dir, date, humanDate, formatted);
+  await _addFlightEntry(dir, date, humanDate, formatted, travelerName);
   row.remove();
 };
 
-async function _addFlightEntry(dir, isoDate, humanDate, formatted) {
+async function _addFlightEntry(dir, isoDate, humanDate, formatted, travelerName) {
+  travelerName = travelerName || '';
   if (dir === 'out') {
-    _editFlightsOut.push({ formatted, date: humanDate, isoDate });
+    _editFlightsOut.push({ formatted, date: humanDate, isoDate, travelerName });
   } else if (dir === 'ret') {
-    _editFlightsRet.push({ formatted, date: humanDate, isoDate });
+    _editFlightsRet.push({ formatted, date: humanDate, isoDate, travelerName });
   } else {
     const trip = allTrips[editingTripId];
     const days = trip.days ? Object.entries(trip.days) : [];
@@ -4545,12 +4571,12 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted) {
     }
     if (!match) { showToast('No trip day found for ' + humanDate); return; }
     const [dayId, day] = match;
-    const existingForDay = _editFlightsIntrip.filter(f => f.dayId === dayId).map(f => ({ formatted: f.formatted, date: f.date }));
-    const newFlightInfo = [...existingForDay, { formatted, date: humanDate }];
+    const existingForDay = _editFlightsIntrip.filter(f => f.dayId === dayId).map(f => ({ formatted: f.formatted, date: f.date, travelerName: f.travelerName || '' }));
+    const newFlightInfo = [...existingForDay, { formatted, date: humanDate, travelerName }];
     await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: newFlightInfo });
     logChange(editingTripId, 'Flight added', formatted);
     _editFlightsIntrip.push({
-      dayId, formatted, date: humanDate, isoDate,
+      dayId, formatted, date: humanDate, isoDate, travelerName,
       dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
     });
   }
@@ -4565,9 +4591,11 @@ function renderFlightChips() {
     const delFn = dir === 'intrip'
       ? 'removeIntripFlight(' + i + ')'
       : 'removeFlightChip(\'' + dir + '\',' + i + ')';
+    const travelerTag = f.travelerName ? '<span class="flight-chip-traveler">' + f.travelerName + '</span>' : '';
     return '<div class="flight-chip">' +
       '<span class="flight-code" onclick="editFlightChip(\'' + dir + '\',' + i + ')" title="Click to edit">' + code + '</span>' +
       '<span class="flight-chip-text" onclick="editFlightChip(\'' + dir + '\',' + i + ')" title="Click to edit">' + rest + '</span>' +
+      travelerTag +
       '<span class="flight-chip-date">' + (label||'') + '</span>' +
       '<button class="flight-chip-del" onclick="' + delFn + '">×</button>' +
       '</div>';
@@ -4593,7 +4621,7 @@ window.editFlightChip = function(dir, index) {
   else { f = _editFlightsIntrip[index]; removeIntripFlight(index); return; }
   if (!f) return;
   const code = f.formatted.split(' ')[0];
-  addFlightRow(code, f.isoDate || '', dir);
+  addFlightRow(code, f.isoDate || '', dir, f.travelerName || '');
   renderFlightChips();
 };
 
@@ -4607,7 +4635,7 @@ window.removeIntripFlight = async function(index) {
   const f = _editFlightsIntrip[index];
   if (!f) return;
   _editFlightsIntrip.splice(index, 1);
-  const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date }));
+  const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '' }));
   await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining.length > 0 ? remaining : null });
   logChange(editingTripId, 'Flight removed', f.formatted || '');
   renderFlightChips();
