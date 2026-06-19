@@ -296,6 +296,13 @@ body {
 .act-bell-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px; flex-shrink: 0; opacity: 0.4; transition: opacity 0.2s; line-height: 1; }
 .act-bell-btn:hover { opacity: 1; }
 .act-bell-btn.reminded { opacity: 1; color: var(--accent); }
+.quick-act-pencil-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; padding: 4px 2px;
+  flex-shrink: 0; opacity: 0.45;
+  transition: opacity 0.15s; line-height: 1;
+}
+.quick-act-pencil-btn:hover { opacity: 0.9; }
 
 /* Activities */
 .activity-list { display: flex; flex-direction: column; gap: 6px; }
@@ -1512,6 +1519,21 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   </div>
 </div>
 
+<!-- ══ QUICK ACTIVITY EDITOR MODAL ══ -->
+<div class="modal-overlay" id="quickActivityModal" onclick="closeQuickActivityModal(event)">
+  <div class="modal-sheet" style="max-height:88vh;overflow-y:auto;">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="quickActivityModalTitle">Edit Activities</div>
+    <div id="quickActivityRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+    <button onclick="addQuickActivityRow()"
+      style="width:100%;padding:10px;background:var(--sand);border:1.5px dashed var(--sand-dark);border-radius:10px;font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:12px;">
+      ＋ Add Activity
+    </button>
+    <button class="form-btn" onclick="saveQuickActivityEdit()">Save Activities</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeQuickActivityModalDirect()">Cancel</button>
+  </div>
+</div>
+
 <!-- Native emoji keyboard capture input -->
 <input type="text" id="nativeEmojiInput"
   autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
@@ -2263,6 +2285,7 @@ function renderTripItinerary(trip) {
             ${day.city ? `<div class="day-city-label">${day.city}</div>` : ''}
             <div class="day-chips-row"></div>
           </div>
+          ${_canEdit ? `<button class="quick-act-pencil-btn" onclick="event.stopPropagation();openQuickActivityEditor('${dayId}')" title="Edit activities">✏️</button>` : ''}
           <div class="day-chevron">›</div>
         </div>
         <div class="day-body">
@@ -4374,6 +4397,8 @@ window.repairActivityKeys = async function(tripId) {
 // ════════════════════════════════════════
 let editingTripId = null;
 let editingDayId = null;
+let quickEditingTripId = null;
+let quickEditingDayId  = null;
 let _editFlightsOut    = [];
 let _editFlightsRet    = [];
 let _editFlightsIntrip = [];
@@ -5084,6 +5109,294 @@ window.saveDayEdit = async function() {
 
   closeEditDayModalDirect();
   showToast('Day saved! ✓');
+};
+
+// ════════════════════════════════════════
+//  QUICK ACTIVITY EDITOR (guests + admins)
+// ════════════════════════════════════════
+
+window.openQuickActivityEditor = function(dayId) {
+  if (!canEditCurrentTrip()) return;
+  quickEditingTripId = currentTripId;
+  quickEditingDayId  = dayId;
+  const trip = allTrips[currentTripId];
+  const day  = trip.days[dayId];
+
+  const label = (day.description || day.city || day.dayName || '')
+    + (day.dateNum ? ' · ' + day.dateNum + ' ' + (day.dateMonth || '') : '');
+  document.getElementById('quickActivityModalTitle').textContent = label || 'Edit Activities';
+
+  const container = document.getElementById('quickActivityRows');
+  container.innerHTML = '';
+  const acts = day.activities
+    ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+    : [];
+  if (acts.length) {
+    acts.forEach(a => addQuickActivityRow(typeof a === 'object' ? a : { text: String(a) }));
+  } else {
+    addQuickActivityRow();
+  }
+  document.getElementById('quickActivityModal').classList.add('open');
+};
+
+window.addQuickActivityRow = function(act) {
+  const container = document.getElementById('quickActivityRows');
+  const idx       = container.children.length;
+  const emoji     = act?.emoji         ?? '📍';
+  const text      = act?.text          ?? '';
+  const time      = act?.time          ?? '';
+  const drive     = act?.drive         ? true : false;
+  const booking   = act?.bookingStatus ?? '';
+
+  const row = document.createElement('div');
+  row.className   = 'act-row';
+  row.dataset.idx = idx;
+  row.innerHTML = `
+    <div class="act-move-btns">
+      <button class="act-move-btn" onclick="moveQuickActivityRow(this,-1)" title="Move up">▲</button>
+      <button class="act-move-btn" onclick="moveQuickActivityRow(this,1)"  title="Move down">▼</button>
+    </div>
+    <button class="act-emoji-btn" onclick="openQuickEmojiPicker(${idx})" title="Change emoji">${emoji}</button>
+    <div class="act-main">
+      <input class="act-text-input" placeholder="Activity name">
+      <div class="act-sub">
+        <input class="act-time-input" placeholder="e.g. 3pm">
+        <button class="act-drive-btn${drive ? ' active' : ''}" data-drive="${drive}" title="Driving">🚗</button>
+        <select class="act-booking-select">
+          <option value="">Status</option>
+          ${BOOKING_STATUSES.map(s => `<option value="${s.key}">${s.emoji} ${s.label}</option>`).join('')}
+        </select>
+        <button class="act-delete-btn" onclick="removeQuickActivityRow(this)" title="Remove">✕</button>
+      </div>
+    </div>`;
+
+  row.querySelector('.act-text-input').value       = text;
+  row.querySelector('.act-time-input').value       = time;
+  row.querySelector('.act-booking-select').value   = booking;
+
+  const driveBtn = row.querySelector('.act-drive-btn');
+  driveBtn.addEventListener('click', function() {
+    const active = this.dataset.drive === 'true';
+    this.dataset.drive = active ? 'false' : 'true';
+    this.classList.toggle('active', !active);
+  });
+
+  const timeInput = row.querySelector('.act-time-input');
+  function validateQuickTime() {
+    const val = timeInput.value.trim();
+    let hint = timeInput.nextElementSibling;
+    if (hint && hint.classList.contains('act-time-hint')) hint.remove();
+    if (val && !/am|pm/i.test(val)) {
+      timeInput.style.borderColor = 'var(--terracotta)';
+      const h = document.createElement('div');
+      h.className = 'act-time-hint';
+      h.style.cssText = 'font-size:10px;color:var(--terracotta);margin-top:2px;';
+      h.textContent = 'Include am/pm (e.g. 3pm)';
+      timeInput.parentNode.insertBefore(h, timeInput.nextSibling);
+    } else {
+      timeInput.style.borderColor = '';
+    }
+  }
+  timeInput.addEventListener('blur',  validateQuickTime);
+  timeInput.addEventListener('input', validateQuickTime);
+
+  container.appendChild(row);
+};
+
+function reindexQuickRows() {
+  document.querySelectorAll('#quickActivityRows .act-row').forEach((r, i) => {
+    r.dataset.idx = i;
+    r.querySelector('.act-emoji-btn').setAttribute('onclick', `openQuickEmojiPicker(${i})`);
+  });
+}
+
+window.moveQuickActivityRow = function(btn, dir) {
+  const row = btn.closest('.act-row');
+  const container = document.getElementById('quickActivityRows');
+  if (dir === -1 && row.previousElementSibling) {
+    container.insertBefore(row, row.previousElementSibling);
+  } else if (dir === 1 && row.nextElementSibling) {
+    container.insertBefore(row.nextElementSibling, row);
+  }
+  reindexQuickRows();
+  btn.blur();
+};
+
+window.removeQuickActivityRow = function(btn) {
+  btn.closest('.act-row').remove();
+  reindexQuickRows();
+};
+
+window.openQuickEmojiPicker = function(idx) {
+  const rows = document.querySelectorAll('#quickActivityRows .act-row');
+  const row  = rows[idx];
+  if (!row) return;
+  emojiTargetBtn = row.querySelector('.act-emoji-btn');
+
+  if (!isMobile) {
+    const current = emojiTargetBtn.textContent.trim();
+    const result  = prompt('Type or paste an emoji:', current);
+    if (result) {
+      let first = result;
+      try {
+        const segs = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(result)];
+        if (segs.length) first = segs[0].segment;
+      } catch(e) { first = [...result][0] || result[0]; }
+      emojiTargetBtn.textContent = first;
+    }
+    emojiTargetBtn = null;
+    return;
+  }
+
+  const sessionId = ++_emojiSession;
+  const input = document.getElementById('nativeEmojiInput');
+  input.value = '';
+
+  function onInput() {
+    if (_emojiSession !== sessionId) return;
+    input.removeEventListener('input', onInput);
+    input.removeEventListener('blur',  onBlur);
+    const raw = input.value;
+    if (raw && emojiTargetBtn) {
+      let first = raw;
+      try {
+        const segs = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(raw)];
+        if (segs.length) first = segs[0].segment;
+      } catch(e) { first = [...raw][0] || raw[0]; }
+      emojiTargetBtn.textContent = first;
+    }
+    emojiTargetBtn = null;
+    input.value = '';
+    input.blur();
+  }
+  function onBlur() {
+    setTimeout(function() {
+      if (_emojiSession !== sessionId) return;
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('blur',  onBlur);
+      emojiTargetBtn = null;
+    }, 150);
+  }
+  input.addEventListener('input', onInput);
+  input.addEventListener('blur',  onBlur);
+  input.focus();
+};
+
+window.saveQuickActivityEdit = async function() {
+  if (!quickEditingTripId || !quickEditingDayId) return;
+
+  for (const ti of document.querySelectorAll('#quickActivityRows .act-time-input')) {
+    const v = ti.value.trim();
+    if (v && !/am|pm/i.test(v)) {
+      showToast('Include am/pm in times — e.g. 3pm or 10am–2pm');
+      ti.focus();
+      return;
+    }
+  }
+
+  const existing    = allTrips[quickEditingTripId].days[quickEditingDayId];
+  const rows        = document.querySelectorAll('#quickActivityRows .act-row');
+  const existingActs = existing.activities
+    ? (Array.isArray(existing.activities) ? existing.activities : Object.values(existing.activities))
+    : [];
+
+  const existingByText = new Map(existingActs.map(a =>
+    [typeof a === 'object' ? (a.text || '') : String(a), a]
+  ));
+  const genKey = () => Math.random().toString(36).slice(2, 8);
+  const newTexts = new Set(
+    Array.from(rows).map(r => r.querySelector('.act-text-input').value.trim()).filter(t => t)
+  );
+
+  const activities = Array.from(rows).map((row, i) => {
+    const emoji         = row.querySelector('.act-emoji-btn').textContent.trim();
+    const text          = row.querySelector('.act-text-input').value.trim();
+    const time          = row.querySelector('.act-time-input').value.trim();
+    const drive         = row.querySelector('.act-drive-btn').dataset.drive === 'true';
+    const bookingStatus = row.querySelector('.act-booking-select').value;
+
+    const existActByText = existingByText.get(text);
+    const posAct         = existingActs[i];
+    const posActText     = posAct ? (typeof posAct === 'object' ? (posAct.text || '') : String(posAct)) : '';
+    const existAct       = existActByText || (posActText && !newTexts.has(posActText) ? posAct : null);
+    const coords         = (existActByText || posAct)?.coords;
+    const michelin       = (existActByText || posAct)?.michelin;
+    const key            = existAct?.key || genKey();
+
+    return {
+      emoji: emoji || '📍', text, time, key,
+      ...(drive         && { drive: true }),
+      ...(bookingStatus && { bookingStatus }),
+      ...(coords        && { coords }),
+      ...(michelin      && { michelin: true }),
+    };
+  }).filter(a => a.text);
+
+  const indexToKey = new Map();
+  activities.forEach(act => {
+    const oldAct = existingByText.get(act.text);
+    if (oldAct && !oldAct.key) {
+      const oldIdx = existingActs.indexOf(oldAct);
+      if (oldIdx !== -1) indexToKey.set(String(oldIdx), act.key);
+    }
+  });
+  let notes = existing.notes ? JSON.parse(JSON.stringify(existing.notes)) : {};
+  for (const [oldIdx, newKey] of indexToKey) {
+    if (notes[oldIdx] && oldIdx !== newKey) {
+      notes[newKey] = notes[oldIdx];
+      delete notes[oldIdx];
+    }
+  }
+
+  const dayData = {
+    dateNum:     existing.dateNum     ?? null,
+    dateMonth:   existing.dateMonth   ?? null,
+    dateISO:     existing.dateISO     ?? null,
+    dayName:     existing.dayName     ?? null,
+    city:        existing.city        ?? null,
+    description: existing.description ?? null,
+    hotel:       existing.hotel       ?? null,
+    region:      existing.region      ?? null,
+    regionColor: existing.regionColor ?? '#c06a3d',
+    sortOrder:   existing.sortOrder   ?? 0,
+    activities,
+    notes: Object.keys(notes).length ? notes : null,
+    ...(existing.dailySpend  != null && { dailySpend:  existing.dailySpend  }),
+    ...(existing.spendLog    != null && { spendLog:    existing.spendLog    }),
+    ...(existing.flightInfo  != null && { flightInfo:  existing.flightInfo  }),
+    ...(existing.regionDates != null && { regionDates: existing.regionDates }),
+  };
+
+  await window._set(
+    window._ref(window._db, `trips/${quickEditingTripId}/days/${quickEditingDayId}`),
+    dayData
+  );
+
+  const city     = dayData.description || dayData.city || dayData.dayName || '';
+  const actLabel = a => (a.emoji ? a.emoji + ' ' : '') + a.text + (a.time ? ' · ' + a.time : '');
+  const oldSet   = new Map(existingActs.map(a => {
+    const t = typeof a === 'object' ? (a.text || '') : String(a);
+    return [t, a];
+  }));
+  const newSet = new Map(activities.map(a => [a.text, a]));
+  for (const [txt, a] of newSet) {
+    if (!oldSet.has(txt)) logChange(quickEditingTripId, 'Activity added', actLabel(a) + (city ? ' · ' + city : ''));
+  }
+  for (const [txt, a] of oldSet) {
+    if (!newSet.has(txt)) logChange(quickEditingTripId, 'Activity removed', actLabel(a) + (city ? ' · ' + city : ''));
+  }
+
+  closeQuickActivityModalDirect();
+  showToast('Activities saved! ✓');
+};
+
+window.closeQuickActivityModal = function(e) {
+  if (e.target.id === 'quickActivityModal') closeQuickActivityModalDirect();
+};
+window.closeQuickActivityModalDirect = function() {
+  document.getElementById('quickActivityModal').classList.remove('open');
+  quickEditingTripId = null;
+  quickEditingDayId  = null;
 };
 
 function _rebuildSpendBadge(dayId) {
