@@ -1946,7 +1946,7 @@ function getTripProgress(t) {
   if (t.status !== 'active') return null;
   const days = t.days ? Object.values(t.days) : [];
   if (!days.length) return null;
-  const totalNights = days.length;
+  const totalNights = Math.max(0, days.length - 1);
   const todayStr = new Date().toISOString().slice(0, 10);
   const moMap = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
   function dayISO(d) {
@@ -2227,7 +2227,8 @@ function renderTripItinerary(trip) {
 
     const cardId = 'dc-'+dayId;
     const _canEdit = canEditCurrentTrip();
-    const spendBadge = (_canEdit || day.dailySpend != null) ? (
+    const isErik = currentUser?.email === 'erikchardin@gmail.com';
+    const spendBadge = isErik && (_canEdit || day.dailySpend != null) ? (
       '<div class="spend-badge" id="spend-' + dayId + '">' +
       '<span>💰</span>' +
       '<span class="spend-badge-label">Daily spend</span>' +
@@ -2591,7 +2592,7 @@ async function renderTripOverview(trip) {
   const panel = document.getElementById('tripOverviewPanel');
   const days = trip.days ? Object.entries(trip.days) : [];
   const dayVals = days.map(([,d]) => d);
-  const nights = dayVals.length;
+  const nights = Math.max(0, dayVals.length - 1);
   const hotels = [...new Set(dayVals.map(d=>d.hotel).filter(Boolean))];
   const regions = [...new Set(dayVals.map(d=>d.region).filter(Boolean))];
 
@@ -6023,7 +6024,8 @@ async function _renderLogisticsInner(tripId, panel) {
       }
     }
   }
-  var spendSummaryHTML = hasSpend
+  const _isErik = currentUser?.email === 'erikchardin@gmail.com';
+  var spendSummaryHTML = _isErik && hasSpend
     ? '<div class="logistics-section" style="padding-top:0;padding-bottom:0;">' +
         '<div class="logistics-section-title" style="padding:0 0 10px;">Trip Spend</div>' +
         '<div class="logistics-card" style="padding:14px 16px;">' +
