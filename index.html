@@ -1745,13 +1745,22 @@ const BOOKING_STATUSES = [
 ];
 
 function renderAppName() {
+  const isGuest = userRole === 'guest';
+  const displayName = isGuest ? `${adminUser}'s` : appName;
+
   const loginLogo = document.querySelector('.login-logo');
-  if (loginLogo) loginLogo.innerHTML = `<em>${appName}</em> Trips`;
+  if (loginLogo) loginLogo.innerHTML = `<em>${displayName}</em> Trips`;
   const homeLogo = document.querySelector('.home-logo');
-  if (homeLogo) homeLogo.innerHTML = `<em>${appName}</em> Trips`;
-  document.title = `${appName} Trips`;
+  if (homeLogo) homeLogo.innerHTML = `<em>${displayName}</em> Trips`;
+  const headerMain = document.querySelector('#screen-home .header-main');
+  if (headerMain) headerMain.innerHTML = `<span><em>${displayName}</em></span> Trips`;
+  document.title = `${displayName} Trips`;
+
   const input = document.getElementById('appNameInput');
   if (input) input.value = appName;
+
+  const worldMapBtn = document.querySelector('button[onclick="showWorldMap()"]');
+  if (worldMapBtn) worldMapBtn.style.display = isGuest ? 'none' : '';
 }
 
 // ════════════════════════════════════════
@@ -1791,6 +1800,7 @@ function setupAuth() {
       userRole = access.role;
       adminUser = access.name || user.displayName || user.email;
       guestTripIds = access.trips ? Object.keys(access.trips) : [];
+      renderAppName();
       document.getElementById('lockBtn').style.display = '';
       document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
       initApp();
