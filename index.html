@@ -1420,6 +1420,11 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
         </select>
         <label class="form-label">Currency Symbol</label>
         <input class="form-input" id="editTripCurrency" placeholder="€  $ £ ¥ …">
+        <label class="form-label" style="margin-top:8px;">World Map</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+          <input type="checkbox" id="editTripIncludeInWorldMap" style="width:16px;height:16px;accent-color:var(--terracotta);">
+          <span style="font-size:14px;color:var(--ink);">Show on world map</span>
+        </label>
       </div>
     </div>
 
@@ -4415,6 +4420,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   document.getElementById('editTripEmoji').value = trip.emoji || '';
   document.getElementById('editTripStatus').value = trip.status || 'upcoming';
   document.getElementById('editTripCurrency').value = trip.currency || '';
+  document.getElementById('editTripIncludeInWorldMap').checked = trip.includeInWorldMap !== false;
   // Parse existing trip-level flight strings into chip arrays
   _editFlightsOut = (trip.flightOut || '').split('\n').filter(Boolean)
     .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '' }));
@@ -4458,6 +4464,7 @@ window.saveEditedTrip = async function() {
     emoji: document.getElementById('editTripEmoji').value.trim() || '✈️',
     status: document.getElementById('editTripStatus').value,
     currency: document.getElementById('editTripCurrency').value.trim(),
+    includeInWorldMap: document.getElementById('editTripIncludeInWorldMap').checked,
     flightOutDate:    _editFlightsOut[0]?.date || '',
     flightOut:        _editFlightsOut.map(f => f.formatted).join('\n'),
     flightOutNames:   _editFlightsOut.map(f => f.travelerName || ''),
@@ -8126,7 +8133,8 @@ async function initWorldMap() {
   const seenCities = new Set();
   const toLoad = [];
 
-  Object.values(allTrips).forEach(trip => {
+  const includedTrips = Object.values(allTrips).filter(t => t.includeInWorldMap !== false);
+  includedTrips.forEach(trip => {
     const color = tripColors[tripIdx++ % tripColors.length];
     const days = trip.days ? Object.values(trip.days) : [];
     days.forEach(day => {
@@ -8147,7 +8155,7 @@ async function initWorldMap() {
   el.innerHTML = '';
 
   const statsEl = document.getElementById('worldMapStats');
-  if (statsEl) statsEl.innerHTML = `<span>📍 <strong>${points.length}</strong> cities</span><span>✈️ <strong>${Object.keys(allTrips).length}</strong> trips</span>`;
+  if (statsEl) statsEl.innerHTML = `<span>📍 <strong>${points.length}</strong> cities</span><span>✈️ <strong>${includedTrips.length}</strong> trips</span>`;
 
   if (!points.length) return;
 
