@@ -1733,7 +1733,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 219 };
+window.BUILD_INFO = { prNumber: 220 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4783,10 +4783,18 @@ function renderEditDaysList(trip) {
 
 window.addNewDay = async function() {
   if (!editingTripId) return;
-  const days = allTrips[editingTripId].days || {};
+  const trip = allTrips[editingTripId];
+  const days = trip.days || {};
   const sortOrder = Object.keys(days).length;
+  // Auto-populate the next sequential date from the last dated day
+  let dateNum='', dateMonth='', dateISO='', dayName='';
+  const sorted = Object.values(days).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const iso = _sdGetISO(sorted[i], trip.year);
+    if (iso) { const nd = _sdShiftDate(iso, 1); dateNum=nd.dateNum; dateMonth=nd.dateMonth; dateISO=nd.dateISO; dayName=nd.dayName; break; }
+  }
   const newRef = window._push(window._ref(window._db, `trips/${editingTripId}/days`));
-  await window._set(newRef, { dateNum:'', dateMonth:'', dayName:'', city:'', description:'', hotel:'', region:'', regionColor:'#c06a3d', activities:[], sortOrder });
+  await window._set(newRef, { dateNum, dateMonth, dayName, dateISO, city:'', description:'', hotel:'', region:'', regionColor:'#c06a3d', activities:[], sortOrder });
   showToast('New day added — tap Edit to fill it in');
 };
 
@@ -4913,10 +4921,23 @@ window.applyShiftDays = async function() {
     updates[`trips/${editingTripId}/days/${dayId}/dayName`]   = nd.dayName;
   }
 
-  // Completely blank the last N days
-  for (const [dayId, day] of daysToBlank) {
+  // Completely blank the last N days, but pre-fill the next sequential date
+  // so the user can see when the day falls without hunting for it
+  let blankBaseISO = null;
+  if (daysToShift.length) {
+    const lastShifted = daysToShift[daysToShift.length - 1][1];
+    const lastIso = updates[`trips/${editingTripId}/days/${daysToShift[daysToShift.length-1][0]}/dateISO`]
+                  || _sdGetISO(lastShifted, trip.year);
+    blankBaseISO = lastIso;
+  } else if (daysToDelete.length) {
+    blankBaseISO = _sdGetISO(daysToDelete[0][1], trip.year);
+  }
+  for (let i = 0; i < daysToBlank.length; i++) {
+    const [dayId, day] = daysToBlank[i];
+    let nd = { dateNum:'', dateMonth:'', dateISO:'', dayName:'' };
+    if (blankBaseISO) { const r = _sdShiftDate(blankBaseISO, i + 1); nd = r; }
     updates[`trips/${editingTripId}/days/${dayId}`] = {
-      dateNum:'', dateMonth:'', dateISO:'', dayName:'',
+      ...nd,
       city:'', description:'', hotel:'',
       region:'', regionColor:'#c06a3d', regionDates:'',
       activities:[], notes:null, flightInfo:null,
