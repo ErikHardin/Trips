@@ -9,6 +9,18 @@
         }
       }
     },
+    "avatarUrls": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "geocache": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+    },
+    "config": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
     "access": {
       ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
       "$emailKey": {
@@ -18,10 +30,6 @@
           ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
         }
       }
-    },
-    "geocache": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
     }
   }
 }
