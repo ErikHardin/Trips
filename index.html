@@ -1455,6 +1455,9 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       <div style="padding:0 0 8px;">
         <button class="form-btn secondary" onclick="addNewDay()">＋ Add Day</button>
       </div>
+      <div style="padding:4px 0 8px;">
+        <button class="form-btn secondary" onclick="openShiftDaysModal()">⇄ Shift Days</button>
+      </div>
       <div style="padding:8px 0 0;">
         <button class="form-btn secondary" style="font-size:12px;opacity:0.7;" onclick="repairActivityKeys(editingTripId)">🔧 Repair duplicate memory keys</button>
       </div>
@@ -1471,6 +1474,28 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     <div id="upcomingTripModalBody" style="font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.6;"></div>
     <button class="form-btn" onclick="confirmUpcomingAdd()">Yes, add to upcoming trips</button>
     <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissUpcomingModal()">No, just save to settings</button>
+  </div>
+</div>
+
+<!-- ══ SHIFT DAYS MODAL ══ -->
+<div class="modal-overlay" id="shiftDaysModal" onclick="closeShiftDaysModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Shift Days</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5;">
+      Shift all days from a point onward to earlier dates. The day(s) before the start get deleted, and the last day(s) of the trip become completely empty.
+    </p>
+    <label class="form-label">Shift all days starting from</label>
+    <select id="shiftStartDay" class="form-input" style="margin-bottom:14px;" onchange="updateShiftPreview()"></select>
+    <label class="form-label">Shift back by (nights)</label>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <button class="form-btn secondary" style="padding:8px 14px;font-size:18px;line-height:1;" onclick="adjustShiftAmount(-1)">−</button>
+      <input id="shiftAmount" type="number" class="form-input" value="1" min="1" style="text-align:center;flex:1;" oninput="updateShiftPreview()">
+      <button class="form-btn secondary" style="padding:8px 14px;font-size:18px;line-height:1;" onclick="adjustShiftAmount(1)">+</button>
+    </div>
+    <div id="shiftPreview" style="font-size:13px;color:var(--muted);margin-bottom:20px;padding:10px 12px;background:var(--sand);border-radius:8px;line-height:1.6;"></div>
+    <button class="form-btn" onclick="applyShiftDays()">Apply Shift</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeShiftDaysModal()">Cancel</button>
   </div>
 </div>
 
@@ -4763,6 +4788,178 @@ window.addNewDay = async function() {
   const newRef = window._push(window._ref(window._db, `trips/${editingTripId}/days`));
   await window._set(newRef, { dateNum:'', dateMonth:'', dayName:'', city:'', description:'', hotel:'', region:'', regionColor:'#c06a3d', activities:[], sortOrder });
   showToast('New day added — tap Edit to fill it in');
+};
+
+// ── Shift Days ────────────────────────────────────────────────────────────────
+
+const _SD_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const _SD_MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const _SD_MONTH_NUM = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12,
+  January:1,February:2,March:3,April:4,June:6,July:7,August:8,September:9,October:10,November:11,December:12};
+
+function _sdGetISO(day, tripYear) {
+  if (day.dateISO) return day.dateISO;
+  const m = _SD_MONTH_NUM[day.dateMonth?.slice(0,3)];
+  if (m && day.dateNum && tripYear)
+    return tripYear + '-' + String(m).padStart(2,'0') + '-' + String(+day.dateNum).padStart(2,'0');
+  return null;
+}
+
+function _sdShiftDate(iso, delta) {
+  const dt = new Date(iso + 'T00:00:00');
+  dt.setDate(dt.getDate() + delta);
+  return {
+    dateISO:   dt.toISOString().slice(0,10),
+    dateNum:   String(dt.getDate()),
+    dateMonth: _SD_MONTH_NAMES[dt.getMonth()],
+    dayName:   dt.toLocaleDateString('en-US', {weekday:'long'})
+  };
+}
+
+function _sdFormatRegionDates(firstISO, lastISO) {
+  const a = new Date(firstISO + 'T00:00:00'), b = new Date(lastISO + 'T00:00:00');
+  const aShort = _SD_MONTH_SHORT[a.getMonth()], bShort = _SD_MONTH_SHORT[b.getMonth()];
+  if (a.getMonth() === b.getMonth())
+    return aShort + ' ' + a.getDate() + '–' + b.getDate();
+  return aShort + ' ' + a.getDate() + '–' + bShort + ' ' + b.getDate();
+}
+
+function _sdSortedDays() {
+  const trip = allTrips[editingTripId];
+  return Object.entries(trip.days || {}).sort((a,b)=>(a[1].sortOrder||0)-(b[1].sortOrder||0));
+}
+
+window.openShiftDaysModal = function() {
+  if (!editingTripId) return;
+  const days = _sdSortedDays();
+  const sel = document.getElementById('shiftStartDay');
+  const trip = allTrips[editingTripId];
+  sel.innerHTML = days.map(([id, d]) => {
+    const label = [d.dateNum && (d.dateNum + ' ' + (d.dateMonth||'')), d.description||d.city].filter(Boolean).join(' – ');
+    return `<option value="${id}">${label}</option>`;
+  }).join('');
+  document.getElementById('shiftAmount').value = '1';
+  updateShiftPreview();
+  document.getElementById('shiftDaysModal').style.display = 'flex';
+};
+
+window.closeShiftDaysModal = function(event) {
+  if (event && event.target !== document.getElementById('shiftDaysModal')) return;
+  document.getElementById('shiftDaysModal').style.display = 'none';
+};
+
+window.adjustShiftAmount = function(delta) {
+  const inp = document.getElementById('shiftAmount');
+  inp.value = Math.max(1, (parseInt(inp.value)||1) + delta);
+  updateShiftPreview();
+};
+
+window.updateShiftPreview = function() {
+  const trip = allTrips[editingTripId];
+  const days = _sdSortedDays();
+  const startId = document.getElementById('shiftStartDay').value;
+  const N = Math.max(1, parseInt(document.getElementById('shiftAmount').value)||1);
+  const startIdx = days.findIndex(([id])=>id===startId);
+  const preview = document.getElementById('shiftPreview');
+  if (startIdx < 0 || !trip) { preview.textContent = ''; return; }
+
+  const deleteDays = days.slice(Math.max(0, startIdx - N), startIdx);
+  const shiftDays  = days.slice(startIdx, Math.max(startIdx, days.length - N));
+  const blankDays  = days.slice(Math.max(startIdx, days.length - N));
+
+  const deleteNames = deleteDays.map(([,d]) => {
+    return [d.dateNum && (d.dateNum + ' ' + (d.dateMonth||'')), d.description||d.city].filter(Boolean).join(' – ');
+  });
+  const blankNames = blankDays.map(([,d]) => {
+    return [d.dateNum && (d.dateNum + ' ' + (d.dateMonth||'')), d.description||d.city].filter(Boolean).join(' – ');
+  });
+
+  let html = '';
+  if (deleteNames.length) html += `<b>Deleted:</b> ${deleteNames.join(', ')}<br>`;
+  if (shiftDays.length) html += `<b>Shifted:</b> ${shiftDays.length} day${shiftDays.length!==1?'s':''} move ${N} night${N!==1?'s':''} earlier<br>`;
+  if (blankNames.length) html += `<b>Cleared:</b> ${blankNames.join(', ')} (becomes empty)`;
+  if (deleteDays.length < N) html += `<br><span style="color:#b94a4a;">Not enough days before start — ${deleteDays.length} of ${N} can be deleted.</span>`;
+  preview.innerHTML = html || 'Select a start day.';
+};
+
+window.applyShiftDays = async function() {
+  if (!editingTripId) return;
+  const trip = allTrips[editingTripId];
+  const days = _sdSortedDays();
+  const startId = document.getElementById('shiftStartDay').value;
+  const N = Math.max(1, parseInt(document.getElementById('shiftAmount').value)||1);
+  const startIdx = days.findIndex(([id])=>id===startId);
+  if (startIdx < 0) return;
+
+  const daysToDelete = days.slice(Math.max(0, startIdx - N), startIdx);
+  const daysToShift  = days.slice(startIdx, Math.max(startIdx, days.length - N));
+  const daysToBlank  = days.slice(Math.max(startIdx, days.length - N));
+
+  const updates = {};
+
+  // Delete boundary days
+  for (const [dayId] of daysToDelete) {
+    updates[`trips/${editingTripId}/days/${dayId}`] = null;
+  }
+
+  // Shift dates (content stays)
+  for (const [dayId, day] of daysToShift) {
+    const iso = _sdGetISO(day, trip.year);
+    if (!iso) continue;
+    const nd = _sdShiftDate(iso, -N);
+    updates[`trips/${editingTripId}/days/${dayId}/dateISO`]   = nd.dateISO;
+    updates[`trips/${editingTripId}/days/${dayId}/dateNum`]   = nd.dateNum;
+    updates[`trips/${editingTripId}/days/${dayId}/dateMonth`] = nd.dateMonth;
+    updates[`trips/${editingTripId}/days/${dayId}/dayName`]   = nd.dayName;
+  }
+
+  // Completely blank the last N days
+  for (const [dayId, day] of daysToBlank) {
+    updates[`trips/${editingTripId}/days/${dayId}`] = {
+      dateNum:'', dateMonth:'', dateISO:'', dayName:'',
+      city:'', description:'', hotel:'',
+      region:'', regionColor:'#c06a3d', regionDates:'',
+      activities:[], notes:null, flightInfo:null,
+      dailySpend:null, spendLog:null,
+      sortOrder: day.sortOrder ?? 0
+    };
+  }
+
+  // Recalculate regionDates for regions that have shifted days
+  // Build a map of region -> all days after applying shifts (excluding deleted/blanked)
+  const deletedIds = new Set(daysToDelete.map(([id])=>id));
+  const blankIds   = new Set(daysToBlank.map(([id])=>id));
+  const regionMap  = {}; // region -> [{dayId, newISO}]
+
+  for (const [dayId, day] of days) {
+    if (deletedIds.has(dayId) || blankIds.has(dayId)) continue;
+    const isShifted = daysToShift.some(([id])=>id===dayId);
+    let iso = isShifted ? (updates[`trips/${editingTripId}/days/${dayId}/dateISO`] || _sdGetISO(day, trip.year)) : _sdGetISO(day, trip.year);
+    if (!iso || !day.region) continue;
+    if (!regionMap[day.region]) regionMap[day.region] = [];
+    regionMap[day.region].push({dayId, iso, day, isShifted});
+  }
+
+  // Only update regionDates for regions that contain at least one shifted day
+  for (const [region, entries] of Object.entries(regionMap)) {
+    const hasShifted = entries.some(e=>e.isShifted);
+    if (!hasShifted) continue;
+    entries.sort((a,b)=>a.iso.localeCompare(b.iso));
+    const firstISO = entries[0].iso, lastISO = entries[entries.length-1].iso;
+    const rdStr = _sdFormatRegionDates(firstISO, lastISO);
+    // Find the first day of this region (lowest sortOrder among its entries)
+    const firstDayEntry = entries[0];
+    updates[`trips/${editingTripId}/days/${firstDayEntry.dayId}/regionDates`] = rdStr;
+    // Clear regionDates from other days in this region that have it set (to avoid stale values)
+    for (const e of entries.slice(1)) {
+      if (e.day.regionDates) updates[`trips/${editingTripId}/days/${e.dayId}/regionDates`] = '';
+    }
+  }
+
+  await window._update(window._ref(window._db, '/'), updates);
+  const shifted = daysToShift.length, removed = daysToDelete.length;
+  showToast(`Shifted ${shifted} day${shifted!==1?'s':''}, removed ${removed} day${removed!==1?'s':''} ✓`);
+  document.getElementById('shiftDaysModal').style.display = 'none';
 };
 
 window.openEditDay = function(dayId) {
