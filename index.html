@@ -2240,15 +2240,28 @@ function renderTripItinerary(trip) {
   const days = trip.days ? Object.entries(trip.days) : [];
   days.sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0));
 
+  // Compute region date ranges from actual day data so headers are always populated
+  const _regionDatesMap = {};
+  days.forEach(([, d]) => {
+    if (!d.region || !d.dateISO) return;
+    if (!_regionDatesMap[d.region]) _regionDatesMap[d.region] = { first: d.dateISO, last: d.dateISO };
+    else {
+      if (d.dateISO < _regionDatesMap[d.region].first) _regionDatesMap[d.region].first = d.dateISO;
+      if (d.dateISO > _regionDatesMap[d.region].last)  _regionDatesMap[d.region].last  = d.dateISO;
+    }
+  });
+
   let currentRegion = null;
   days.forEach(([dayId, day]) => {
     if (day.region && day.region !== currentRegion) {
       currentRegion = day.region;
+      const _rd = _regionDatesMap[day.region];
+      const _rdStr = day.regionDates || (_rd ? _sdFormatRegionDates(_rd.first, _rd.last) : '');
       panel.innerHTML += `
         <div class="region-header">
           <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
           <div class="region-name-text">${day.region}</div>
-          <div class="region-nights">${day.regionDates||''}</div>
+          <div class="region-nights">${_rdStr}</div>
         </div>`;
     }
 
@@ -2843,15 +2856,26 @@ async function renderTripOverview(trip) {
     const sortedForItinerary = (trip.days ? Object.entries(trip.days) : [])
       .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
     if (sortedForItinerary.length) {
+      const _shareRegionDatesMap = {};
+      sortedForItinerary.forEach(([, d]) => {
+        if (!d.region || !d.dateISO) return;
+        if (!_shareRegionDatesMap[d.region]) _shareRegionDatesMap[d.region] = { first: d.dateISO, last: d.dateISO };
+        else {
+          if (d.dateISO < _shareRegionDatesMap[d.region].first) _shareRegionDatesMap[d.region].first = d.dateISO;
+          if (d.dateISO > _shareRegionDatesMap[d.region].last)  _shareRegionDatesMap[d.region].last  = d.dateISO;
+        }
+      });
       let shareRegion = null;
       const dayCardsHTML = sortedForItinerary.map(([dayId, day]) => {
           let regionHeader = '';
           if (day.region && day.region !== shareRegion) {
             shareRegion = day.region;
+            const _srd = _shareRegionDatesMap[day.region];
+            const _srdStr = day.regionDates || (_srd ? _sdFormatRegionDates(_srd.first, _srd.last) : '');
             regionHeader = `<div class="region-header">
               <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
               <div class="region-name-text">${escHtml(day.region)}</div>
-              <div class="region-nights">${day.regionDates||''}</div>
+              <div class="region-nights">${_srdStr}</div>
             </div>`;
           }
           const loc = day.description || day.city || '';
