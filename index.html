@@ -1795,10 +1795,15 @@ function setupAuth() {
   window._onAuthStateChanged(window._auth, async (user) => {
     if (!user) {
       currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
-      document.documentElement.style.visibility = '';
-      showScreen('screen-login');
-      document.getElementById('loginError').style.display = 'none';
-      document.getElementById('loginSignOutBtn').style.display = 'none';
+      const tripId = new URLSearchParams(window.location.search).get('trip');
+      if (tripId) {
+        initUnauthenticatedShareView(tripId);
+      } else {
+        document.documentElement.style.visibility = '';
+        showScreen('screen-login');
+        document.getElementById('loginError').style.display = 'none';
+        document.getElementById('loginSignOutBtn').style.display = 'none';
+      }
       return;
     }
     currentUser = user;
@@ -1875,6 +1880,24 @@ function checkShareLink() {
     goHome();
   }
   document.documentElement.style.visibility = '';
+}
+
+async function initUnauthenticatedShareView(tripId) {
+  if (!window._db) { setTimeout(() => initUnauthenticatedShareView(tripId), 200); return; }
+  try {
+    const snap = await window._get(window._ref(window._db, `trips/${tripId}`));
+    if (snap.val()) {
+      allTrips[tripId] = snap.val();
+      checkShareLink();
+      return;
+    }
+  } catch(e) {
+    console.warn('Share link fetch failed:', e);
+  }
+  document.documentElement.style.visibility = '';
+  showScreen('screen-login');
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginSignOutBtn').style.display = 'none';
 }
 
 function autoOpenActiveTrip() {
