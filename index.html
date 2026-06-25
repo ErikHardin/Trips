@@ -592,6 +592,14 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .travel-year-chev.open { transform: rotate(90deg); }
 .travel-year-body { display: none; }
+.travel-past-section { border-top: 2px solid var(--sand); }
+.travel-past-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer; user-select: none;
+  background: var(--cream); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted);
+}
+.travel-past-header:hover { background: var(--sand); }
 .travel-col-header {
   display: flex; align-items: center; padding: 5px 16px 4px;
   border-bottom: 1px solid var(--sand); background: white;
@@ -605,7 +613,14 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .travel-col-header-del { width: 30px; }
 /* Two-row card: name spans full width, dates+statuses on second row */
 .travel-trip-card {
-  padding: 9px 16px; border-bottom: 1px solid var(--sand); background: white;
+  padding: 9px 16px 9px 13px; border-bottom: 1px solid var(--sand); background: white;
+  border-left: 3px solid transparent;
+}
+.travel-trip-card.complete {
+  border-left-color: #5a8a5a; background: #f8fbf8;
+}
+.travel-trip-card.outstanding {
+  border-left-color: #d9805a;
 }
 .travel-trip-name {
   font-size: 13px; font-weight: 500; color: var(--ink);
@@ -1858,7 +1873,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 225 };
+window.BUILD_INFO = { prNumber: 226 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -9041,33 +9056,69 @@ window.initTravelTracker = function() {
 window.renderTravelTracker = function() {
   const el = document.getElementById('travelTrackerContent');
   if (!el) return;
-  el.innerHTML = '<div id="travelYearsContainer"></div><div id="travelIdeasContainer"></div>';
+  el.innerHTML = '<div id="travelCurrentContainer"></div><div id="travelIdeasContainer"></div><div id="travelPastContainer"></div>';
   renderTravelYears();
   renderTravelIdeasSection();
 };
 
 function renderTravelYears() {
-  const el = document.getElementById('travelYearsContainer');
-  if (!el) return;
-  const years = Object.keys(travelTrackerData).filter(y => y !== 'undefined').sort((a, b) => b - a);
+  const curEl = document.getElementById('travelCurrentContainer');
+  const pastEl = document.getElementById('travelPastContainer');
+  if (!curEl) return;
+
+  const thisYear = new Date().getFullYear();
+  const years = Object.keys(travelTrackerData).filter(y => y !== 'undefined').map(Number).sort((a, b) => b - a);
+
   if (!years.length) {
-    el.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--muted);">No travel data yet.</div>';
+    curEl.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--muted);">No travel data yet.</div>';
+    if (pastEl) pastEl.innerHTML = '';
     return;
   }
-  let html = '';
-  years.forEach((year, i) => {
-    const yData = travelTrackerData[year] || {};
-    const trips = yData.trips || {};
-    const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
-    if (!tripArr.length && i > 0) return; // skip past empty years (but keep current)
-    html += renderTravelYearBlock(year, tripArr, i === 0);
+
+  // Current + future years (>= this calendar year)
+  const curYears = years.filter(y => y >= thisYear);
+  // Past years with at least one trip
+  const pastYears = years.filter(y => {
+    if (y >= thisYear) return false;
+    const trips = (travelTrackerData[String(y)] && travelTrackerData[String(y)].trips) || {};
+    return Object.keys(trips).length > 0;
   });
-  html += `
+
+  let curHtml = '';
+  curYears.forEach((year, i) => {
+    const yStr = String(year);
+    const trips = (travelTrackerData[yStr] && travelTrackerData[yStr].trips) || {};
+    const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+    curHtml += renderTravelYearBlock(yStr, tripArr, i === 0);
+  });
+  curHtml += `
     <div class="travel-add-year-row">
       <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Year (e.g. 2027)" style="width:150px;">
       <button class="travel-add-btn" onclick="addTravelYear()">+ Add Year</button>
     </div>`;
-  el.innerHTML = html;
+  curEl.innerHTML = curHtml;
+
+  if (pastEl) {
+    if (pastYears.length) {
+      let pastInner = '';
+      pastYears.forEach(year => {
+        const yStr = String(year);
+        const trips = (travelTrackerData[yStr] && travelTrackerData[yStr].trips) || {};
+        const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+        pastInner += renderTravelYearBlock(yStr, tripArr, false);
+      });
+      pastEl.innerHTML = `
+        <div class="travel-past-section">
+          <div class="travel-past-header" onclick="toggleTravelPast()">
+            <span>Past Trips</span>
+            <span class="travel-year-chev" id="travelPastChev">›</span>
+          </div>
+          <div id="travelPastBody" style="display:none;">${pastInner}</div>
+        </div>`;
+    } else {
+      pastEl.innerHTML = '';
+    }
+  }
 }
 
 function renderTravelYearBlock(year, tripArr, open) {
@@ -9119,11 +9170,13 @@ function renderTravelRow(year, id, t) {
     const lbl = v === 'booked' ? '✓' : v === 'na' ? 'N/A' : '–';
     return `<button class="travel-status-btn${cls}" onclick="cycleTravelStatus('${year}','${id}','${field}',this)">${lbl}</button>`;
   }
+  const allFilled = ['flights','hotel','car'].every(f => { const v = t[f]||''; return v === 'booked' || v === 'na'; });
+  const cardCls = 'travel-trip-card' + (allFilled ? ' complete' : ' outstanding');
   const datesEl = t.dates
     ? `<span class="travel-trip-dates-text" onclick="editTravelField('${year}','${id}','dates',this)">${escHtml(t.dates)}</span>`
     : `<span class="travel-trip-dates-hint" onclick="editTravelField('${year}','${id}','dates',this)">Add dates…</span>`;
   return `
-    <div class="travel-trip-card" id="travelRow_${year}_${id}">
+    <div class="${cardCls}" id="travelRow_${year}_${id}">
       <span class="travel-trip-name" onclick="editTravelField('${year}','${id}','name',this)">${escHtml(t.name||'')}</span>
       <div class="travel-trip-row2">
         ${datesEl}
@@ -9200,6 +9253,15 @@ window.toggleTravelYear = function(year) {
   if (chev) chev.classList.toggle('open', opening);
 };
 
+window.toggleTravelPast = function() {
+  const body = document.getElementById('travelPastBody');
+  const chev = document.getElementById('travelPastChev');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.classList.toggle('open', opening);
+};
+
 window.cycleTravelStatus = function(year, tripId, field, btn) {
   const trips = travelTrackerData[year] && travelTrackerData[year].trips;
   if (!trips || !trips[tripId]) return;
@@ -9209,6 +9271,13 @@ window.cycleTravelStatus = function(year, tripId, field, btn) {
   window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: next});
   btn.textContent = next === 'booked' ? '✓' : next === 'na' ? 'N/A' : '–';
   btn.className = 'travel-status-btn' + (next === 'booked' ? ' booked' : next === 'na' ? ' na' : '');
+  const card = document.getElementById(`travelRow_${year}_${tripId}`);
+  if (card) {
+    const t = trips[tripId];
+    const allFilled = ['flights','hotel','car'].every(f => { const v = t[f]||''; return v === 'booked' || v === 'na'; });
+    card.classList.toggle('complete', allFilled);
+    card.classList.toggle('outstanding', !allFilled);
+  }
 };
 
 window.addTravelTrip = function(year) {
@@ -9230,6 +9299,8 @@ window.addTravelTrip = function(year) {
 };
 
 window.deleteTravelTrip = function(year, tripId) {
+  const name = (travelTrackerData[year] && travelTrackerData[year].trips && travelTrackerData[year].trips[tripId] && travelTrackerData[year].trips[tripId].name) || 'this trip';
+  if (!confirm(`Delete "${name}"?`)) return;
   window._remove(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`));
   if (travelTrackerData[year] && travelTrackerData[year].trips) {
     delete travelTrackerData[year].trips[tripId];
