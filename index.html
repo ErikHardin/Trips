@@ -597,24 +597,30 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   border-bottom: 1px solid var(--sand); background: white;
 }
 .travel-col-header-spacer { flex: 1; }
-.travel-col-header-labels { display: flex; gap: 2px; padding-right: 28px; }
+.travel-col-header-labels { display: flex; gap: 2px; }
 .travel-col-header-label {
   width: 46px; font-size: 10px; text-align: center; text-transform: uppercase;
   letter-spacing: 1px; color: var(--muted); font-weight: 600;
 }
+.travel-col-header-del { width: 30px; }
+/* Two-row card: name spans full width, dates+statuses on second row */
 .travel-trip-card {
-  display: flex; align-items: center; padding: 9px 16px; gap: 8px;
-  border-bottom: 1px solid var(--sand); background: white;
+  padding: 9px 16px; border-bottom: 1px solid var(--sand); background: white;
 }
-.travel-trip-info { flex: 1; min-width: 0; }
 .travel-trip-name {
   font-size: 13px; font-weight: 500; color: var(--ink);
-  white-space: normal; word-break: break-word; line-height: 1.35;
+  line-height: 1.35; cursor: text; display: block;
 }
-.travel-trip-dates { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.travel-trip-name:hover { color: var(--terracotta); }
+.travel-trip-row2 { display: flex; align-items: center; margin-top: 3px; }
+.travel-trip-dates-text {
+  flex: 1; font-size: 11px; color: var(--muted); cursor: text;
+}
+.travel-trip-dates-text:hover { color: var(--terracotta); }
+.travel-trip-dates-hint { flex: 1; font-size: 11px; color: #ccc; cursor: text; font-style: italic; }
 .travel-trip-statuses { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .travel-status-btn {
-  background: none; border: none; cursor: pointer; font-size: 13px; padding: 5px 2px;
+  background: none; border: none; cursor: pointer; font-size: 13px; padding: 4px 2px;
   border-radius: 4px; width: 46px; text-align: center; color: var(--muted);
   transition: background 0.15s; font-family: inherit; line-height: 1;
 }
@@ -623,9 +629,17 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .travel-status-btn.na { color: var(--muted); font-size: 11px; letter-spacing: 0.02em; }
 .travel-del-btn {
   background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 18px; padding: 2px 4px; line-height: 1; flex-shrink: 0;
+  font-size: 18px; padding: 2px 4px; line-height: 1; flex-shrink: 0; width: 30px; text-align: center;
 }
 .travel-del-btn:hover { color: var(--terracotta); }
+.travel-inline-edit {
+  font-size: 13px; font-weight: 500; font-family: inherit; color: var(--ink);
+  border: none; border-bottom: 1.5px solid var(--terracotta); background: transparent;
+  outline: none; width: 100%; padding: 0; line-height: 1.35;
+}
+.travel-inline-edit.dates {
+  font-size: 11px; font-weight: 400; color: var(--muted);
+}
 .travel-add-row {
   display: flex; gap: 6px; padding: 10px 16px; background: var(--cream);
 }
@@ -1844,7 +1858,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 224 };
+window.BUILD_INFO = { prNumber: 225 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -9069,6 +9083,7 @@ function renderTravelYearBlock(year, tripArr, open) {
         <div class="travel-col-header-label">Hotel</div>
         <div class="travel-col-header-label">Car</div>
       </div>
+      <div class="travel-col-header-del"></div>
     </div>`;
 
   if (tripCount) {
@@ -9104,15 +9119,18 @@ function renderTravelRow(year, id, t) {
     const lbl = v === 'booked' ? '✓' : v === 'na' ? 'N/A' : '–';
     return `<button class="travel-status-btn${cls}" onclick="cycleTravelStatus('${year}','${id}','${field}',this)">${lbl}</button>`;
   }
+  const datesEl = t.dates
+    ? `<span class="travel-trip-dates-text" onclick="editTravelField('${year}','${id}','dates',this)">${escHtml(t.dates)}</span>`
+    : `<span class="travel-trip-dates-hint" onclick="editTravelField('${year}','${id}','dates',this)">Add dates…</span>`;
   return `
     <div class="travel-trip-card" id="travelRow_${year}_${id}">
-      <div class="travel-trip-info">
-        <div class="travel-trip-name">${escHtml(t.name||'')}</div>
-        ${t.dates ? `<div class="travel-trip-dates">${escHtml(t.dates)}</div>` : ''}
-      </div>
-      <div class="travel-trip-statuses">
-        ${statusBtn('flights')}${statusBtn('hotel')}${statusBtn('car')}
-        <button class="travel-del-btn" onclick="deleteTravelTrip('${year}','${id}')">×</button>
+      <span class="travel-trip-name" onclick="editTravelField('${year}','${id}','name',this)">${escHtml(t.name||'')}</span>
+      <div class="travel-trip-row2">
+        ${datesEl}
+        <div class="travel-trip-statuses">
+          ${statusBtn('flights')}${statusBtn('hotel')}${statusBtn('car')}
+          <button class="travel-del-btn" onclick="deleteTravelTrip('${year}','${id}')">×</button>
+        </div>
       </div>
     </div>`;
 }
@@ -9271,6 +9289,33 @@ function rerenderTravelYear(year) {
   tmp.innerHTML = renderTravelYearBlock(year, tripArr, wasOpen);
   block.replaceWith(tmp.firstElementChild);
 }
+
+window.editTravelField = function(year, tripId, field, el) {
+  const currentVal = (travelTrackerData[year] && travelTrackerData[year].trips &&
+    travelTrackerData[year].trips[tripId] && travelTrackerData[year].trips[tripId][field]) || '';
+  const isName = field === 'name';
+  const input = document.createElement('input');
+  input.className = 'travel-inline-edit' + (isName ? '' : ' dates');
+  input.value = currentVal;
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const save = () => {
+    const newVal = input.value.trim();
+    if (!travelTrackerData[year]) travelTrackerData[year] = {trips:{}, ideas:{}};
+    if (!travelTrackerData[year].trips) travelTrackerData[year].trips = {};
+    if (!travelTrackerData[year].trips[tripId]) return;
+    travelTrackerData[year].trips[tripId][field] = newVal;
+    window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: newVal});
+    rerenderTravelYear(year);
+  };
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { rerenderTravelYear(year); }
+  });
+};
 
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
