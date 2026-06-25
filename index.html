@@ -669,8 +669,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .travel-add-btn:hover { opacity: 0.85; }
 .travel-add-year-row {
-  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
-  border-top: 1px solid var(--sand); background: var(--cream);
+  display: flex; align-items: center; gap: 8px; padding: 10px 0;
 }
 .travel-ideas-section {
   border-top: 2px solid var(--sand);
@@ -1873,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 227 };
+window.BUILD_INFO = { prNumber: 228 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -9115,11 +9114,6 @@ function renderTravelYears() {
     const tripArr = sortTripEntries(Object.entries(trips));
     curHtml += renderTravelYearBlock(yStr, tripArr, i === 0);
   });
-  curHtml += `
-    <div class="travel-add-year-row">
-      <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Year (e.g. 2027)" style="width:150px;">
-      <button class="travel-add-btn" onclick="addTravelYear()">+ Add Year</button>
-    </div>`;
   curEl.innerHTML = curHtml;
 
   if (pastEl) {
@@ -9129,7 +9123,7 @@ function renderTravelYears() {
         const yStr = String(year);
         const trips = (travelTrackerData[yStr] && travelTrackerData[yStr].trips) || {};
         const tripArr = sortTripEntries(Object.entries(trips));
-        pastInner += renderTravelYearBlock(yStr, tripArr, false);
+        pastInner += renderTravelYearBlock(yStr, tripArr, false, false);
       });
       pastEl.innerHTML = `
         <div class="travel-past-section">
@@ -9145,7 +9139,7 @@ function renderTravelYears() {
   }
 }
 
-function renderTravelYearBlock(year, tripArr, open) {
+function renderTravelYearBlock(year, tripArr, open, showAddForm = true) {
   const tripCount = tripArr.length;
   const bodyDisplay = open ? 'block' : 'none';
   const chevClass = open ? 'travel-year-chev open' : 'travel-year-chev';
@@ -9167,12 +9161,14 @@ function renderTravelYearBlock(year, tripArr, open) {
     body += `<div style="padding:12px 16px;font-size:12px;color:var(--muted);">No trips yet.</div>`;
   }
 
-  body += `
-    <div class="travel-add-row">
-      <input class="travel-add-input" id="travelAddName_${year}" placeholder="Trip name" style="flex:1;">
-      <input class="travel-add-input" id="travelAddDates_${year}" placeholder="Dates" style="width:110px;">
-      <button class="travel-add-btn" onclick="addTravelTrip('${year}')">+ Add</button>
-    </div>`;
+  if (showAddForm) {
+    body += `
+      <div class="travel-add-row">
+        <input class="travel-add-input" id="travelAddName_${year}" placeholder="Trip name" style="flex:1;">
+        <input class="travel-add-input" id="travelAddDates_${year}" placeholder="Dates" style="width:110px;">
+        <button class="travel-add-btn" onclick="addTravelTrip('${year}')">+ Add</button>
+      </div>`;
+  }
 
   return `
     <div class="travel-year-block" id="travelYearBlock_${year}">
@@ -9216,15 +9212,8 @@ function renderTravelIdeasSection() {
   const el = document.getElementById('travelIdeasContainer');
   if (!el) return;
 
-  // Determine ideas year: default to max trip year + 1
   if (!travelIdeasYear) {
-    const tripYears = Object.keys(travelTrackerData)
-      .filter(y => {
-        const d = travelTrackerData[y];
-        return d && d.trips && Object.keys(d.trips).length > 0;
-      })
-      .map(Number).sort((a, b) => b - a);
-    travelIdeasYear = tripYears.length ? String(tripYears[0] + 1) : String(new Date().getFullYear() + 1);
+    travelIdeasYear = String(new Date().getFullYear());
   }
 
   const yr = travelIdeasYear;
@@ -9242,22 +9231,34 @@ function renderTravelIdeasSection() {
   });
   if (!rows) rows = `<div style="font-size:12px;color:var(--muted);padding:4px 0 8px;">No ideas yet.</div>`;
 
+  const ideasBodyOpen = document.getElementById('travelIdeasBody') && document.getElementById('travelIdeasBody').style.display !== 'none';
+
   el.innerHTML = `
     <div class="travel-ideas-section">
-      <div class="travel-ideas-inner">
-        <div class="travel-ideas-header">
-          <div class="travel-ideas-title">Ideas for ${yr}</div>
-          <div class="travel-ideas-year-nav">
-            <button class="travel-year-nav-btn" onclick="switchIdeasYear(-1)">‹</button>
-            <span class="travel-ideas-year-label">${yr}</span>
-            <button class="travel-year-nav-btn" onclick="switchIdeasYear(1)">›</button>
+      <div class="travel-past-header" onclick="toggleTravelIdeas()">
+        <span>Trip Ideas</span>
+        <span class="travel-year-chev${ideasBodyOpen ? ' open' : ''}" id="travelIdeasChev">›</span>
+      </div>
+      <div id="travelIdeasBody" style="display:${ideasBodyOpen ? 'block' : 'none'};">
+        <div class="travel-ideas-inner">
+          <div class="travel-ideas-header">
+            <div class="travel-ideas-title">Ideas for ${yr}</div>
+            <div class="travel-ideas-year-nav">
+              <button class="travel-year-nav-btn" onclick="switchIdeasYear(-1)">‹</button>
+              <span class="travel-ideas-year-label">${yr}</span>
+              <button class="travel-year-nav-btn" onclick="switchIdeasYear(1)">›</button>
+            </div>
           </div>
-        </div>
-        ${rows}
-        <div style="display:flex;gap:6px;margin-top:10px;">
-          <input class="travel-add-input" id="travelAddIdeaInput" placeholder="Add an idea…"
-            style="flex:1;" onkeydown="if(event.key==='Enter')addTravelIdea()">
-          <button class="travel-add-btn" onclick="addTravelIdea()">Add</button>
+          ${rows}
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            <input class="travel-add-input" id="travelAddIdeaInput" placeholder="Add an idea…"
+              style="flex:1;" onkeydown="if(event.key==='Enter')addTravelIdea()">
+            <button class="travel-add-btn" onclick="addTravelIdea()">Add</button>
+          </div>
+          <div class="travel-add-year-row" style="margin-top:14px;padding-left:0;padding-right:0;border-top:1px solid var(--sand);">
+            <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Add a year (e.g. 2027)" style="flex:1;">
+            <button class="travel-add-btn" onclick="addTravelYear()">+ Add Year</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -9280,6 +9281,15 @@ window.toggleTravelYear = function(year) {
 window.toggleTravelPast = function() {
   const body = document.getElementById('travelPastBody');
   const chev = document.getElementById('travelPastChev');
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.classList.toggle('open', opening);
+};
+
+window.toggleTravelIdeas = function() {
+  const body = document.getElementById('travelIdeasBody');
+  const chev = document.getElementById('travelIdeasChev');
   if (!body) return;
   const opening = body.style.display === 'none';
   body.style.display = opening ? 'block' : 'none';
@@ -9380,8 +9390,9 @@ function rerenderTravelYear(year) {
   const trips = yData.trips || {};
   const tripArr = sortTripEntries(Object.entries(trips));
   const wasOpen = (document.getElementById('travelYearBody_' + year) || {}).style.display !== 'none';
+  const isPast = parseInt(year) < new Date().getFullYear();
   const tmp = document.createElement('div');
-  tmp.innerHTML = renderTravelYearBlock(year, tripArr, wasOpen);
+  tmp.innerHTML = renderTravelYearBlock(year, tripArr, wasOpen, !isPast);
   block.replaceWith(tmp.firstElementChild);
 }
 
