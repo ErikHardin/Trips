@@ -18,6 +18,10 @@
       ".read": "auth != null",
       ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
     },
+    "travelTracker": {
+      ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
+      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+    },
     "config": {
       ".read": "auth != null",
       ".write": "auth != null"
