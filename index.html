@@ -592,6 +592,14 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .travel-year-chev.open { transform: rotate(90deg); }
 .travel-year-body { display: none; }
+.travel-past-section { border-top: 2px solid var(--sand); }
+.travel-past-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer; user-select: none;
+  background: var(--cream); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted);
+}
+.travel-past-header:hover { background: var(--sand); }
 .travel-col-header {
   display: flex; align-items: center; padding: 5px 16px 4px;
   border-bottom: 1px solid var(--sand); background: white;
@@ -9048,33 +9056,69 @@ window.initTravelTracker = function() {
 window.renderTravelTracker = function() {
   const el = document.getElementById('travelTrackerContent');
   if (!el) return;
-  el.innerHTML = '<div id="travelYearsContainer"></div><div id="travelIdeasContainer"></div>';
+  el.innerHTML = '<div id="travelCurrentContainer"></div><div id="travelIdeasContainer"></div><div id="travelPastContainer"></div>';
   renderTravelYears();
   renderTravelIdeasSection();
 };
 
 function renderTravelYears() {
-  const el = document.getElementById('travelYearsContainer');
-  if (!el) return;
-  const years = Object.keys(travelTrackerData).filter(y => y !== 'undefined').sort((a, b) => b - a);
+  const curEl = document.getElementById('travelCurrentContainer');
+  const pastEl = document.getElementById('travelPastContainer');
+  if (!curEl) return;
+
+  const thisYear = new Date().getFullYear();
+  const years = Object.keys(travelTrackerData).filter(y => y !== 'undefined').map(Number).sort((a, b) => b - a);
+
   if (!years.length) {
-    el.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--muted);">No travel data yet.</div>';
+    curEl.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--muted);">No travel data yet.</div>';
+    if (pastEl) pastEl.innerHTML = '';
     return;
   }
-  let html = '';
-  years.forEach((year, i) => {
-    const yData = travelTrackerData[year] || {};
-    const trips = yData.trips || {};
-    const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
-    if (!tripArr.length && i > 0) return; // skip past empty years (but keep current)
-    html += renderTravelYearBlock(year, tripArr, i === 0);
+
+  // Current + future years (>= this calendar year)
+  const curYears = years.filter(y => y >= thisYear);
+  // Past years with at least one trip
+  const pastYears = years.filter(y => {
+    if (y >= thisYear) return false;
+    const trips = (travelTrackerData[String(y)] && travelTrackerData[String(y)].trips) || {};
+    return Object.keys(trips).length > 0;
   });
-  html += `
+
+  let curHtml = '';
+  curYears.forEach((year, i) => {
+    const yStr = String(year);
+    const trips = (travelTrackerData[yStr] && travelTrackerData[yStr].trips) || {};
+    const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+    curHtml += renderTravelYearBlock(yStr, tripArr, i === 0);
+  });
+  curHtml += `
     <div class="travel-add-year-row">
       <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Year (e.g. 2027)" style="width:150px;">
       <button class="travel-add-btn" onclick="addTravelYear()">+ Add Year</button>
     </div>`;
-  el.innerHTML = html;
+  curEl.innerHTML = curHtml;
+
+  if (pastEl) {
+    if (pastYears.length) {
+      let pastInner = '';
+      pastYears.forEach(year => {
+        const yStr = String(year);
+        const trips = (travelTrackerData[yStr] && travelTrackerData[yStr].trips) || {};
+        const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+        pastInner += renderTravelYearBlock(yStr, tripArr, false);
+      });
+      pastEl.innerHTML = `
+        <div class="travel-past-section">
+          <div class="travel-past-header" onclick="toggleTravelPast()">
+            <span>Past Trips</span>
+            <span class="travel-year-chev" id="travelPastChev">›</span>
+          </div>
+          <div id="travelPastBody" style="display:none;">${pastInner}</div>
+        </div>`;
+    } else {
+      pastEl.innerHTML = '';
+    }
+  }
 }
 
 function renderTravelYearBlock(year, tripArr, open) {
@@ -9203,6 +9247,15 @@ window.switchIdeasYear = function(delta) {
 window.toggleTravelYear = function(year) {
   const body = document.getElementById('travelYearBody_' + year);
   const chev = document.getElementById('travelYearChev_' + year);
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.classList.toggle('open', opening);
+};
+
+window.toggleTravelPast = function() {
+  const body = document.getElementById('travelPastBody');
+  const chev = document.getElementById('travelPastChev');
   if (!body) return;
   const opening = body.style.display === 'none';
   body.style.display = opening ? 'block' : 'none';
