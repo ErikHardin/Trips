@@ -571,6 +571,94 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .admin-collapsible-chev.open { transform: rotate(90deg); }
 
+/* ── TRAVEL TRACKER ── */
+.travel-year-block { border-bottom: 1px solid var(--sand); }
+.travel-year-block:last-child { border-bottom: none; }
+.travel-year-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer; user-select: none;
+  background: var(--cream);
+}
+.travel-year-header:hover { background: var(--sand); }
+.travel-year-label {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 18px; font-weight: 600; font-style: italic; color: var(--ink);
+}
+.travel-year-count {
+  font-size: 11px; color: var(--muted); margin-left: 8px; letter-spacing: 0.02em;
+}
+.travel-year-chev {
+  font-size: 12px; color: var(--muted); transition: transform 0.2s;
+}
+.travel-year-chev.open { transform: rotate(90deg); }
+.travel-year-body { display: none; }
+.travel-table {
+  display: grid;
+  grid-template-columns: 2fr 1.6fr 1fr 1fr 1fr 28px;
+  width: 100%;
+}
+.travel-th {
+  font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); padding: 6px 8px 6px 0; border-bottom: 1px solid var(--sand);
+}
+.travel-th:first-child { padding-left: 16px; }
+.travel-th.center, .travel-td.center { text-align: center; }
+.travel-td {
+  font-size: 13px; color: var(--ink); padding: 8px 4px;
+  border-bottom: 1px solid var(--sand); display: flex; align-items: center;
+}
+.travel-td:first-child { padding-left: 16px; }
+.travel-td.trip-name { font-weight: 500; }
+.travel-td.dates { font-size: 11px; color: var(--muted); }
+.travel-status-btn {
+  background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px;
+  border-radius: 4px; width: 100%; text-align: center; color: var(--muted);
+  transition: background 0.15s;
+}
+.travel-status-btn:hover { background: var(--sand); }
+.travel-status-btn.booked { color: #5a8a5a; font-size: 16px; }
+.travel-status-btn.na { color: var(--muted); font-size: 12px; }
+.travel-del-btn {
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: 16px; padding: 2px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.travel-del-btn:hover { color: var(--terracotta); }
+.travel-add-row {
+  display: grid; grid-template-columns: 2fr 1.6fr auto;
+  gap: 6px; padding: 10px 16px; background: var(--cream);
+}
+.travel-add-input {
+  font-size: 13px; padding: 6px 10px; border: 1px solid var(--sand);
+  border-radius: 6px; background: white; color: var(--ink); font-family: inherit;
+}
+.travel-add-btn {
+  font-size: 12px; padding: 6px 12px; background: var(--terracotta);
+  color: white; border: none; border-radius: 6px; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-weight: 500; white-space: nowrap;
+}
+.travel-add-btn:hover { opacity: 0.85; }
+.travel-ideas-section { padding: 14px 16px 16px; border-top: 2px solid var(--sand); }
+.travel-ideas-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 10px;
+}
+.travel-idea-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0; border-bottom: 1px solid var(--sand); font-size: 13px;
+}
+.travel-idea-row:last-of-type { border-bottom: none; }
+.travel-seed-btn {
+  margin: 12px 16px; font-size: 13px; padding: 10px 16px;
+  background: var(--sand); color: var(--ink); border: 1px solid #d4c9b8;
+  border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+  font-weight: 500; display: block; width: calc(100% - 32px); text-align: center;
+}
+.travel-seed-btn:hover { background: #e8dfd2; }
+.travel-add-year-row {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-top: 1px solid var(--sand);
+}
+
 /* ── COLOR SWATCHES ── */
 .color-swatch {
   width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
@@ -1269,6 +1357,19 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
 
+    <!-- TRAVEL FOR TRIPS -->
+    <div class="admin-section">
+      <div class="admin-panel" style="overflow:hidden;">
+        <div class="admin-panel-header" id="travelTrackerHeader" onclick="toggleAdminSection('travelTracker')">
+          <div class="admin-section-title">Travel for Trips</div>
+          <span class="admin-panel-toggle" id="travelTrackerToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="travelTrackerBody" style="display:none;padding:0;">
+          <div id="travelTrackerContent"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- UTILITIES GROUP -->
     <div class="admin-group-header">Utilities</div>
 
@@ -1733,7 +1834,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 222 };
+window.BUILD_INFO = { prNumber: 223 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -7168,6 +7269,9 @@ window.toggleAdminSection = function(sectionId) {
   if (sectionId === 'packingSection' && opening && masterPackingList === null) {
     loadMasterPackingList();
   }
+  if (sectionId === 'travelTracker' && opening) {
+    initTravelTracker();
+  }
 };
 
 window.toggleTripGroup = function(groupId) {
@@ -8881,6 +8985,527 @@ window.cancelAIChange = function() {
   document.getElementById('aiPreview').style.display = 'none';
   pendingAIChanges = null;
   showToast('Cancelled');
+};
+
+// ══════════════════════════════════════════════════════════════
+// TRAVEL TRACKER
+// ══════════════════════════════════════════════════════════════
+
+let travelTrackerData = {};
+let travelTrackerLoaded = false;
+
+window.initTravelTracker = function() {
+  if (travelTrackerLoaded) return;
+  const el = document.getElementById('travelTrackerContent');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px;">Loading…</div>';
+  window._get(window._ref(window._db, 'travelTracker')).then(snap => {
+    const raw = snap.val();
+    if (!raw) {
+      el.innerHTML = `
+        <div style="padding:16px;text-align:center;">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">No travel data yet.</div>
+          <button class="travel-seed-btn" onclick="seedTravelData()">📥 Load Historical Data (2016–2026)</button>
+        </div>`;
+      return;
+    }
+    travelTrackerData = raw;
+    travelTrackerLoaded = true;
+    renderTravelTracker();
+  }).catch(e => {
+    el.innerHTML = `<div style="padding:16px;color:var(--terracotta);font-size:13px;">Error loading data: ${e.message}</div>`;
+  });
+};
+
+window.renderTravelTracker = function() {
+  const el = document.getElementById('travelTrackerContent');
+  if (!el) return;
+  const years = Object.keys(travelTrackerData).filter(y => y !== 'undefined').sort((a, b) => b - a);
+  if (!years.length) {
+    el.innerHTML = `
+      <div style="padding:16px;text-align:center;">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">No travel data yet.</div>
+        <button class="travel-seed-btn" onclick="seedTravelData()">📥 Load Historical Data (2016–2026)</button>
+      </div>`;
+    return;
+  }
+
+  // Separate idea-only years (no trips) to use as the ideas section
+  const tripYears = years.filter(y => {
+    const d = travelTrackerData[y];
+    return d && (d.trips && Object.keys(d.trips).length > 0 || !d.ideas || Object.keys(d.ideas || {}).length === 0);
+  });
+  // Find ideas years (years with ideas)
+  const ideaYears = years.filter(y => {
+    const d = travelTrackerData[y];
+    return d && d.ideas && Object.keys(d.ideas).length > 0;
+  });
+
+  let html = '';
+  years.forEach((year, i) => {
+    const yData = travelTrackerData[year] || {};
+    const trips = yData.trips || {};
+    const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+    const ideas = yData.ideas || {};
+    const ideaArr = Object.entries(ideas);
+    const hasTrips = tripArr.length > 0;
+    const hasIdeas = ideaArr.length > 0;
+
+    if (!hasTrips && !hasIdeas) return; // skip empty years
+
+    const open = i === 0; // latest year open by default
+    html += renderTravelYearBlock(year, tripArr, ideaArr, open);
+  });
+
+  // Add-year row
+  html += `
+    <div class="travel-add-year-row">
+      <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Year (e.g. 2027)" style="width:140px;">
+      <button class="travel-add-btn" onclick="addTravelYear()">+ Add Year</button>
+    </div>`;
+
+  el.innerHTML = html;
+};
+
+function renderTravelYearBlock(year, tripArr, ideaArr, open) {
+  const tripCount = tripArr.length;
+  const bodyDisplay = open ? 'block' : 'none';
+  const chevClass = open ? 'travel-year-chev open' : 'travel-year-chev';
+
+  let tableHtml = `
+    <div class="travel-table" style="padding:0 16px;">
+      <div class="travel-th">Trip</div>
+      <div class="travel-th">Dates</div>
+      <div class="travel-th center">Flights</div>
+      <div class="travel-th center">Hotel</div>
+      <div class="travel-th center">Car</div>
+      <div class="travel-th"></div>
+    </div>`;
+
+  tripArr.forEach(([id, t]) => {
+    tableHtml += renderTravelRow(year, id, t);
+  });
+
+  if (!tripCount) {
+    tableHtml += `<div style="padding:12px 16px;font-size:12px;color:var(--muted);">No trips yet.</div>`;
+  }
+
+  // Add-trip row
+  tableHtml += `
+    <div class="travel-add-row">
+      <input class="travel-add-input" id="travelAddName_${year}" placeholder="Trip name">
+      <input class="travel-add-input" id="travelAddDates_${year}" placeholder="Dates">
+      <button class="travel-add-btn" onclick="addTravelTrip('${year}')">+ Add</button>
+    </div>`;
+
+  // Ideas section inside year block
+  let ideasHtml = '';
+  {
+    const ideasYear = parseInt(year) + 1;
+    ideasHtml = `
+      <div class="travel-ideas-section">
+        <div class="travel-ideas-title">Ideas for ${ideasYear}</div>`;
+    ideaArr.forEach(([id, idea]) => {
+      const text = typeof idea === 'string' ? idea : idea.text || '';
+      ideasHtml += `
+        <div class="travel-idea-row">
+          <span style="font-size:13px;">${escHtml(text)}</span>
+          <button class="travel-del-btn" onclick="deleteTravelIdea('${year}','${id}')">×</button>
+        </div>`;
+    });
+    ideasHtml += `
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input class="travel-add-input" id="travelAddIdea_${year}" placeholder="Add idea…" style="flex:1;" onkeydown="if(event.key==='Enter')addTravelIdea('${year}')">
+          <button class="travel-add-btn" onclick="addTravelIdea('${year}')">Add</button>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="travel-year-block" id="travelYearBlock_${year}">
+      <div class="travel-year-header" onclick="toggleTravelYear('${year}')">
+        <div style="display:flex;align-items:baseline;gap:6px;">
+          <span class="travel-year-label">${year}</span>
+          <span class="travel-year-count">${tripCount} trip${tripCount !== 1 ? 's' : ''}</span>
+        </div>
+        <span class="${chevClass}" id="travelYearChev_${year}">›</span>
+      </div>
+      <div class="travel-year-body" id="travelYearBody_${year}" style="display:${bodyDisplay};">
+        ${tableHtml}
+        ${ideasHtml}
+      </div>
+    </div>`;
+}
+
+function renderTravelRow(year, id, t) {
+  function statusBtn(field) {
+    const v = t[field] || '';
+    const cls = v === 'booked' ? ' booked' : v === 'na' ? ' na' : '';
+    const lbl = v === 'booked' ? '✓' : v === 'na' ? 'N/A' : '–';
+    return `<button class="travel-status-btn${cls}" onclick="cycleTravelStatus('${year}','${id}','${field}',this)">${lbl}</button>`;
+  }
+  return `
+    <div class="travel-table" style="padding:0 16px;" id="travelRow_${year}_${id}">
+      <div class="travel-td trip-name">${escHtml(t.name||'')}</div>
+      <div class="travel-td dates">${escHtml(t.dates||'')}</div>
+      <div class="travel-td center">${statusBtn('flights')}</div>
+      <div class="travel-td center">${statusBtn('hotel')}</div>
+      <div class="travel-td center">${statusBtn('car')}</div>
+      <div class="travel-td center"><button class="travel-del-btn" onclick="deleteTravelTrip('${year}','${id}')">×</button></div>
+    </div>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+window.toggleTravelYear = function(year) {
+  const body = document.getElementById('travelYearBody_' + year);
+  const chev = document.getElementById('travelYearChev_' + year);
+  if (!body) return;
+  const opening = body.style.display === 'none';
+  body.style.display = opening ? 'block' : 'none';
+  if (chev) chev.classList.toggle('open', opening);
+};
+
+window.cycleTravelStatus = function(year, tripId, field, btn) {
+  const trips = travelTrackerData[year] && travelTrackerData[year].trips;
+  if (!trips || !trips[tripId]) return;
+  const cur = trips[tripId][field] || '';
+  const next = cur === '' ? 'booked' : cur === 'booked' ? 'na' : '';
+  trips[tripId][field] = next;
+  window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: next});
+  btn.textContent = next === 'booked' ? '✓' : next === 'na' ? 'N/A' : '–';
+  btn.className = 'travel-status-btn' + (next === 'booked' ? ' booked' : next === 'na' ? ' na' : '');
+};
+
+window.addTravelTrip = function(year) {
+  const nameEl = document.getElementById('travelAddName_' + year);
+  const datesEl = document.getElementById('travelAddDates_' + year);
+  const name = nameEl && nameEl.value.trim();
+  if (!name) { showToast('Enter a trip name'); return; }
+  const dates = datesEl ? datesEl.value.trim() : '';
+  const existing = travelTrackerData[year] && travelTrackerData[year].trips ? travelTrackerData[year].trips : {};
+  const sortOrder = Object.keys(existing).length;
+  const newTrip = {name, dates, flights: '', hotel: '', car: '', sortOrder};
+  window._push(window._ref(window._db, `travelTracker/${year}/trips`), newTrip).then(ref => {
+    const newId = ref.key;
+    if (!travelTrackerData[year]) travelTrackerData[year] = {trips:{}, ideas:{}};
+    if (!travelTrackerData[year].trips) travelTrackerData[year].trips = {};
+    travelTrackerData[year].trips[newId] = newTrip;
+    rerenderTravelYear(year);
+    showToast('Trip added ✓');
+  });
+};
+
+window.deleteTravelTrip = function(year, tripId) {
+  window._remove(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`));
+  if (travelTrackerData[year] && travelTrackerData[year].trips) {
+    delete travelTrackerData[year].trips[tripId];
+  }
+  rerenderTravelYear(year);
+};
+
+window.addTravelIdea = function(year) {
+  const input = document.getElementById('travelAddIdea_' + year);
+  const text = input && input.value.trim();
+  if (!text) return;
+  const idea = {text, createdAt: Date.now()};
+  window._push(window._ref(window._db, `travelTracker/${year}/ideas`), idea).then(ref => {
+    if (!travelTrackerData[year]) travelTrackerData[year] = {trips:{}, ideas:{}};
+    if (!travelTrackerData[year].ideas) travelTrackerData[year].ideas = {};
+    travelTrackerData[year].ideas[ref.key] = idea;
+    rerenderTravelYear(year);
+  });
+};
+
+window.deleteTravelIdea = function(year, ideaId) {
+  window._remove(window._ref(window._db, `travelTracker/${year}/ideas/${ideaId}`));
+  if (travelTrackerData[year] && travelTrackerData[year].ideas) {
+    delete travelTrackerData[year].ideas[ideaId];
+  }
+  rerenderTravelYear(year);
+};
+
+window.addTravelYear = function() {
+  const input = document.getElementById('travelNewYearInput');
+  const yr = input && input.value.trim();
+  if (!yr || isNaN(yr) || yr.length !== 4) { showToast('Enter a valid 4-digit year'); return; }
+  if (travelTrackerData[yr]) { showToast('Year ' + yr + ' already exists'); return; }
+  travelTrackerData[yr] = {trips: {}, ideas: {}};
+  window._set(window._ref(window._db, `travelTracker/${yr}/trips`), {});
+  renderTravelTracker();
+  // Scroll to new year block
+  setTimeout(() => {
+    const block = document.getElementById('travelYearBlock_' + yr);
+    if (block) block.scrollIntoView({behavior:'smooth', block:'nearest'});
+    const body = document.getElementById('travelYearBody_' + yr);
+    if (body) body.style.display = 'block';
+    const chev = document.getElementById('travelYearChev_' + yr);
+    if (chev) chev.classList.add('open');
+  }, 50);
+};
+
+function rerenderTravelYear(year) {
+  const block = document.getElementById('travelYearBlock_' + year);
+  if (!block) { renderTravelTracker(); return; }
+  const yData = travelTrackerData[year] || {};
+  const trips = yData.trips || {};
+  const tripArr = Object.entries(trips).sort((a, b) => (a[1].sortOrder||0) - (b[1].sortOrder||0));
+  const ideas = yData.ideas || {};
+  const ideaArr = Object.entries(ideas);
+  const wasOpen = document.getElementById('travelYearBody_' + year) &&
+    document.getElementById('travelYearBody_' + year).style.display !== 'none';
+  const newHtml = renderTravelYearBlock(year, tripArr, ideaArr, wasOpen);
+  const tmp = document.createElement('div');
+  tmp.innerHTML = newHtml;
+  block.replaceWith(tmp.firstElementChild);
+}
+
+window.seedTravelData = function() {
+  const el = document.getElementById('travelTrackerContent');
+  if (el) el.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px;">Seeding data…</div>';
+
+  const seed = TRAVEL_SEED_DATA;
+  const updates = {};
+  Object.keys(seed).forEach(year => {
+    const yData = seed[year];
+    if (yData.trips && yData.trips.length) {
+      yData.trips.forEach((trip, i) => {
+        const key = `trip_${i}`;
+        updates[`travelTracker/${year}/trips/${key}`] = {...trip, sortOrder: i};
+      });
+    }
+    if (yData.ideas && yData.ideas.length) {
+      yData.ideas.forEach((idea, i) => {
+        const key = `idea_${i}`;
+        const ideaObj = typeof idea === 'string' ? {text: idea, createdAt: Date.now()} : idea;
+        updates[`travelTracker/${year}/ideas/${key}`] = ideaObj;
+      });
+    }
+  });
+
+  window._update(window._ref(window._db, '/'), updates).then(() => {
+    travelTrackerLoaded = false;
+    travelTrackerData = {};
+    initTravelTracker();
+    showToast('Historical data loaded ✓');
+  }).catch(e => {
+    if (el) el.innerHTML = `<div style="padding:16px;color:var(--terracotta);font-size:13px;">Error: ${e.message}</div>`;
+  });
+};
+
+const TRAVEL_SEED_DATA = {
+  "2016": {
+    "trips": [
+      {"name":"St. Louis","dates":"5/5/16-5/8/16","flights":"booked","hotel":"booked","car":"na","sortOrder":0},
+      {"name":"Omaha","dates":"5/26/16-5/29/16","flights":"booked","hotel":"","car":"booked","sortOrder":1},
+      {"name":"Alaska","dates":"6/1/16-6/12/16","flights":"booked","hotel":"booked","car":"na","sortOrder":2},
+      {"name":"Cincinnati","dates":"6/23/16-6/26/16","flights":"","hotel":"na","car":"","sortOrder":3},
+      {"name":"Maui","dates":"7/21/16-7/24/16","flights":"booked","hotel":"booked","car":"","sortOrder":4},
+      {"name":"Sonoma","dates":"9/1/16-9/4/16","flights":"booked","hotel":"booked","car":"","sortOrder":5},
+      {"name":"Mexico","dates":"TBD","flights":"booked","hotel":"booked","car":"booked","sortOrder":6},
+      {"name":"Cincinnati","dates":"12/21/16-12/26/16","flights":"","hotel":"na","car":"","sortOrder":7},
+      {"name":"New Years Cruise","dates":"12/26/16-1/2/17","flights":"booked","hotel":"","car":"","sortOrder":8}
+    ],
+    "ideas": []
+  },
+  "2017": {
+    "trips": [
+      {"name":"Ireland","dates":"2/15/17-2/22/17","flights":"booked","hotel":"booked","car":"booked","sortOrder":0},
+      {"name":"Omaha","dates":"3/10/17-3/12/17","flights":"booked","hotel":"booked","car":"booked","sortOrder":1},
+      {"name":"Cincinnati","dates":"3/23/17-3/26/17","flights":"booked","hotel":"na","car":"booked","sortOrder":2},
+      {"name":"Cabo","dates":"4/6/17-4/9/17","flights":"booked","hotel":"booked","car":"na","sortOrder":3},
+      {"name":"Portland","dates":"5/4/17-5/7/17","flights":"booked","hotel":"booked","car":"na","sortOrder":4},
+      {"name":"Cincinnati","dates":"6/7/17-6/11/17","flights":"","hotel":"na","car":"","sortOrder":5},
+      {"name":"Telluride","dates":"6/15/17-6/18/17","flights":"na","hotel":"booked","car":"na","sortOrder":6},
+      {"name":"Cruise - Bermuda","dates":"6/21/17-6/26/17","flights":"","hotel":"booked","car":"na","sortOrder":7},
+      {"name":"Costa Rica","dates":"7/1/17-7/8/17","flights":"booked","hotel":"booked","car":"booked","sortOrder":8},
+      {"name":"Maui","dates":"8/24/17-8/27/17","flights":"","hotel":"booked","car":"","sortOrder":9},
+      {"name":"South Africa","dates":"9/20/17-10/7/17","flights":"booked","hotel":"booked","car":"","sortOrder":10},
+      {"name":"Cincinnati","dates":"11/21/17-11/26/17","flights":"","hotel":"na","car":"","sortOrder":11},
+      {"name":"New Years ?","dates":"","flights":"","hotel":"","car":"","sortOrder":12}
+    ],
+    "ideas": []
+  },
+  "2018": {
+    "trips": [
+      {"name":"Sonoma","dates":"1/1/18-1/1/18","flights":"booked","hotel":"booked","car":"booked","sortOrder":0},
+      {"name":"Tampa","dates":"1/18/18-1/21/18","flights":"booked","hotel":"booked","car":"booked","sortOrder":1},
+      {"name":"New York","dates":"2/1/18-2/6/18","flights":"booked","hotel":"booked","car":"na","sortOrder":2},
+      {"name":"Cancun","dates":"2/15/18-2/18/18","flights":"booked","hotel":"booked","car":"na","sortOrder":3},
+      {"name":"Miami","dates":"3/7/18-3/10/18","flights":"","hotel":"","car":"","sortOrder":4},
+      {"name":"Cincinnati","dates":"3/15/18-3/18/18","flights":"","hotel":"","car":"","sortOrder":5},
+      {"name":"Paso Robles","dates":"4/19/18-4/22/18","flights":"","hotel":"","car":"","sortOrder":6},
+      {"name":"Omaha","dates":"5/24/18-5/27/18","flights":"","hotel":"","car":"","sortOrder":7},
+      {"name":"Seattle","dates":"6/8/18-6/10/18","flights":"","hotel":"","car":"","sortOrder":8},
+      {"name":"Cincinnati","dates":"6/28/18-7/1/18","flights":"","hotel":"","car":"","sortOrder":9},
+      {"name":"Maui","dates":"7/26/18-7/29/18","flights":"","hotel":"","car":"","sortOrder":10},
+      {"name":"Las Vegas","dates":"8/2/18-8/5/18","flights":"","hotel":"","car":"","sortOrder":11},
+      {"name":"Santa Barbara","dates":"8/30/18-9/2/18","flights":"","hotel":"","car":"","sortOrder":12},
+      {"name":"South East Asia","dates":"10/22/18-11/12/18","flights":"","hotel":"","car":"","sortOrder":13},
+      {"name":"Cincinnati","dates":"12/21/18-12/26/18","flights":"","hotel":"","car":"","sortOrder":14},
+      {"name":"Cruise","dates":"12/28/18-1/5/19","flights":"","hotel":"","car":"","sortOrder":15}
+    ],
+    "ideas": []
+  },
+  "2019": {
+    "trips": [
+      {"name":"Puerto Vallarta","dates":"2/14/19-2/17/19","flights":"booked","hotel":"booked","car":"na","sortOrder":0},
+      {"name":"Big Island","dates":"3/7/19-3/10/19","flights":"booked","hotel":"booked","car":"booked","sortOrder":1},
+      {"name":"SF/Napa","dates":"3/21/19-3/24/19","flights":"booked","hotel":"booked","car":"booked","sortOrder":2},
+      {"name":"Santiago","dates":"4/19/19-4/22/19","flights":"","hotel":"","car":"","sortOrder":3},
+      {"name":"Cincinnati","dates":"5/9/19-5/12/19","flights":"booked","hotel":"na","car":"","sortOrder":4},
+      {"name":"Omaha","dates":"5/31/19-6/2/19","flights":"booked","hotel":"booked","car":"","sortOrder":5},
+      {"name":"Tahoe","dates":"7/14/19-7/20/19","flights":"","hotel":"na","car":"","sortOrder":6},
+      {"name":"San Diego","dates":"8/1/19-8/4/19","flights":"","hotel":"","car":"","sortOrder":7},
+      {"name":"Cruise - Bahamas","dates":"8/16/19-8/19/19","flights":"","hotel":"","car":"","sortOrder":8},
+      {"name":"France","dates":"9/8/19-9/21/19","flights":"","hotel":"","car":"","sortOrder":9},
+      {"name":"Aspen","dates":"10/19/19-10/20/19","flights":"","hotel":"","car":"","sortOrder":10},
+      {"name":"Maui","dates":"10/31/19-11/3/19","flights":"","hotel":"","car":"","sortOrder":11},
+      {"name":"Cincinnati","dates":"11/24/19-11/29/19","flights":"","hotel":"na","car":"","sortOrder":12},
+      {"name":"Sonoma","dates":"12/19/19-12/22/19","flights":"","hotel":"","car":"","sortOrder":13}
+    ],
+    "ideas": []
+  },
+  "2020": {
+    "trips": [
+      {"name":"London","dates":"2/27/20-3/2/20","flights":"","hotel":"","car":"","sortOrder":0},
+      {"name":"Portland","dates":"6/11/20-6/14/20","flights":"","hotel":"","car":"","sortOrder":1},
+      {"name":"Crested Butte","dates":"7/10/20-7/12/20","flights":"","hotel":"","car":"","sortOrder":2},
+      {"name":"Cabo","dates":"7/23/20-7/26/20","flights":"","hotel":"","car":"","sortOrder":3},
+      {"name":"Santa Barbara","dates":"8/20/20-8/23/20","flights":"","hotel":"","car":"","sortOrder":4},
+      {"name":"Cincinnati","dates":"9/10/20-9/13/20","flights":"","hotel":"","car":"","sortOrder":5},
+      {"name":"Cancun","dates":"10/15/20-10/18/20","flights":"","hotel":"","car":"","sortOrder":6},
+      {"name":"Maine","dates":"10/22/20-10/28/20","flights":"","hotel":"","car":"","sortOrder":7},
+      {"name":"Maui","dates":"12/19/20-12/25/20","flights":"","hotel":"","car":"","sortOrder":8}
+    ],
+    "ideas": []
+  },
+  "2021": {
+    "trips": [
+      {"name":"Paso Robles","dates":"2/25/21-2/28/21","flights":"","hotel":"","car":"","sortOrder":0},
+      {"name":"Dubai/Maldives","dates":"4/1/21-4/12/21","flights":"","hotel":"","car":"","sortOrder":1},
+      {"name":"Cincinnati","dates":"5/7/21-5/12/21","flights":"","hotel":"","car":"","sortOrder":2},
+      {"name":"Zihuatanejo Mexico","dates":"5/26/21-5/29/21","flights":"","hotel":"","car":"","sortOrder":3},
+      {"name":"Omaha","dates":"7/2/21-7/5/21","flights":"","hotel":"","car":"","sortOrder":4},
+      {"name":"Charleston","dates":"7/10/21-7/18/21","flights":"","hotel":"","car":"","sortOrder":5},
+      {"name":"Grand Lake (Megan)","dates":"7/23/21-7/25/21","flights":"","hotel":"","car":"","sortOrder":6},
+      {"name":"Palm Springs (Megan)","dates":"8/5/21-8/8/21","flights":"","hotel":"","car":"","sortOrder":7},
+      {"name":"Boston","dates":"9/3/21-9/5/21","flights":"","hotel":"","car":"","sortOrder":8},
+      {"name":"Napa","dates":"10/14/21-10/17/21","flights":"","hotel":"","car":"","sortOrder":9},
+      {"name":"Breckenridge","dates":"10/21/21-10/23/21","flights":"","hotel":"","car":"","sortOrder":10},
+      {"name":"Kauai","dates":"10/27/21-10/31/21","flights":"","hotel":"","car":"","sortOrder":11},
+      {"name":"Cincinnati","dates":"12/24/21-12/29/21","flights":"","hotel":"","car":"","sortOrder":12},
+      {"name":"Asheville","dates":"12/29/21-1/1/22","flights":"","hotel":"","car":"","sortOrder":13}
+    ],
+    "ideas": []
+  },
+  "2022": {
+    "trips": [
+      {"name":"Salida (Megan)","dates":"1/21/22-1/23/22","flights":"","hotel":"","car":"","sortOrder":0},
+      {"name":"Cabo","dates":"2/11/22-2/14/22","flights":"","hotel":"","car":"","sortOrder":1},
+      {"name":"Maui","dates":"3/23/22-3/27/22","flights":"","hotel":"","car":"","sortOrder":2},
+      {"name":"Paso Robles","dates":"4/7/22-4/10/22","flights":"","hotel":"","car":"","sortOrder":3},
+      {"name":"Scottsdale (Megan)","dates":"5/12/22-5/15/22","flights":"","hotel":"","car":"","sortOrder":4},
+      {"name":"Cruise (Erik & Alex)","dates":"5/20/22-5/29/22","flights":"","hotel":"","car":"","sortOrder":5},
+      {"name":"Omaha","dates":"6/16/22-6/19/22","flights":"","hotel":"","car":"","sortOrder":6},
+      {"name":"Buena Vista","dates":"7/1/22-7/4/22","flights":"","hotel":"","car":"","sortOrder":7},
+      {"name":"Nashville/South Carolina","dates":"7/14/22-7/23/22","flights":"","hotel":"","car":"","sortOrder":8},
+      {"name":"Santa Fe","dates":"7/28/22-7/31/22","flights":"","hotel":"","car":"","sortOrder":9},
+      {"name":"Chile","dates":"9/7/22-9/11/22","flights":"","hotel":"","car":"","sortOrder":10},
+      {"name":"Cabo","dates":"9/17/22-9/23/22","flights":"","hotel":"","car":"","sortOrder":11},
+      {"name":"Montreal","dates":"9/29/22-10/2/22","flights":"","hotel":"","car":"","sortOrder":12},
+      {"name":"Cincinnati","dates":"11/20/22-11/25/22","flights":"","hotel":"","car":"","sortOrder":13},
+      {"name":"Charleston","dates":"12/2/22-12/5/22","flights":"","hotel":"","car":"","sortOrder":14},
+      {"name":"Sonoma","dates":"12/29/22-1/1/23","flights":"","hotel":"","car":"","sortOrder":15}
+    ],
+    "ideas": []
+  },
+  "2023": {
+    "trips": [
+      {"name":"Mexico City","dates":"1/19/23-1/22/23","flights":"","hotel":"","car":"","sortOrder":0},
+      {"name":"Maui","dates":"2/16/23-2/21/23","flights":"","hotel":"","car":"","sortOrder":1},
+      {"name":"Louisville","dates":"3/3/23-3/6/23","flights":"","hotel":"","car":"","sortOrder":2},
+      {"name":"Steamboat Springs","dates":"3/16/23-3/19/23","flights":"","hotel":"","car":"","sortOrder":3},
+      {"name":"Italy","dates":"4/6/23-4/15/23","flights":"","hotel":"","car":"","sortOrder":4},
+      {"name":"Vegas","dates":"4/27/23-4/30/23","flights":"","hotel":"","car":"","sortOrder":5},
+      {"name":"Cruise","dates":"5/26/23-5/29/23","flights":"","hotel":"","car":"","sortOrder":6},
+      {"name":"Cincinnati","dates":"6/30/23-7/3/23","flights":"","hotel":"","car":"","sortOrder":7},
+      {"name":"Milwaukee","dates":"7/14/23-7/16/23","flights":"","hotel":"","car":"","sortOrder":8},
+      {"name":"Omaha","dates":"7/20/23-7/23/23","flights":"","hotel":"","car":"","sortOrder":9},
+      {"name":"Napa/Sonoma","dates":"8/3/23-8/6/23","flights":"","hotel":"","car":"","sortOrder":10},
+      {"name":"Vermont","dates":"10/5/23-10/8/23","flights":"","hotel":"","car":"","sortOrder":11},
+      {"name":"New Zealand","dates":"10/21/23-11/9/23","flights":"","hotel":"","car":"","sortOrder":12},
+      {"name":"Cincinnati","dates":"12/22/23-12/28/23","flights":"","hotel":"","car":"","sortOrder":13}
+    ],
+    "ideas": []
+  },
+  "2024": {
+    "trips": [
+      {"name":"Maui (LA)","dates":"1/28/24-2/4/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":0},
+      {"name":"Steamboat","dates":"2/8/24-2/11/24","flights":"na","hotel":"na","car":"na","sortOrder":1},
+      {"name":"LA/Oceanside CA","dates":"2/21/24-2/24/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":2},
+      {"name":"Costa Rica (Megan)","dates":"3/23/24-3/30/24","flights":"booked","hotel":"booked","car":"na","sortOrder":3},
+      {"name":"Vegas (Erik)","dates":"3/21/24-3/24/24","flights":"booked","hotel":"booked","car":"na","sortOrder":4},
+      {"name":"Dallas (Total Solar Eclipse)","dates":"4/6/24-4/10/24","flights":"booked","hotel":"booked","car":"na","sortOrder":5},
+      {"name":"Wine Country work trip","dates":"5/11/24-5/18/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":6},
+      {"name":"Palm Springs (Megan)","dates":"6/6/24-6/9/24","flights":"booked","hotel":"booked","car":"na","sortOrder":7},
+      {"name":"Cincinnati","dates":"6/27/24-6/30/24","flights":"booked","hotel":"na","car":"booked","sortOrder":8},
+      {"name":"Omaha","dates":"7/11/24-7/14/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":9},
+      {"name":"Maine","dates":"7/24/24-7/28/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":10},
+      {"name":"Seattle/Willamette","dates":"8/9/24-8/14/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":11},
+      {"name":"Erik's BDay (Punta Mita)","dates":"8/25/24-9/1/24","flights":"booked","hotel":"booked","car":"na","sortOrder":12},
+      {"name":"Portugal","dates":"9/11/24-9/22/24","flights":"booked","hotel":"booked","car":"booked","sortOrder":13},
+      {"name":"Cincinnati (Thanksgiving)","dates":"11/26/24-11/30/24","flights":"booked","hotel":"na","car":"","sortOrder":14},
+      {"name":"Kauai","dates":"12/14/24-12/21/24","flights":"","hotel":"","car":"","sortOrder":15}
+    ],
+    "ideas": []
+  },
+  "2025": {
+    "trips": [
+      {"name":"Australia","dates":"3/4/25-3/21/25","flights":"booked","hotel":"booked","car":"booked","sortOrder":0},
+      {"name":"MKE/Madison (Megan)","dates":"4/3/25-4/6/25","flights":"booked","hotel":"booked","car":"na","sortOrder":1},
+      {"name":"Big Sur","dates":"4/26/25-4/30/25","flights":"booked","hotel":"booked","car":"booked","sortOrder":2},
+      {"name":"St. Louis (Megan)","dates":"5/2/25-5/4/25","flights":"booked","hotel":"booked","car":"na","sortOrder":3},
+      {"name":"Italy","dates":"5/22/25-5/31/25","flights":"na","hotel":"booked","car":"na","sortOrder":4},
+      {"name":"Maui","dates":"7/23/25-7/27/25","flights":"na","hotel":"booked","car":"booked","sortOrder":5},
+      {"name":"Milwaukee","dates":"8/29/25-8/31/25","flights":"","hotel":"","car":"","sortOrder":6},
+      {"name":"Boston/New Jersey/Philly","dates":"9/6/25-9/14/25","flights":"na","hotel":"na","car":"na","sortOrder":7},
+      {"name":"Greece","dates":"9/24/25-10/4/25","flights":"booked","hotel":"booked","car":"na","sortOrder":8},
+      {"name":"Thailand (Erik)","dates":"10/22/25-10/30/25","flights":"","hotel":"","car":"","sortOrder":9},
+      {"name":"Cincinnati/Paso Robles (Christmas)","dates":"12/20/25-12/29/25","flights":"na","hotel":"na","car":"na","sortOrder":10}
+    ],
+    "ideas": []
+  },
+  "2026": {
+    "trips": [
+      {"name":"Maui","dates":"2/11/26-2/15/26","flights":"booked","hotel":"booked","car":"booked","sortOrder":0},
+      {"name":"Cabo","dates":"3/19/26-3/22/26","flights":"booked","hotel":"booked","car":"na","sortOrder":1},
+      {"name":"Cincinnati","dates":"4/2/26-4/5/26","flights":"booked","hotel":"na","car":"booked","sortOrder":2},
+      {"name":"Puerto Vallarta (Megan)","dates":"4/9/26-4/12/26","flights":"booked","hotel":"booked","car":"na","sortOrder":3},
+      {"name":"Madison (Megan)","dates":"4/26/26-4/29/26","flights":"booked","hotel":"booked","car":"na","sortOrder":4},
+      {"name":"Vegas","dates":"5/13/26-5/16/26","flights":"booked","hotel":"booked","car":"na","sortOrder":5},
+      {"name":"France + Berlin","dates":"5/23/26-6/8/26","flights":"booked","hotel":"booked","car":"booked","sortOrder":6},
+      {"name":"Vail","dates":"6/27/26-6/28/26","flights":"na","hotel":"booked","car":"na","sortOrder":7},
+      {"name":"Copenhagen/Stockholm","dates":"7/14/26-7/18/26","flights":"booked","hotel":"","car":"na","sortOrder":8},
+      {"name":"Telluride","dates":"7/23/26-7/26/26","flights":"na","hotel":"booked","car":"na","sortOrder":9},
+      {"name":"Omaha","dates":"8/6/26-8/9/26","flights":"booked","hotel":"booked","car":"","sortOrder":10},
+      {"name":"Oregon","dates":"8/20/26-8/24/26","flights":"booked","hotel":"booked","car":"booked","sortOrder":11},
+      {"name":"New York","dates":"9/10/26-9/13/26","flights":"","hotel":"","car":"na","sortOrder":12},
+      {"name":"Bachelorette/Breckenridge","dates":"9/18/26-9/20/26","flights":"","hotel":"booked","car":"na","sortOrder":13},
+      {"name":"Puerto Vallarta (wedding!)","dates":"10/8/26-10/17/26","flights":"booked","hotel":"","car":"","sortOrder":14},
+      {"name":"Sonoma","dates":"11/5/26-11/8/26","flights":"","hotel":"","car":"","sortOrder":15},
+      {"name":"Cincinnati (Thanksgiving)","dates":"TBD","flights":"","hotel":"","car":"","sortOrder":16},
+      {"name":"NYE trip","dates":"","flights":"","hotel":"","car":"","sortOrder":17}
+    ],
+    "ideas": [
+      {"text":"Visit friends in their cities","createdAt":1704067200000},
+      {"text":"Sedona","createdAt":1704067200000},
+      {"text":"Utah","createdAt":1704067200000},
+      {"text":"Montana","createdAt":1704067200000}
+    ]
+  }
 };
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
