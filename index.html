@@ -605,7 +605,14 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .travel-col-header-del { width: 30px; }
 /* Two-row card: name spans full width, dates+statuses on second row */
 .travel-trip-card {
-  padding: 9px 16px; border-bottom: 1px solid var(--sand); background: white;
+  padding: 9px 16px 9px 13px; border-bottom: 1px solid var(--sand); background: white;
+  border-left: 3px solid transparent;
+}
+.travel-trip-card.complete {
+  border-left-color: #5a8a5a; background: #f8fbf8;
+}
+.travel-trip-card.outstanding {
+  border-left-color: #d9805a;
 }
 .travel-trip-name {
   font-size: 13px; font-weight: 500; color: var(--ink);
@@ -1858,7 +1865,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 225 };
+window.BUILD_INFO = { prNumber: 226 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -9119,11 +9126,13 @@ function renderTravelRow(year, id, t) {
     const lbl = v === 'booked' ? '✓' : v === 'na' ? 'N/A' : '–';
     return `<button class="travel-status-btn${cls}" onclick="cycleTravelStatus('${year}','${id}','${field}',this)">${lbl}</button>`;
   }
+  const allFilled = ['flights','hotel','car'].every(f => { const v = t[f]||''; return v === 'booked' || v === 'na'; });
+  const cardCls = 'travel-trip-card' + (allFilled ? ' complete' : ' outstanding');
   const datesEl = t.dates
     ? `<span class="travel-trip-dates-text" onclick="editTravelField('${year}','${id}','dates',this)">${escHtml(t.dates)}</span>`
     : `<span class="travel-trip-dates-hint" onclick="editTravelField('${year}','${id}','dates',this)">Add dates…</span>`;
   return `
-    <div class="travel-trip-card" id="travelRow_${year}_${id}">
+    <div class="${cardCls}" id="travelRow_${year}_${id}">
       <span class="travel-trip-name" onclick="editTravelField('${year}','${id}','name',this)">${escHtml(t.name||'')}</span>
       <div class="travel-trip-row2">
         ${datesEl}
@@ -9209,6 +9218,13 @@ window.cycleTravelStatus = function(year, tripId, field, btn) {
   window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: next});
   btn.textContent = next === 'booked' ? '✓' : next === 'na' ? 'N/A' : '–';
   btn.className = 'travel-status-btn' + (next === 'booked' ? ' booked' : next === 'na' ? ' na' : '');
+  const card = document.getElementById(`travelRow_${year}_${tripId}`);
+  if (card) {
+    const t = trips[tripId];
+    const allFilled = ['flights','hotel','car'].every(f => { const v = t[f]||''; return v === 'booked' || v === 'na'; });
+    card.classList.toggle('complete', allFilled);
+    card.classList.toggle('outstanding', !allFilled);
+  }
 };
 
 window.addTravelTrip = function(year) {
@@ -9230,6 +9246,8 @@ window.addTravelTrip = function(year) {
 };
 
 window.deleteTravelTrip = function(year, tripId) {
+  const name = (travelTrackerData[year] && travelTrackerData[year].trips && travelTrackerData[year].trips[tripId] && travelTrackerData[year].trips[tripId].name) || 'this trip';
+  if (!confirm(`Delete "${name}"?`)) return;
   window._remove(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`));
   if (travelTrackerData[year] && travelTrackerData[year].trips) {
     delete travelTrackerData[year].trips[tripId];
