@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 230 };
+window.BUILD_INFO = { prNumber: 231 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -7414,8 +7414,15 @@ function renderMasterPackingListUI() {
     container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
     return;
   }
+  const openBlocks = new Set([...container.querySelectorAll('.packing-person-body.open')].map(el => el.id));
   try {
     container.innerHTML = buildMasterPackingListHTML(masterPackingList);
+    openBlocks.forEach(id => {
+      const body = document.getElementById(id);
+      const chev = document.getElementById('chev-' + id);
+      if (body) body.classList.add('open');
+      if (chev) chev.classList.add('open');
+    });
   } catch(e) {
     console.error('renderMasterPackingListUI error:', e);
     container.innerHTML = '<div style="padding:16px;color:var(--terracotta);font-size:13px;">Error rendering list: ' + e.message + '</div>';
@@ -7494,9 +7501,13 @@ function buildMasterPackingListHTML(list) {
 }
 
 // Delegated handlers for master packing list edit/delete
-document.addEventListener('click', function(e) {
+document.addEventListener('click', async function(e) {
   const delBtn = e.target.closest('[data-master-del]');
-  if (delBtn) { deleteMasterPackingItem(delBtn.dataset.masterDel); return; }
+  if (delBtn) {
+    const confirmed = await showConfirmDialog('Remove item?', 'This will permanently remove this item from the master packing list.');
+    if (confirmed) deleteMasterPackingItem(delBtn.dataset.masterDel);
+    return;
+  }
 
   const editBtn = e.target.closest('[data-master-edit]');
   if (editBtn) {
