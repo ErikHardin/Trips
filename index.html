@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 234 };
+window.BUILD_INFO = { prNumber: 235 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6791,20 +6791,10 @@ async function _renderLogisticsInner(tripId, panel) {
   }).join('');
 
   // Packing list
-  var laundryCount = logistics.laundryCount !== undefined ? logistics.laundryCount : 1;
   var packingList  = normalizePackingList(logistics.packingList) || null;
   if (packingList && packingList.length === 0) packingList = null;
   var packingHTML  = packingList ? buildPackingListHTML(tripId, packingList, avatarUrls) : '';
   var hasPackingList = !!packingList;
-
-  // Laundry stepper — locked after list generated
-  var laundryStepperHTML = hasPackingList
-    ? '<div style="display:flex;align-items:center;gap:8px;"><div class="packing-laundry-count" style="font-size:16px;font-weight:600;">' + laundryCount + '</div><span style="font-size:11px;color:var(--muted);">times</span></div>'
-    : '<div class="packing-laundry-stepper">' +
-        '<button class="packing-laundry-btn" data-laundry-trip="' + tripId + '" data-laundry-delta="-1">−</button>' +
-        '<div class="packing-laundry-count" id="laundryCount">' + laundryCount + '</div>' +
-        '<button class="packing-laundry-btn" data-laundry-trip="' + tripId + '" data-laundry-delta="1">+</button>' +
-      '</div>';
 
   var generateBtnHTML = hasPackingList
     ? '<div style="display:flex;justify-content:flex-end;padding:0 16px 8px;">' +
@@ -6833,10 +6823,6 @@ async function _renderLogisticsInner(tripId, panel) {
 
     '<div class="logistics-section" style="padding-top:0; padding-bottom:12px;">' +
       '<div class="logistics-section-title" style="padding:0 0 12px;">Packing List</div>' +
-      '<div class="packing-laundry-row">' +
-        '<div class="packing-laundry-label">🧺 Times doing laundry</div>' +
-        laundryStepperHTML +
-      '</div>' +
     '</div>' +
 
     generateBtnHTML +
@@ -6982,18 +6968,6 @@ window.togglePackingBlock = function(blockId) {
   if (chev) chev.classList.toggle('open', isOpen);
 };
 
-// ── Laundry stepper ──
-window.adjustLaundry = async function(tripId, delta) {
-  const el = document.getElementById('laundryCount');
-  if (!el) return;
-  const current = parseInt(el.textContent) || 1;
-  const newVal = Math.max(0, current + delta);
-  el.textContent = newVal;
-  try {
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/laundryCount'), newVal);
-  } catch(e) { showToast('Could not save'); }
-};
-
 // ── Generate packing list from master packing list ──
 window.generatePackingList = async function(tripId) {
   const btn = document.getElementById('packingGenerateBtn');
@@ -7023,7 +6997,7 @@ window.generatePackingList = async function(tripId) {
     if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
     allTrips[tripId].logistics.packingList = packingList;
 
-    document.getElementById('packingListContainer').innerHTML = buildPackingListHTML(tripId, packingList, avatarUrls);
+    renderLogisticsPanel(tripId);
     showToast('Packing list created ✓');
   } catch(e) {
     console.error('generatePackingList error', e);
@@ -7106,15 +7080,6 @@ document.addEventListener('click', function(e) {
   if (genBtn && !e.target.closest('[data-edit-item]') && !e.target.closest('[data-del-item]')) {
     const tid = genBtn.dataset.genTrip;
     if (tid) { generatePackingList(tid); return; }
-  }
-
-  // Laundry stepper buttons
-  const laundryBtn = e.target.closest('[data-laundry-trip]');
-  if (laundryBtn) {
-    const tid = laundryBtn.dataset.laundryTrip;
-    const delta = parseInt(laundryBtn.dataset.laundryDelta);
-    adjustLaundry(tid, delta);
-    return;
   }
 
   // Delete item button
