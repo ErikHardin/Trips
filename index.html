@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 237 };
+window.BUILD_INFO = { prNumber: 238 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6721,9 +6721,17 @@ const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'K
 // ── Render the full logistics panel ──
 async function renderLogisticsPanel(tripId) {
   const panel = document.getElementById('tripLogisticsPanel');
+  // Capture which person blocks are open before tearing down the panel
+  const openBlocks = new Set([...panel.querySelectorAll('.packing-person-body.open')].map(el => el.id));
   panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
   try {
     await _renderLogisticsInner(tripId, panel);
+    // Restore open states after rebuild
+    openBlocks.forEach(id => {
+      const body = document.getElementById(id);
+      const chev = document.getElementById('chev-' + id);
+      if (body) { body.classList.add('open'); if (chev) chev.classList.add('open'); }
+    });
   } catch(err) {
     panel.innerHTML = '<div style="padding:20px;color:red;font-size:13px;word-break:break-all;">Error: ' + err.message + '<br><br>' + (err.stack||'').slice(0,300) + '</div>';
     console.error('renderLogisticsPanel failed:', err);
