@@ -252,7 +252,8 @@ body {
 .flight-chip .flight-code { font-weight:500; color:var(--gold); flex-shrink:0; cursor:pointer; }
 .flight-chip-text { flex:1; color:var(--ink); cursor:pointer; }
 .flight-chip-date { font-size:11px; color:var(--muted); flex-shrink:0; }
-.flight-chip-traveler { font-size:10px; color:var(--muted); font-style:italic; flex-shrink:0; }
+.flight-chip-traveler { font-size:10px; color:var(--muted); font-style:italic; flex-shrink:0; cursor:pointer; }
+.flight-chip-traveler-empty { opacity:0.55; text-decoration:underline dotted; }
 .flight-chip-del { background:none; border:none; cursor:pointer; color:var(--muted); font-size:16px; padding:0 2px; line-height:1; }
 .flight-chip-del:hover { color:var(--terracotta); }
 .flight-dir-label { font-size:10px; font-weight:500; letter-spacing:2px; text-transform:uppercase; color:var(--gold); margin:10px 0 5px; }
@@ -4682,6 +4683,13 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
 
 window.saveEditedTrip = async function() {
   if (!editingTripId) return;
+  // A flight chip was pulled into edit mode (see editFlightChip) but never
+  // finished being re-added — saving now would silently drop it from the
+  // flight list. Make the user finish or cancel that edit first.
+  if (document.querySelectorAll('.flight-entry-row').length) {
+    showToast('Finish or remove the flight you’re editing before saving');
+    return;
+  }
   // Use update (not set) so only edited fields are touched —
   // preserves days, logistics, packingList, startDateISO, avatars etc.
   const updates = {
@@ -4718,11 +4726,27 @@ window.saveEditedTrip = async function() {
 
 // ── Flight form functions ──────────────────────────────────────────────────
 
-window.addFlightRow = function(numVal, dateVal, dirVal, nameVal) {
+// Recover origin/destination/departure/arrival from a formatted flight string
+// like "UA8087 DEN → YUL · 11:25am – 5:07pm", so an edit-in-progress row can
+// fall back to the exact original route/times if a fresh lookup fails.
+function _parseFlightFormatted(formatted) {
+  const s = formatted || '';
+  const m = s.match(/^(\S+)\s+(\S+)\s*→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
+  if (!m) return { num: s.split(' ')[0] || '', orig: '', dest: '', dep: '', arr: '' };
+  return { num: m[1], orig: m[2], dest: m[3], dep: (m[4]||'').trim(), arr: (m[5]||'').trim() };
+}
+
+window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVal, depVal, arrVal) {
   const n = _flightRowCount++;
   const row = document.createElement('div');
   row.className = 'flight-entry-row';
   row.id = 'flightRow-' + n;
+  // Stash the original route/times (if known) so a failed re-lookup can still
+  // pre-fill the manual fallback form instead of leaving it blank.
+  row.dataset.orig = origVal || '';
+  row.dataset.dest = destVal || '';
+  row.dataset.dep  = depVal  || '';
+  row.dataset.arr  = arrVal  || '';
   row.innerHTML =
     '<input class="form-input fr-num" placeholder="UA8087" value="' + (numVal||'') + '" style="flex:1;min-width:70px;">' +
     '<input class="form-input fr-date" type="date" value="' + (dateVal||'') + '" style="flex:1;min-width:120px;">' +
@@ -4786,15 +4810,22 @@ window.lookupAllFlights = async function() {
 function _markFlightRowFailed(row, msg) {
   row.querySelector('.fr-num').classList.add('flight-row-error');
   if (row.querySelector('.fr-manual')) return;
+  // Pre-fill from the original route/times if this row came from editing an
+  // existing flight, so clicking "Add" with the fields untouched restores the
+  // flight as-is instead of silently dropping it.
+  const orig = row.dataset.orig || '';
+  const dest = row.dataset.dest || '';
+  const dep  = row.dataset.dep  || '';
+  const arr  = row.dataset.arr  || '';
   const manual = document.createElement('div');
   manual.className = 'fr-manual';
   manual.style.cssText = 'width:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
   manual.innerHTML =
     '<span style="font-size:11px;color:var(--muted);width:100%;">' + msg + '</span>' +
-    '<input class="form-input fr-orig" placeholder="DEN" style="flex:1;min-width:50px;">' +
-    '<input class="form-input fr-dest" placeholder="YUL" style="flex:1;min-width:50px;">' +
-    '<input class="form-input fr-dep" placeholder="11:25am" style="flex:1;min-width:80px;">' +
-    '<input class="form-input fr-arr" placeholder="5:07pm" style="flex:1;min-width:80px;">' +
+    '<input class="form-input fr-orig" placeholder="DEN" value="' + orig + '" style="flex:1;min-width:50px;">' +
+    '<input class="form-input fr-dest" placeholder="YUL" value="' + dest + '" style="flex:1;min-width:50px;">' +
+    '<input class="form-input fr-dep" placeholder="11:25am" value="' + dep + '" style="flex:1;min-width:80px;">' +
+    '<input class="form-input fr-arr" placeholder="5:07pm" value="' + arr + '" style="flex:1;min-width:80px;">' +
     '<button class="form-btn secondary" onclick="addManualFromRow(this)" style="margin:0;flex-shrink:0;">Add</button>';
   row.appendChild(manual);
 }
@@ -4804,12 +4835,16 @@ window.addManualFromRow = async function(btn) {
   const num  = row.querySelector('.fr-num').value.trim().toUpperCase();
   const date = row.querySelector('.fr-date').value;
   const dir  = row.querySelector('.fr-dir').value;
-  const orig = row.querySelector('.fr-orig').value.trim().toUpperCase();
-  const dest = row.querySelector('.fr-dest').value.trim().toUpperCase();
+  const origEl = row.querySelector('.fr-orig');
+  const destEl = row.querySelector('.fr-dest');
+  const orig = origEl.value.trim().toUpperCase();
+  const dest = destEl.value.trim().toUpperCase();
   const dep  = row.querySelector('.fr-dep').value.trim();
   const arr  = row.querySelector('.fr-arr').value.trim();
   const travelerName = (row.querySelector('.fr-traveler')?.value || '').trim();
-  if (!num || !orig || !dest) { showToast('Enter flight #, origin, and destination'); return; }
+  origEl.classList.toggle('flight-row-error', !orig);
+  destEl.classList.toggle('flight-row-error', !dest);
+  if (!num || !orig || !dest) { showToast('Enter flight #, origin, and destination — the flight was not saved'); return; }
   const formatted = num + ' ' + orig + ' → ' + dest + (dep && arr ? ' · ' + dep + ' – ' + arr : '');
   const humanDate = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '';
   await _addFlightEntry(dir, date, humanDate, formatted, travelerName);
@@ -4856,7 +4891,7 @@ function renderFlightChips() {
     const delFn = dir === 'intrip'
       ? 'removeIntripFlight(' + i + ')'
       : 'removeFlightChip(\'' + dir + '\',' + i + ')';
-    const travelerTag = f.travelerName ? '<span class="flight-chip-traveler">' + f.travelerName + '</span>' : '';
+    const travelerTag = '<span class="flight-chip-traveler' + (f.travelerName ? '' : ' flight-chip-traveler-empty') + '" onclick="renameFlightTraveler(\'' + dir + '\',' + i + ')" title="Click to rename traveler">' + (f.travelerName ? escHtml(f.travelerName) : '+ name') + '</span>';
     return '<div class="flight-chip">' +
       '<span class="flight-code" onclick="editFlightChip(\'' + dir + '\',' + i + ')" title="Click to edit">' + code + '</span>' +
       '<span class="flight-chip-text" onclick="editFlightChip(\'' + dir + '\',' + i + ')" title="Click to edit">' + rest + '</span>' +
@@ -4880,13 +4915,18 @@ function renderFlightChips() {
 }
 
 window.editFlightChip = function(dir, index) {
+  // Pull the flight out of the working list for editing. This is in-memory
+  // only for all three directions — nothing is written to Firebase here, and
+  // nothing is lost as long as the flight is either re-added (via lookup/Add)
+  // or the trip is closed without saving (which discards the in-memory edit
+  // and leaves Firebase untouched).
   let f;
   if (dir === 'out')      { [f] = _editFlightsOut.splice(index, 1); }
   else if (dir === 'ret') { [f] = _editFlightsRet.splice(index, 1); }
-  else { f = _editFlightsIntrip[index]; removeIntripFlight(index); return; }
+  else                    { [f] = _editFlightsIntrip.splice(index, 1); }
   if (!f) return;
-  const code = f.formatted.split(' ')[0];
-  addFlightRow(code, f.isoDate || '', dir, f.travelerName || '');
+  const { num, orig, dest, dep, arr } = _parseFlightFormatted(f.formatted);
+  addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr);
   renderFlightChips();
 };
 
@@ -4903,6 +4943,21 @@ window.removeIntripFlight = async function(index) {
   const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '' }));
   await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining.length > 0 ? remaining : null });
   logChange(editingTripId, 'Flight removed', f.formatted || '');
+  renderFlightChips();
+};
+
+window.renameFlightTraveler = async function(dir, index) {
+  const arr = dir === 'out' ? _editFlightsOut : dir === 'ret' ? _editFlightsRet : _editFlightsIntrip;
+  const f = arr[index];
+  if (!f) return;
+  const name = prompt('Traveler name for this flight:', f.travelerName || '');
+  if (name === null) return;
+  f.travelerName = name.trim();
+  if (dir === 'intrip') {
+    const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '' }));
+    await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining });
+    logChange(editingTripId, 'Flight traveler renamed', f.formatted + (f.travelerName ? ' → ' + f.travelerName : ''));
+  }
   renderFlightChips();
 };
 
@@ -8780,11 +8835,22 @@ window.runAIAssistant = async function() {
       return `DAY_ID="${did}" date="${day.dateNum||''}${day.dateMonth||''}" weekday="${day.dayName||''}" city="${day.city||''}" description="${day.description||''}" hotel="${day.hotel||''}"\n    activities: ${actStr||'none'}`;
     }).join('\n');
 
+  // Enumerate flights one-per-line with their index and traveler name so the
+  // AI can reference a specific flight (e.g. to rename its traveler) without
+  // ever having to reconstruct the whole flightOut/flightReturn string blind.
+  const outFlights = (trip.flightOut || '').split('\n').filter(Boolean);
+  const retFlights = (trip.flightReturn || '').split('\n').filter(Boolean);
+  const outNames = trip.flightOutNames || [];
+  const retNames = trip.flightReturnNames || [];
+  const flightLines = (flights, names) => flights.length
+    ? flights.map((f, i) => `  [${i}] traveler="${names[i]||''}" ${f}`).join('\n')
+    : '  none';
+
   const tripContext = `TRIP id:${selectedTripId} "${trip.name}" ${trip.year}
-flightOut: ${(trip.flightOut||'none').replace(/\n/g,' ')}
-flightOutDate: ${trip.flightOutDate||''}
-flightReturn: ${(trip.flightReturn||'none').replace(/\n/g,' ')}
-flightReturnDate: ${trip.flightReturnDate||''}
+OUTBOUND FLIGHTS (flightOutDate: ${trip.flightOutDate||''}):
+${flightLines(outFlights, outNames)}
+RETURN FLIGHTS (flightReturnDate: ${trip.flightReturnDate||''}):
+${flightLines(retFlights, retNames)}
 DAYS:
 ${dayLines}`;
 
@@ -8800,10 +8866,13 @@ JSON format:
 
 Change types:
 {"type":"update_trip_field","tripId":"${selectedTripId}","field":"flightOut|flightReturn|flightOutDate|flightReturnDate|name|dates","value":"..."}
+{"type":"update_flight_traveler","tripId":"${selectedTripId}","direction":"out|return","index":0,"travelerName":"..."}
 {"type":"add_activity","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","activity":{"text":"...","emoji":"...","time":"..."}}
 {"type":"update_activity","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","activityIndex":0,"activity":{"text":"...","emoji":"...","time":"..."}}
 {"type":"remove_activity","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","activityIndex":0}
 {"type":"update_day_field","tripId":"${selectedTripId}","dayId":"EXACT_DAY_ID","field":"city|hotel|region","value":"..."}
+
+IMPORTANT: To rename the traveler on a flight (e.g. fixing a misspelled name), ALWAYS use update_flight_traveler with the exact [index] shown above — never use update_trip_field with field "flightOut" or "flightReturn" for this. If you do use update_trip_field for "flightOut" or "flightReturn" (e.g. to add or correct a flight's route/time), the value MUST be the complete newline-separated list of ALL flights for that direction, one per line in the same order shown above — never just the single flight being changed, or you will delete the others. If you cannot find a matching flight index, set changes:[] and explain in summary instead of guessing.
 
 Emoji guide: 🍽️ dinner/lunch, 🍷 wine/tasting, 🥾 hike, 🏖️ beach, ✈️ flight, 🏨 hotel, 🚗 drive, ☕ breakfast/coffee, 🍸 cocktail/bar, 🎢 adventure, ⛵ cruise, 🗺️ explore, 🏛️ museum/sight, 🛍️ market/shopping, 💆 spa/massage
 If day not found set changes:[] and explain in summary.`;
@@ -8862,6 +8931,7 @@ If day not found set changes:[] and explain in summary.`;
         if (c.type === 'update_activity') return `  ~ Update activity #${c.activityIndex+1}: "${c.activity.text}"${c.activity.time?' at '+c.activity.time:''}`;
         if (c.type === 'remove_activity') return `  - Remove activity #${c.activityIndex+1}`;
         if (c.type === 'update_trip_field') return `  ~ ${c.field}: "${c.value}"`;
+        if (c.type === 'update_flight_traveler') return `  ~ Rename traveler on ${c.direction} flight #${c.index+1} to "${c.travelerName}"`;
         if (c.type === 'update_day_field') return `  ~ ${c.field}: "${c.value}"`;
         return `  • ${c.type}`;
       }).join('\n');
@@ -8900,16 +8970,43 @@ window.confirmAIChange = async function() {
 
     for (const change of pendingAIChanges.changes) {
       if (change.type === 'update_trip_field') {
+        if (change.field === 'flightOut' || change.field === 'flightReturn') {
+          // Safety net: the AI only sees flights as an enumerated list, not the
+          // raw field, so a reconstructed value that drops entries is a sign it
+          // lost track of the full list rather than an intentional removal.
+          const oldCount = (freshTrip[change.field] || '').split('\n').filter(Boolean).length;
+          const newCount = (change.value || '').split('\n').filter(Boolean).length;
+          if (newCount < oldCount) {
+            throw new Error(`Refused to apply: would reduce ${change.field} from ${oldCount} flight(s) to ${newCount}. Use the manual flight editor on the trip to remove a flight.`);
+          }
+        }
         await window._set(
           window._ref(window._db, `trips/${change.tripId}/${change.field}`),
           change.value
         );
+        logChange(change.tripId, `Updated ${change.field}`, String(change.value));
+        freshTrip[change.field] = change.value;
+
+      } else if (change.type === 'update_flight_traveler') {
+        const namesField = change.direction === 'return' ? 'flightReturnNames' : 'flightOutNames';
+        const flightsField = change.direction === 'return' ? 'flightReturn' : 'flightOut';
+        const flights = (freshTrip[flightsField] || '').split('\n').filter(Boolean);
+        if (change.index < 0 || change.index >= flights.length) throw new Error(`Flight index ${change.index} not found in ${flightsField}`);
+        const names = [...(freshTrip[namesField] || [])];
+        names[change.index] = change.travelerName || '';
+        await window._set(
+          window._ref(window._db, `trips/${change.tripId}/${namesField}`),
+          names
+        );
+        logChange(change.tripId, 'Flight traveler renamed', flights[change.index] + (change.travelerName ? ' → ' + change.travelerName : ''));
+        freshTrip[namesField] = names;
 
       } else if (change.type === 'update_day_field') {
         await window._set(
           window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/${change.field}`),
           change.value
         );
+        logChange(change.tripId, `Day ${change.field} updated`, String(change.value));
 
       } else if (change.type === 'add_activity') {
         const day = freshTrip.days?.[change.dayId];
@@ -8922,6 +9019,7 @@ window.confirmAIChange = async function() {
           window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/activities`),
           existing
         );
+        logChange(change.tripId, 'Activity added', change.activity?.text || '');
 
       } else if (change.type === 'update_activity') {
         const day = freshTrip.days?.[change.dayId];
@@ -8934,6 +9032,7 @@ window.confirmAIChange = async function() {
           window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/activities`),
           existing
         );
+        logChange(change.tripId, 'Activity updated', change.activity?.text || '');
 
       } else if (change.type === 'remove_activity') {
         const day = freshTrip.days?.[change.dayId];
@@ -8941,11 +9040,13 @@ window.confirmAIChange = async function() {
         const existing = day.activities
           ? (Array.isArray(day.activities) ? [...day.activities] : Object.values(day.activities))
           : [];
+        const removed = existing[change.activityIndex];
         existing.splice(change.activityIndex, 1);
         await window._set(
           window._ref(window._db, `trips/${change.tripId}/days/${change.dayId}/activities`),
           existing
         );
+        logChange(change.tripId, 'Activity removed', removed?.text || '');
       }
     }
 
