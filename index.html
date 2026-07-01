@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 236 };
+window.BUILD_INFO = { prNumber: 237 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6874,7 +6874,7 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
 
     return `
       <div class="packing-person-block">
-        <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}')">
+        <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}', event)">
           <div class="packing-person-left">
             ${(function(){
               var p = personObj.person;
@@ -6960,7 +6960,9 @@ window.uploadAvatar = function(person) {
   input.click();
 };
 
-window.togglePackingBlock = function(blockId) {
+window.togglePackingBlock = function(blockId, event) {
+  // If called from a click, bail unless the click target is actually the toggle header
+  if (event && event.target && !event.target.closest('.packing-person-toggle')) return;
   const body = document.getElementById(blockId);
   const chev = document.getElementById('chev-' + blockId);
   if (!body) return;
@@ -7075,7 +7077,6 @@ document.addEventListener('click', function(e) {
     const tripId = toggleEl.dataset.toggleTrip;
     const itemId = toggleEl.dataset.toggleItem;
     const val = toggleEl.dataset.toggleVal === 'true';
-    showToast('Toggling ' + itemId.slice(0,8) + ' val=' + val);
     togglePackingItem(tripId, itemId, val);
     return;
   }
@@ -7092,8 +7093,9 @@ document.addEventListener('click', function(e) {
   if (delBtn) {
     const tripId = delBtn.dataset.delTrip;
     const itemId = delBtn.dataset.delItem;
-    showToast('Deleting ' + itemId.slice(0,8));
-    window.deletePackingItem(tripId, itemId);
+    showConfirmDialog('Remove item?', 'This will delete this item from the packing list.').then(function(confirmed) {
+      if (confirmed) window.deletePackingItem(tripId, itemId);
+    });
     return;
   }
 
@@ -7407,7 +7409,7 @@ function buildMasterPackingListHTML(list) {
 
     return `
       <div class="packing-person-block">
-        <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}')">
+        <div class="packing-person-toggle" onclick="togglePackingBlock('${blockId}', event)">
           <div class="packing-person-left">
             ${avatarEl}
             <span class="packing-person-name" style="font-style:italic;font-family:'Cormorant Garamond',serif;font-size:20px;">${personObj.person}</span>
