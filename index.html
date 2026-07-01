@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 232 };
+window.BUILD_INFO = { prNumber: 233 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6793,6 +6793,7 @@ async function _renderLogisticsInner(tripId, panel) {
   // Packing list
   var laundryCount = logistics.laundryCount !== undefined ? logistics.laundryCount : 1;
   var packingList  = normalizePackingList(logistics.packingList) || null;
+  if (packingList && packingList.length === 0) packingList = null;
   var packingHTML  = packingList ? buildPackingListHTML(tripId, packingList, avatarUrls) : '';
   var hasPackingList = !!packingList;
 
@@ -6805,8 +6806,11 @@ async function _renderLogisticsInner(tripId, panel) {
         '<button class="packing-laundry-btn" data-laundry-trip="' + tripId + '" data-laundry-delta="1">+</button>' +
       '</div>';
 
-  var generateBtnHTML = hasPackingList ? '' :
-    '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">✨ Generate Packing List</button>';
+  var generateBtnHTML = hasPackingList
+    ? '<div style="display:flex;justify-content:flex-end;padding:0 16px 8px;">' +
+        '<button onclick="clearPackingList(\'' + tripId + '\')" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;">Clear list &amp; regenerate</button>' +
+      '</div>'
+    : '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">✨ Generate Packing List</button>';
 
   panel.innerHTML =
     '<div style="height:16px;"></div>' +
@@ -6905,6 +6909,17 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
       </div>`;
   }).join('');
 }
+
+window.clearPackingList = async function(tripId) {
+  const confirmed = await showConfirmDialog('Clear packing list?', 'This will delete the entire packing list so you can regenerate it.');
+  if (!confirmed) return;
+  try {
+    await window._remove(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    if (allTrips[tripId] && allTrips[tripId].logistics) delete allTrips[tripId].logistics.packingList;
+    renderLogisticsPanel(tripId);
+    showToast('Packing list cleared');
+  } catch(e) { showToast('Clear failed'); console.error(e); }
+};
 
 window.deletePackingPerson = async function(tripId, person) {
   try {
