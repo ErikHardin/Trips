@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 235 };
+window.BUILD_INFO = { prNumber: 236 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6973,13 +6973,18 @@ window.generatePackingList = async function(tripId) {
   const btn = document.getElementById('packingGenerateBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Copying…'; }
 
-  if (!masterPackingList || !masterPackingList.length) {
-    showToast('No master packing list found — add items in Settings first');
-    if (btn) { btn.disabled = false; btn.textContent = 'Copy from Master Packing List'; }
-    return;
-  }
-
   try {
+    if (!masterPackingList || !masterPackingList.length) {
+      const snap = await window._get(window._ref(window._db, 'avatarUrls/masterPackingList'));
+      masterPackingList = snap.val() ? normalizePackingList(snap.val()) : null;
+    }
+
+    if (!masterPackingList || !masterPackingList.length) {
+      showToast('No master packing list found — add items in Settings first');
+      if (btn) { btn.disabled = false; btn.textContent = 'Copy from Master Packing List'; }
+      return;
+    }
+
     let idCounter = Date.now();
     const packingList = masterPackingList.map(p => ({
       person: p.person,
