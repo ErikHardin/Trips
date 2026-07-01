@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 229 };
+window.BUILD_INFO = { prNumber: 230 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -1889,35 +1889,6 @@ let masterPackingList = null;
 let masterPackingAvatarUrls = {};
 let pendingMasterItems = null;
 
-const MEGAN_DEFAULT_SECTIONS = [
-  { title: 'Clothing', items: [
-    '4 casual outfits', '4 nice outfits', '1 light rain jacket or packable windbreaker',
-    'Denim jacket', '3 swimsuits', '4 workout outfits', '14+ pairs underwear',
-    '2–3 bras (including strapless)', 'Cakes', '4–5 pairs socks', 'Cozy socks (flight)', '2 pajama sets'
-  ]},
-  { title: 'Shoes', items: [
-    'Black Birkenstocks', 'Tan platforms', 'Tevas', 'Gym shoes', 'Sorel sandals', 'Beach slides'
-  ]},
-  { title: 'Personal Care & Toiletries', items: [
-    'Shampoo & conditioner', 'Body wash', 'Face wash', 'Face moisturizer', 'Makeup & makeup bag',
-    'Curling iron', 'Round brush', 'Hair ties & claw clip', 'Makeup wash cloths', 'Razors',
-    'Deodorant', 'Toothbrush & toothpaste', 'Contacts', 'Contact solution', 'Glasses',
-    'Lens cleaning spray', 'Lens cloth', 'Sunglasses', 'Tampons', 'Nail file & clippers',
-    'Tweezers', 'Nail polish', 'Nail polish remover', 'Eyebrow/eyelash serum', 'Foot scrubber',
-    'Allergy pills', 'Ibuprofen', 'Senna pills', 'Vitamins', 'Bug spray', 'Sunscreen (SPF 30+)',
-    'Lip balm with SPF', 'Band-Aids & blister patches', 'Lube & toy'
-  ]},
-  { title: 'Electronics', items: [
-    'Phone charger', 'Laptop/tablet + charger', 'Portable battery/power bank',
-    'EU plug adapter', 'AirPods/headphones', 'Oura charger'
-  ]},
-  { title: 'Miscellaneous', items: [
-    'Passport', 'Hiking backpack', 'Beach tote', 'Small laundry bag', 'Delicates laundry bag',
-    'Collapsible laundry basket', 'Water bottle', 'Portable speaker', 'Workout bands',
-    'Book', 'Magazines', 'Earplugs', 'Eye mask', 'Sun hat', 'Baseball hat',
-    'Gum & mints', 'Salt packets', 'Lint roller', 'Febreze'
-  ]}
-];
 let editTripOrigin = 'screen-admin';
 let _todayScrolled = false;
 let currentActivityKey = null;
@@ -7382,34 +7353,6 @@ window.syncMasterFromFrance = async function() {
   }
 };
 
-window.resetMeganDefaultList = async function() {
-  let idCounter = Date.now();
-  const meganSections = MEGAN_DEFAULT_SECTIONS.map(sec => ({
-    title: sec.title,
-    items: sec.items.map(label => ({ id: 'mpi_meg_' + (idCounter++), label }))
-  }));
-  let list = masterPackingList ? masterPackingList.map(p => p.person === 'Megan' ? { person: 'Megan', sections: meganSections } : p) : null;
-  if (!list) {
-    list = [
-      { person: 'General', sections: [{ title: 'Documents', items: [] }, { title: 'Electronics', items: [] }, { title: 'Accessories', items: [] }, { title: 'Miscellaneous', items: [] }] },
-      { person: 'Megan', sections: meganSections },
-      { person: 'Erik',  sections: [{ title: 'Clothing', items: [] }, { title: 'Toiletries', items: [] }, { title: 'Personal Care', items: [] }] }
-    ];
-  }
-  if (!list.find(p => p.person === 'Megan')) {
-    list.push({ person: 'Megan', sections: meganSections });
-  }
-  try {
-    await window._set(window._ref(window._db, 'avatarUrls/masterPackingList'), list);
-    masterPackingList = list;
-    renderMasterPackingListUI();
-    showToast("Megan's list reset ✓");
-  } catch(e) {
-    showToast('Reset failed');
-    console.error('resetMeganDefaultList error:', e);
-  }
-};
-
 async function loadMasterPackingList() {
   const container = document.getElementById('masterPackingListContainer');
   if (container) container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
@@ -7440,10 +7383,9 @@ async function loadMasterPackingList() {
     }
 
     if (!list) {
-      let idCounter = Date.now();
       list = [
         { person: 'General', sections: [{ title: 'Documents', items: [] }, { title: 'Electronics', items: [] }, { title: 'Accessories', items: [] }, { title: 'Miscellaneous', items: [] }] },
-        { person: 'Megan',   sections: MEGAN_DEFAULT_SECTIONS.map(sec => ({ title: sec.title, items: sec.items.map(label => ({ id: 'mpi_meg_' + (idCounter++), label })) })) },
+        { person: 'Megan',   sections: [{ title: 'Clothing', items: [] }, { title: 'Shoes', items: [] }, { title: 'Personal Care & Toiletries', items: [] }, { title: 'Electronics', items: [] }, { title: 'Miscellaneous', items: [] }] },
         { person: 'Erik',    sections: [{ title: 'Clothing', items: [] }, { title: 'Toiletries', items: [] }, { title: 'Personal Care', items: [] }] }
       ];
     }
@@ -7546,7 +7488,6 @@ function buildMasterPackingListHTML(list) {
         </div>
         <div class="packing-person-body" id="${blockId}">
           ${sectionsHTML}
-          ${personObj.person === 'Megan' ? `<div style="padding:0 16px 14px;"><button onclick="resetMeganDefaultList()" style="width:100%;padding:10px;background:none;border:1px solid var(--terracotta);border-radius:var(--radius);color:var(--terracotta);font-size:12px;font-weight:500;cursor:pointer;text-align:left;">↺ Reset Megan's list to defaults (${MEGAN_DEFAULT_SECTIONS.reduce((n,s)=>n+s.items.length,0)} items)</button></div>` : ''}
         </div>
       </div>`;
   }).join('');
