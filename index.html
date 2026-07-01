@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 231 };
+window.BUILD_INFO = { prNumber: 232 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6784,12 +6784,10 @@ async function _renderLogisticsInner(tripId, panel) {
   const pct = Math.round((checkedCount / BOOKING_ITEMS.length) * 100);
   var bookingHTML = BOOKING_ITEMS.map(function(item) {
     var chk = !!logistics[item.key];
-    var div = document.createElement('div');
-    div.className = 'logistics-item';
-    div.onclick = (function(k,v){ return function(){ toggleBookingItem(tripId,k,v); }; })(item.key, !chk);
-    div.innerHTML = '<div class="logistics-checkbox' + (chk ? ' checked' : '') + '"></div>' +
-      '<div class="logistics-item-label' + (chk ? ' checked' : '') + '">' + item.icon + ' ' + item.label + '</div>';
-    return div.outerHTML;
+    return '<div class="logistics-item" onclick="toggleBookingItem(\'' + tripId + '\',\'' + item.key + '\',' + (!chk) + ')">' +
+      '<div class="logistics-checkbox' + (chk ? ' checked' : '') + '"></div>' +
+      '<div class="logistics-item-label' + (chk ? ' checked' : '') + '">' + item.icon + ' ' + item.label + '</div>' +
+      '</div>';
   }).join('');
 
   // Packing list
@@ -6897,6 +6895,7 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
           </div>
           <div class="packing-person-right">
             <span class="packing-person-pct" id="pct-${personObj.person}">${pct}% packed</span>
+            <button class="packing-delete-btn" data-del-person="${personObj.person}" data-del-trip="${tripId}" onclick="event.stopPropagation()" title="Remove ${personObj.person}" style="font-size:16px;opacity:0.45;margin-right:2px;">×</button>
             <span class="packing-person-chevron" id="chev-${blockId}">›</span>
           </div>
         </div>
@@ -6906,6 +6905,18 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
       </div>`;
   }).join('');
 }
+
+window.deletePackingPerson = async function(tripId, person) {
+  try {
+    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    const list = normalizePackingList(snap.val());
+    if (!list) return;
+    const updated = list.filter(p => p.person !== person);
+    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), updated);
+    if (allTrips[tripId] && allTrips[tripId].logistics) allTrips[tripId].logistics.packingList = updated;
+    renderLogisticsPanel(tripId);
+  } catch(e) { showToast('Remove failed'); console.error(e); }
+};
 
 window.uploadAvatar = function(person) {
   if (person === 'General') return;
@@ -6979,62 +6990,58 @@ window.generatePackingList = async function(tripId) {
   const months  = [...new Set(days.map(d=>d.dateMonth).filter(Boolean))].join('/');
   const cities  = [...new Set(days.map(d=>(d.city||'').replace(/[🛬🚗✈️🏠]/g,'').trim()).filter(Boolean))].slice(0,6).join(', ');
 
-  const prompt = `You are a travel packing assistant. Generate a detailed packing list for a couple traveling to:
+  const daysBetweenWashes = Math.ceil(parseInt(nights || 14) / (laundryCount + 1));
+
+  // Build prompt from master packing list if available, otherwise fall back to hardcoded list
+  let masterContext = '';
+  let jsonTemplate = '';
+  if (masterPackingList && masterPackingList.length) {
+    masterContext = 'Their master packing list (use this as the exact template):\n\n' +
+      masterPackingList.map(p =>
+        p.person + ':\n' + (p.sections || []).map(s =>
+          '  ' + s.title + ': ' + (s.items || []).filter(Boolean).map(i => i.label).join(', ')
+        ).join('\n')
+      ).join('\n\n');
+    jsonTemplate = JSON.stringify({
+      packingList: masterPackingList.map(p => ({
+        person: p.person,
+        sections: (p.sections || []).map(s => ({ title: s.title, items: ['...'] }))
+      }))
+    }, null, 2);
+  } else {
+    masterContext = `Their existing essentials (non-clothing items they usually bring):
+Travel Essentials: Passport, Water bottle, Chargers, Portable battery/power bank, AirPods/headphones, Oura charger, Earplugs, Eye mask
+Personal Care: Toothbrush, Razors, Curling iron, Round brush, Deodorant, Hair ties/claw clip, Sunscreen, Bug spray, Contacts, Vitamins, Ibuprofen, Band-aids
+Miscellaneous: Speaker, Hiking backpack, Beach tote, Workout bands, Gum, Mints, Salt, Small laundry bag`;
+    jsonTemplate = `{
+  "packingList": [
+    { "person": "General", "sections": [{ "title": "Documents", "items": ["..."] }, { "title": "Electronics", "items": ["..."] }, { "title": "Miscellaneous", "items": ["..."] }] },
+    { "person": "Megan", "sections": [{ "title": "Clothing", "items": ["..."] }, { "title": "Personal Care & Toiletries", "items": ["..."] }] },
+    { "person": "Erik", "sections": [{ "title": "Clothing", "items": ["..."] }, { "title": "Personal Care", "items": ["..."] }] }
+  ]
+}`;
+  }
+
+  const prompt = `You are a travel packing assistant. Generate a packing list for a trip.
 
 Trip: ${trip.name}
 Destinations: ${cities || trip.destination || 'various'}
 Regions: ${regions}
 Travel months: ${months}
 Duration: ${nights} nights
-Times doing laundry during trip: ${laundryCount} (so they need clothes for roughly ${Math.ceil(parseInt(nights)/(laundryCount+1))} days between washes)
+Times doing laundry: ${laundryCount} (roughly ${daysBetweenWashes} days between washes)
 
-Their existing essentials list (non-clothing items they already own and usually bring):
-Travel Essentials: Passport, Water bottle, Converter, Chargers, Portable battery/power bank, AirPods/headphones, Toothbrush charger, Oura charger, Earplugs, Eye mask, Neck pillow, Seat cushions
-Accessories: Sun hat, Baseball hat, Beanie, Gloves, Cozy socks, Sunglasses
-Personal Care: Toothbrush, Razors, Makeup wash cloths, Curling iron, Round brush, Deodorant, Hair ties/claw clip, Lip sunscreen, Sunscreen, Bug spray, Contacts, Contact solution, Glasses, Lens cleaning spray, Vitamins, Senna pills, Ibuprofen, Band-aids/blister patches, Electrolyte packets, Lube, Toy
-Miscellaneous: Speaker, Game, Hiking backpack, Beach tote, Workout bands, Yeti wine glasses, Gum, Mints, Salt, Reusable shopping bag, Small laundry bag
+${masterContext}
 
-Generate a packing list JSON with this EXACT structure. Respond ONLY with valid JSON, no markdown, no explanation:
+Generate a packing list JSON using this EXACT structure (same persons and section titles). Respond ONLY with valid JSON, no markdown:
 
-{
-  "packingList": [
-    {
-      "person": "General",
-      "sections": [
-        { "title": "Documents", "items": ["...", "..."] },
-        { "title": "Electronics", "items": ["...", "..."] },
-        { "title": "Accessories", "items": ["...", "..."] },
-        { "title": "Miscellaneous", "items": ["...", "..."] }
-      ]
-    },
-    {
-      "person": "Megan",
-      "sections": [
-        { "title": "Clothing", "items": ["...", "..."] },
-        { "title": "Toiletries", "items": ["...", "..."] },
-        { "title": "Personal Care", "items": ["...", "..."] }
-      ]
-    },
-    {
-      "person": "Erik",
-      "sections": [
-        { "title": "Clothing", "items": ["...", "..."] },
-        { "title": "Toiletries", "items": ["...", "..."] },
-        { "title": "Personal Care", "items": ["...", "..."] }
-      ]
-    }
-  ]
-}
+${jsonTemplate}
 
 Rules:
-- Clothing quantities should be based on ${Math.ceil(parseInt(nights||14)/(laundryCount+1))} days between washes
-- Include weather-appropriate clothing for the destination and travel months
-- General (first): shared items — electronics, documents, accessories, miscellaneous from the list above
-- Megan (second): women's clothing + her personal toiletries/essentials (curling iron, makeup cloths, hair ties etc)
-- Erik (third): men's clothing + his personal toiletries/essentials from the list above
-- Be specific with quantities where helpful (e.g. "5 t-shirts", "3 pairs shorts")
-- Use 3-6 sections per person as appropriate for the trip type
-- Do not include items that are not relevant to the destination/weather`;
+- For Clothing sections: adjust quantities for ${daysBetweenWashes} days between washes and weather/destination
+- For ALL other sections: use the exact items from the master list above (copy them as-is, only omit items clearly irrelevant to the destination/weather)
+- Be specific with quantities for clothing (e.g. "5 t-shirts", "3 pairs shorts")
+- Do not add new sections — only use the section titles shown in the template above`;
 
   try {
     const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev', {
@@ -7166,13 +7173,25 @@ document.addEventListener('click', function(e) {
     return;
   }
 
-  // Delete button
+  // Delete item button
   const delBtn = e.target.closest('[data-del-item]');
   if (delBtn) {
     const tripId = delBtn.dataset.delTrip;
     const itemId = delBtn.dataset.delItem;
     showToast('Deleting ' + itemId.slice(0,8));
     window.deletePackingItem(tripId, itemId);
+    return;
+  }
+
+  // Delete person (remove whole section) button
+  const delPersonBtn = e.target.closest('[data-del-person]');
+  if (delPersonBtn) {
+    const tripId = delPersonBtn.dataset.delTrip;
+    const person = delPersonBtn.dataset.delPerson;
+    showConfirmDialog('Remove ' + person + '?', 'This will remove ' + person + '’s entire packing section from this trip.').then(confirmed => {
+      if (confirmed) window.deletePackingPerson(tripId, person);
+    });
+    return;
   }
 });
 
