@@ -1872,7 +1872,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 233 };
+window.BUILD_INFO = { prNumber: 234 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6810,7 +6810,7 @@ async function _renderLogisticsInner(tripId, panel) {
     ? '<div style="display:flex;justify-content:flex-end;padding:0 16px 8px;">' +
         '<button onclick="clearPackingList(\'' + tripId + '\')" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;">Clear list &amp; regenerate</button>' +
       '</div>'
-    : '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">✨ Generate Packing List</button>';
+    : '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">Copy from Master Packing List</button>';
 
   panel.innerHTML =
     '<div style="height:16px;"></div>' +
@@ -6899,7 +6899,7 @@ function buildPackingListHTML(tripId, packingList, avatarUrls) {
           </div>
           <div class="packing-person-right">
             <span class="packing-person-pct" id="pct-${personObj.person}">${pct}% packed</span>
-            <button class="packing-delete-btn" data-del-person="${personObj.person}" data-del-trip="${tripId}" onclick="event.stopPropagation()" title="Remove ${personObj.person}" style="font-size:16px;opacity:0.45;margin-right:2px;">×</button>
+            <button class="packing-delete-btn" onclick="event.stopPropagation();removePackingPerson('${tripId}','${personObj.person}')" title="Remove ${personObj.person}" style="font-size:16px;opacity:0.45;margin-right:2px;">×</button>
             <span class="packing-person-chevron" id="chev-${blockId}">›</span>
           </div>
         </div>
@@ -6919,6 +6919,11 @@ window.clearPackingList = async function(tripId) {
     renderLogisticsPanel(tripId);
     showToast('Packing list cleared');
   } catch(e) { showToast('Clear failed'); console.error(e); }
+};
+
+window.removePackingPerson = async function(tripId, person) {
+  const confirmed = await showConfirmDialog('Remove ' + person + '?', 'This will remove ' + person + '’s entire packing section from this trip.');
+  if (confirmed) window.deletePackingPerson(tripId, person);
 };
 
 window.deletePackingPerson = async function(tripId, person) {
@@ -6989,117 +6994,41 @@ window.adjustLaundry = async function(tripId, delta) {
   } catch(e) { showToast('Could not save'); }
 };
 
-// ── Generate packing list via AI ──
+// ── Generate packing list from master packing list ──
 window.generatePackingList = async function(tripId) {
   const btn = document.getElementById('packingGenerateBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Copying…'; }
 
-  const trip = allTrips[tripId];
-  const laundryEl = document.getElementById('laundryCount');
-  const laundryCount = laundryEl ? parseInt(laundryEl.textContent)||1 : 1;
-
-  // Gather trip context
-  const nights = trip.nights || '?';
-  const days   = trip.days ? Object.values(trip.days) : [];
-  const regions = [...new Set(days.map(d=>d.region).filter(Boolean))].join(', ');
-  const months  = [...new Set(days.map(d=>d.dateMonth).filter(Boolean))].join('/');
-  const cities  = [...new Set(days.map(d=>(d.city||'').replace(/[🛬🚗✈️🏠]/g,'').trim()).filter(Boolean))].slice(0,6).join(', ');
-
-  const daysBetweenWashes = Math.ceil(parseInt(nights || 14) / (laundryCount + 1));
-
-  // Build prompt from master packing list if available, otherwise fall back to hardcoded list
-  let masterContext = '';
-  let jsonTemplate = '';
-  if (masterPackingList && masterPackingList.length) {
-    masterContext = 'Their master packing list (use this as the exact template):\n\n' +
-      masterPackingList.map(p =>
-        p.person + ':\n' + (p.sections || []).map(s =>
-          '  ' + s.title + ': ' + (s.items || []).filter(Boolean).map(i => i.label).join(', ')
-        ).join('\n')
-      ).join('\n\n');
-    jsonTemplate = JSON.stringify({
-      packingList: masterPackingList.map(p => ({
-        person: p.person,
-        sections: (p.sections || []).map(s => ({ title: s.title, items: ['...'] }))
-      }))
-    }, null, 2);
-  } else {
-    masterContext = `Their existing essentials (non-clothing items they usually bring):
-Travel Essentials: Passport, Water bottle, Chargers, Portable battery/power bank, AirPods/headphones, Oura charger, Earplugs, Eye mask
-Personal Care: Toothbrush, Razors, Curling iron, Round brush, Deodorant, Hair ties/claw clip, Sunscreen, Bug spray, Contacts, Vitamins, Ibuprofen, Band-aids
-Miscellaneous: Speaker, Hiking backpack, Beach tote, Workout bands, Gum, Mints, Salt, Small laundry bag`;
-    jsonTemplate = `{
-  "packingList": [
-    { "person": "General", "sections": [{ "title": "Documents", "items": ["..."] }, { "title": "Electronics", "items": ["..."] }, { "title": "Miscellaneous", "items": ["..."] }] },
-    { "person": "Megan", "sections": [{ "title": "Clothing", "items": ["..."] }, { "title": "Personal Care & Toiletries", "items": ["..."] }] },
-    { "person": "Erik", "sections": [{ "title": "Clothing", "items": ["..."] }, { "title": "Personal Care", "items": ["..."] }] }
-  ]
-}`;
+  if (!masterPackingList || !masterPackingList.length) {
+    showToast('No master packing list found — add items in Settings first');
+    if (btn) { btn.disabled = false; btn.textContent = 'Copy from Master Packing List'; }
+    return;
   }
 
-  const prompt = `You are a travel packing assistant. Generate a packing list for a trip.
-
-Trip: ${trip.name}
-Destinations: ${cities || trip.destination || 'various'}
-Regions: ${regions}
-Travel months: ${months}
-Duration: ${nights} nights
-Times doing laundry: ${laundryCount} (roughly ${daysBetweenWashes} days between washes)
-
-${masterContext}
-
-Generate a packing list JSON using this EXACT structure (same persons and section titles). Respond ONLY with valid JSON, no markdown:
-
-${jsonTemplate}
-
-Rules:
-- For Clothing sections: adjust quantities for ${daysBetweenWashes} days between washes and weather/destination
-- For ALL other sections: use the exact items from the master list above (copy them as-is, only omit items clearly irrelevant to the destination/weather)
-- Be specific with quantities for clothing (e.g. "5 t-shirts", "3 pairs shorts")
-- Do not add new sections — only use the section titles shown in the template above`;
-
   try {
-    const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await res.json();
-    const raw = data.content[0].text.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(raw);
-
-    // Assign unique IDs to every item
     let idCounter = Date.now();
-    const packingList = parsed.packingList.map(personObj => ({
-      person: personObj.person,
-      sections: personObj.sections.map(sec => ({
-        title: sec.title,
-        items: sec.items.map(label => ({
+    const packingList = masterPackingList.map(p => ({
+      person: p.person,
+      sections: (p.sections || []).map(s => ({
+        title: s.title,
+        items: (s.items || []).filter(Boolean).map(item => ({
           id: 'pi' + (idCounter++),
-          label: label,
+          label: item.label,
           checked: false
         }))
       }))
     }));
 
-    // Save to Firebase
     await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/laundryCount'),
-      parseInt(document.getElementById('laundryCount')?.textContent||1));
     if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
     allTrips[tripId].logistics.packingList = packingList;
 
-    // Re-render
     document.getElementById('packingListContainer').innerHTML = buildPackingListHTML(tripId, packingList, avatarUrls);
-    showToast('Packing list generated! ✓');
+    showToast('Packing list created ✓');
   } catch(e) {
-    console.error('Packing list generation failed', e);
-    if (btn) { btn.disabled = false; }
-    showToast('Generation failed — check connection');
+    console.error('generatePackingList error', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Copy from Master Packing List'; }
+    showToast('Failed — check connection');
   }
 };
 
@@ -7198,16 +7127,6 @@ document.addEventListener('click', function(e) {
     return;
   }
 
-  // Delete person (remove whole section) button
-  const delPersonBtn = e.target.closest('[data-del-person]');
-  if (delPersonBtn) {
-    const tripId = delPersonBtn.dataset.delTrip;
-    const person = delPersonBtn.dataset.delPerson;
-    showConfirmDialog('Remove ' + person + '?', 'This will remove ' + person + '’s entire packing section from this trip.').then(confirmed => {
-      if (confirmed) window.deletePackingPerson(tripId, person);
-    });
-    return;
-  }
 });
 
 // ── Toggle a packing item checked state ──
