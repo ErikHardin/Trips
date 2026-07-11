@@ -1892,7 +1892,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 243 };
+window.BUILD_INFO = { prNumber: 244 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -2418,7 +2418,7 @@ function renderTripItinerary(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Outbound Flights · ${trip.flightOutDate||''}</div>
-          ${_buildFlightRows(trip.flightOut, trip.flightOutNames)}
+          ${_buildFlightRows(trip.flightOut, trip.flightOutNames, trip.flightOutDayOffsets)}
         </div>
       </div>`;
   }
@@ -2643,7 +2643,7 @@ function renderTripItinerary(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return Flights · ${trip.flightReturnDate||''}</div>
-          ${_buildFlightRows(trip.flightReturn, trip.flightReturnNames)}
+          ${_buildFlightRows(trip.flightReturn, trip.flightReturnNames, trip.flightReturnDayOffsets)}
         </div>
       </div>`;
   }
@@ -2869,7 +2869,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Outbound · ${trip.flightOutDate||''}</div>
-          ${_buildFlightRows(trip.flightOut, trip.flightOutNames)}
+          ${_buildFlightRows(trip.flightOut, trip.flightOutNames, trip.flightOutDayOffsets)}
         </div>
       </div>`;
   }
@@ -2894,7 +2894,7 @@ async function renderTripOverview(trip) {
         <div class="flight-icon">✈️</div>
         <div>
           <div class="flight-label">Return · ${trip.flightReturnDate||''}</div>
-          ${_buildFlightRows(trip.flightReturn, trip.flightReturnNames)}
+          ${_buildFlightRows(trip.flightReturn, trip.flightReturnNames, trip.flightReturnDayOffsets)}
         </div>
       </div>`;
   }
@@ -4349,10 +4349,10 @@ window.generateTripPDF = async function(tripId) {
   // 6. Outbound flights HTML
   let flightsHTML = '';
   if (trip.flightOut) {
-    const rows = trip.flightOut.split('\n').map(f => {
+    const rows = trip.flightOut.split('\n').map((f, i) => {
       const code = f.split(' ')[0];
       const rest = f.slice(f.indexOf(' ')+1);
-      const on = _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
+      const on = _dayOffsetBadge(f, (trip.flightOutDayOffsets||[])[i]);
       return `<div class="flight-row"><span class="flight-code">${_esc(code)}</span> ${_esc(rest)}${on}</div>`;
     }).join('');
     flightsHTML = `<div class="flight-banner"><div class="flight-icon">✈️</div><div><div class="flight-label">Outbound Flights · ${_esc(trip.flightOutDate||'')}</div>${rows}</div></div>`;
@@ -4689,9 +4689,9 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   document.getElementById('editTripIncludeInWorldMap').checked = trip.includeInWorldMap !== false;
   // Parse existing trip-level flight strings into chip arrays
   _editFlightsOut = (trip.flightOut || '').split('\n').filter(Boolean)
-    .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '' }));
+    .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '', dayOffset: (trip.flightOutDayOffsets || [])[i] ?? null }));
   _editFlightsRet = (trip.flightReturn || '').split('\n').filter(Boolean)
-    .map((f, i) => ({ formatted: f, date: trip.flightReturnDate || '', isoDate: '', travelerName: (trip.flightReturnNames || [])[i] || '' }));
+    .map((f, i) => ({ formatted: f, date: trip.flightReturnDate || '', isoDate: '', travelerName: (trip.flightReturnNames || [])[i] || '', dayOffset: (trip.flightReturnDayOffsets || [])[i] ?? null }));
   // Collect in-trip flights stored on individual days
   _editFlightsIntrip = [];
   const _sortedDays = trip.days ? Object.entries(trip.days) : [];
@@ -4706,6 +4706,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
           date: fi.date || '',
           isoDate: day.dateISO || '',
           travelerName: fi.travelerName || '',
+          dayOffset: fi.dayOffset ?? null,
           dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
         });
       });
@@ -4741,9 +4742,11 @@ window.saveEditedTrip = async function() {
     flightOutDate:    _editFlightsOut[0]?.date || '',
     flightOut:        _editFlightsOut.map(f => f.formatted).join('\n'),
     flightOutNames:   _editFlightsOut.map(f => f.travelerName || ''),
+    flightOutDayOffsets: _editFlightsOut.map(f => f.dayOffset ?? null),
     flightReturnDate: _editFlightsRet[0]?.date || '',
     flightReturn:     _editFlightsRet.map(f => f.formatted).join('\n'),
     flightReturnNames: _editFlightsRet.map(f => f.travelerName || ''),
+    flightReturnDayOffsets: _editFlightsRet.map(f => f.dayOffset ?? null),
   };
   await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
 
@@ -4774,7 +4777,7 @@ function _parseFlightFormatted(formatted) {
   return { num: m[1], orig: m[2] || '', dest: m[3], dep: (m[4]||'').trim(), arr: (m[5]||'').trim() };
 }
 
-window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVal, depVal, arrVal) {
+window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVal, depVal, arrVal, offsetVal) {
   const n = _flightRowCount++;
   const row = document.createElement('div');
   row.className = 'flight-entry-row';
@@ -4785,6 +4788,9 @@ window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVa
   row.dataset.dest = destVal || '';
   row.dataset.dep  = depVal  || '';
   row.dataset.arr  = arrVal  || '';
+  // Preserve a manually-set arrival day offset across a re-lookup/re-edit so
+  // it doesn't silently reset back to the auto-guess.
+  row.dataset.dayOffset = (offsetVal != null) ? String(offsetVal) : '';
   row.innerHTML =
     '<input class="form-input fr-num" placeholder="UA8087" value="' + (numVal||'') + '" style="flex:1;min-width:70px;">' +
     '<input class="form-input fr-date" type="date" value="' + (dateVal||'') + '" style="flex:1;min-width:120px;">' +
@@ -4850,7 +4856,8 @@ window.lookupAllFlights = async function() {
       continue;
     }
     const humanDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
-    await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName);
+    const dayOffset = row.dataset.dayOffset !== '' ? parseInt(row.dataset.dayOffset, 10) : null;
+    await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName, dayOffset);
     row.remove();
     added++;
   }
@@ -4905,16 +4912,18 @@ window.addManualFromRow = async function(btn) {
   if (!num || !orig || !dest) { showToast('Enter flight #, origin, and destination — the flight was not saved'); return; }
   const formatted = num + ' ' + orig + ' → ' + dest + (dep && arr ? ' · ' + dep + ' – ' + arr : '');
   const humanDate = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '';
-  await _addFlightEntry(dir, date, humanDate, formatted, travelerName);
+  const dayOffset = row.dataset.dayOffset !== '' ? parseInt(row.dataset.dayOffset, 10) : null;
+  await _addFlightEntry(dir, date, humanDate, formatted, travelerName, dayOffset);
   row.remove();
 };
 
-async function _addFlightEntry(dir, isoDate, humanDate, formatted, travelerName) {
+async function _addFlightEntry(dir, isoDate, humanDate, formatted, travelerName, dayOffset) {
   travelerName = travelerName || '';
+  dayOffset = dayOffset ?? null;
   if (dir === 'out') {
-    _editFlightsOut.push({ formatted, date: humanDate, isoDate, travelerName });
+    _editFlightsOut.push({ formatted, date: humanDate, isoDate, travelerName, dayOffset });
   } else if (dir === 'ret') {
-    _editFlightsRet.push({ formatted, date: humanDate, isoDate, travelerName });
+    _editFlightsRet.push({ formatted, date: humanDate, isoDate, travelerName, dayOffset });
   } else {
     const trip = allTrips[editingTripId];
     const days = trip.days ? Object.entries(trip.days) : [];
@@ -4929,12 +4938,12 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted, travelerName)
     }
     if (!match) { showToast('No trip day found for ' + humanDate); return; }
     const [dayId, day] = match;
-    const existingForDay = _editFlightsIntrip.filter(f => f.dayId === dayId).map(f => ({ formatted: f.formatted, date: f.date, travelerName: f.travelerName || '' }));
-    const newFlightInfo = [...existingForDay, { formatted, date: humanDate, travelerName }];
+    const existingForDay = _editFlightsIntrip.filter(f => f.dayId === dayId).map(f => ({ formatted: f.formatted, date: f.date, travelerName: f.travelerName || '', dayOffset: f.dayOffset ?? null }));
+    const newFlightInfo = [...existingForDay, { formatted, date: humanDate, travelerName, dayOffset }];
     await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: newFlightInfo });
     logChange(editingTripId, 'Flight added', formatted);
     _editFlightsIntrip.push({
-      dayId, formatted, date: humanDate, isoDate, travelerName,
+      dayId, formatted, date: humanDate, isoDate, travelerName, dayOffset,
       dayLabel: (day.dayName||'') + ' ' + (day.dateMonth||'') + (day.dateNum||'')
     });
   }
@@ -4950,10 +4959,14 @@ function renderFlightChips() {
       ? 'removeIntripFlight(' + i + ')'
       : 'removeFlightChip(\'' + dir + '\',' + i + ')';
     const travelerTag = '<span class="flight-chip-traveler' + (f.travelerName ? '' : ' flight-chip-traveler-empty') + '" onclick="renameFlightTraveler(\'' + dir + '\',' + i + ')" title="Click to rename traveler">' + (f.travelerName ? escHtml(f.travelerName) : '+ name') + '</span>';
+    const effectiveOffset = f.dayOffset != null ? f.dayOffset : (_isOvernightFlight(f.formatted) ? 1 : 0);
+    const offsetLabel = effectiveOffset === 0 ? 'Same day' : ('+' + effectiveOffset + ' day' + (effectiveOffset > 1 ? 's' : ''));
+    const offsetTag = '<span class="flight-chip-traveler" onclick="editFlightDayOffset(\'' + dir + '\',' + i + ')" title="Click to adjust arrival day offset">' + offsetLabel + '</span>';
     return '<div class="flight-chip">' +
       '<span class="flight-code" onclick="editFlightChip(\'' + dir + '\',' + i + ')" title="Click to edit">' + code + '</span>' +
       '<span class="flight-chip-text" onclick="editFlightChip(\'' + dir + '\',' + i + ')" title="Click to edit">' + rest + '</span>' +
       travelerTag +
+      offsetTag +
       '<span class="flight-chip-date">' + (label||'') + '</span>' +
       '<button class="flight-chip-del" onclick="' + delFn + '">×</button>' +
       '</div>';
@@ -4984,7 +4997,7 @@ window.editFlightChip = function(dir, index) {
   else                    { [f] = _editFlightsIntrip.splice(index, 1); }
   if (!f) return;
   const { num, orig, dest, dep, arr } = _parseFlightFormatted(f.formatted);
-  const row = addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr);
+  const row = addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr, f.dayOffset);
   // A previously-saved flight with a missing origin/destination has no way to
   // be completed otherwise — surface the manual fields right away instead of
   // requiring a fresh lookup to fail first.
@@ -5004,7 +5017,7 @@ window.removeIntripFlight = async function(index) {
   const f = _editFlightsIntrip[index];
   if (!f) return;
   _editFlightsIntrip.splice(index, 1);
-  const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '' }));
+  const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '', dayOffset: x.dayOffset ?? null }));
   await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining.length > 0 ? remaining : null });
   logChange(editingTripId, 'Flight removed', f.formatted || '');
   renderFlightChips();
@@ -5018,9 +5031,28 @@ window.renameFlightTraveler = async function(dir, index) {
   if (name === null) return;
   f.travelerName = name.trim();
   if (dir === 'intrip') {
-    const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '' }));
+    const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '', dayOffset: x.dayOffset ?? null }));
     await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining });
     logChange(editingTripId, 'Flight traveler renamed', f.formatted + (f.travelerName ? ' → ' + f.travelerName : ''));
+  }
+  renderFlightChips();
+};
+
+window.editFlightDayOffset = async function(dir, index) {
+  const arr = dir === 'out' ? _editFlightsOut : dir === 'ret' ? _editFlightsRet : _editFlightsIntrip;
+  const f = arr[index];
+  if (!f) return;
+  const auto = _isOvernightFlight(f.formatted) ? 1 : 0;
+  const current = f.dayOffset != null ? f.dayOffset : auto;
+  const input = prompt('Days after departure this flight arrives (0 = same day, 1 = next day, 2 = two days later, etc.):', String(current));
+  if (input === null) return;
+  const n = parseInt(input, 10);
+  if (isNaN(n) || n < 0 || n > 5) { showToast('Enter a number between 0 and 5'); return; }
+  f.dayOffset = n;
+  if (dir === 'intrip') {
+    const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '', dayOffset: x.dayOffset ?? null }));
+    await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining });
+    logChange(editingTripId, 'Flight day offset updated', f.formatted + ' → +' + n);
   }
   renderFlightChips();
 };
@@ -6435,37 +6467,43 @@ function _isOvernightFlight(f) {
   return dep !== null && arr !== null && arr < dep;
 }
 
-function _buildFlightRows(flightStr, names) {
+// Explicit per-flight day offset (from dayOffset/offsets) wins over the
+// clock-time overnight guess, which can't tell +2 from +1 or a same-day
+// date-line crossing from an overnight flight.
+function _dayOffsetBadge(f, offset) {
+  if (offset != null) return offset > 0 ? `<span class="flight-next-day">+${offset}</span>` : '';
+  return _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
+}
+
+function _buildFlightRows(flightStr, names, offsets) {
   const flights = (flightStr || '').split('\n').filter(Boolean);
   if (!flights.length) return '';
-  const on = f => _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
-  const fRow = f => `<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${on(f)}</div>`;
+  const fRow = (f, i) => `<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${_dayOffsetBadge(f, (offsets||[])[i])}</div>`;
   const hasNames = (names || []).some(n => n);
-  if (!hasNames) return flights.map(fRow).join('');
+  if (!hasNames) return flights.map((f, i) => fRow(f, i)).join('');
   const groups = [];
   let cur = null;
   flights.forEach((f, i) => {
     const name = (names[i] || '');
     if (!cur || cur.name !== name) { cur = {name, flights: []}; groups.push(cur); }
-    cur.flights.push(f);
+    cur.flights.push({ f, i });
   });
   return groups.map(g =>
-    `<div class="flight-traveler-group">${g.name ? `<div class="flight-traveler-group-name">${g.name}</div>` : ''}${g.flights.map(fRow).join('')}</div>`
+    `<div class="flight-traveler-group">${g.name ? `<div class="flight-traveler-group-name">${g.name}</div>` : ''}${g.flights.map(x => fRow(x.f, x.i)).join('')}</div>`
   ).join('');
 }
 
 function _buildFlightRowsFromInfos(flightInfos) {
   if (!flightInfos || !flightInfos.length) return '';
-  const on = f => _isOvernightFlight(f) ? '<span class="flight-next-day">+1</span>' : '';
-  const fRow = f => `<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${on(f)}</div>`;
+  const fRow = f => `<div class="flight-row"><span class="flight-code">${f.formatted.split(' ')[0]}</span> ${f.formatted.slice(f.formatted.indexOf(' ')+1)}${_dayOffsetBadge(f.formatted, f.dayOffset)}</div>`;
   const hasNames = flightInfos.some(fi => fi.travelerName);
-  if (!hasNames) return flightInfos.map(fi => fRow(fi.formatted)).join('');
+  if (!hasNames) return flightInfos.map(fRow).join('');
   const groups = [];
   let cur = null;
   flightInfos.forEach(fi => {
     const name = fi.travelerName || '';
     if (!cur || cur.name !== name) { cur = {name, flights: []}; groups.push(cur); }
-    cur.flights.push(fi.formatted);
+    cur.flights.push(fi);
   });
   return groups.map(g =>
     `<div class="flight-traveler-group">${g.name ? `<div class="flight-traveler-group-name">${g.name}</div>` : ''}${g.flights.map(fRow).join('')}</div>`
