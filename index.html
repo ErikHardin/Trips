@@ -1892,7 +1892,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 242 };
+window.BUILD_INFO = { prNumber: 243 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4769,9 +4769,9 @@ window.saveEditedTrip = async function() {
 // fall back to the exact original route/times if a fresh lookup fails.
 function _parseFlightFormatted(formatted) {
   const s = formatted || '';
-  const m = s.match(/^(\S+)\s+(\S+)\s*→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
+  const m = s.match(/^(\S+)\s+(?:(\S+)\s+)?→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
   if (!m) return { num: s.split(' ')[0] || '', orig: '', dest: '', dep: '', arr: '' };
-  return { num: m[1], orig: m[2], dest: m[3], dep: (m[4]||'').trim(), arr: (m[5]||'').trim() };
+  return { num: m[1], orig: m[2] || '', dest: m[3], dep: (m[4]||'').trim(), arr: (m[5]||'').trim() };
 }
 
 window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVal, depVal, arrVal) {
@@ -4796,6 +4796,7 @@ window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVa
     '<input class="form-input fr-traveler" placeholder="Traveler (optional)" value="' + (nameVal||'') + '" style="flex:1;min-width:80px;">' +
     '<button class="flight-chip-del" onclick="removeFlightRow(' + n + ')">×</button>';
   document.getElementById('flightEntryRows').appendChild(row);
+  return row;
 };
 
 window.removeFlightRow = function(n) {
@@ -4817,23 +4818,41 @@ window.lookupAllFlights = async function() {
     const dir  = row.querySelector('.fr-dir').value;
     const travelerName = (row.querySelector('.fr-traveler')?.value || '').trim();
     if (!num || !date) { failCount++; _markFlightRowFailed(row, 'Missing flight number or date'); continue; }
-    try {
-      const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/flight-lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flightNumber: num, date })
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      if (!data.formatted) throw new Error();
-      const humanDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
-      await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName);
-      row.remove();
-      added++;
-    } catch(e) {
+    // Space out sequential calls — AeroDataBox's per-second rate cap otherwise
+    // trips on the 2nd+ flight in a batch even though these aren't parallel.
+    if (row !== rows[0]) await new Promise(r => setTimeout(r, 1100));
+    let data = null;
+    for (let attempt = 0; attempt < 2 && !data; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 2500));
+      try {
+        const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/flight-lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flightNumber: num, date })
+        });
+        if (!res.ok) throw new Error();
+        data = await res.json();
+        if (!data.formatted) data = null;
+      } catch(e) { data = null; }
+    }
+    if (!data) {
       _markFlightRowFailed(row, 'Not found — enter manually:');
       failCount++;
+      continue;
     }
+    if (!data.departure || !data.arrival) {
+      const parsed = _parseFlightFormatted(data.formatted);
+      _markFlightRowFailed(row, 'Partial match — fill in the rest:', {
+        orig: data.departure || parsed.orig, dest: data.arrival || parsed.dest,
+        dep: parsed.dep, arr: parsed.arr
+      });
+      failCount++;
+      continue;
+    }
+    const humanDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName);
+    row.remove();
+    added++;
   }
   document.getElementById('flightLookupBtn').disabled = false;
   if (failCount === 0) {
@@ -4845,16 +4864,17 @@ window.lookupAllFlights = async function() {
   }
 };
 
-function _markFlightRowFailed(row, msg) {
+function _markFlightRowFailed(row, msg, partial) {
   row.querySelector('.fr-num').classList.add('flight-row-error');
   if (row.querySelector('.fr-manual')) return;
-  // Pre-fill from the original route/times if this row came from editing an
-  // existing flight, so clicking "Add" with the fields untouched restores the
-  // flight as-is instead of silently dropping it.
-  const orig = row.dataset.orig || '';
-  const dest = row.dataset.dest || '';
-  const dep  = row.dataset.dep  || '';
-  const arr  = row.dataset.arr  || '';
+  // Pre-fill from fresh (if incomplete) lookup data when given, otherwise from
+  // the original route/times if this row came from editing an existing
+  // flight, so clicking "Add" with the fields untouched restores whatever was
+  // already known instead of silently dropping it.
+  const orig = (partial && partial.orig) || row.dataset.orig || '';
+  const dest = (partial && partial.dest) || row.dataset.dest || '';
+  const dep  = (partial && partial.dep)  || row.dataset.dep  || '';
+  const arr  = (partial && partial.arr)  || row.dataset.arr  || '';
   const manual = document.createElement('div');
   manual.className = 'fr-manual';
   manual.style.cssText = 'width:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
@@ -4964,7 +4984,13 @@ window.editFlightChip = function(dir, index) {
   else                    { [f] = _editFlightsIntrip.splice(index, 1); }
   if (!f) return;
   const { num, orig, dest, dep, arr } = _parseFlightFormatted(f.formatted);
-  addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr);
+  const row = addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr);
+  // A previously-saved flight with a missing origin/destination has no way to
+  // be completed otherwise — surface the manual fields right away instead of
+  // requiring a fresh lookup to fail first.
+  if (!orig || !dest) {
+    _markFlightRowFailed(row, 'Incomplete — fill in the rest:', { orig, dest, dep, arr });
+  }
   renderFlightChips();
 };
 
