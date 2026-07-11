@@ -1740,9 +1740,9 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   <div class="modal-sheet" style="max-height:80vh;overflow-y:auto;">
     <div class="modal-handle"></div>
     <div class="modal-title">Outstanding Travel Bookings</div>
-    <div style="font-size:12px;color:var(--muted);margin:-10px 0 14px;">Flights, hotel, or car still needed for these trips.</div>
+    <div style="font-size:12px;color:var(--muted);margin:-10px 0 14px;">Trips in the next 6 months still missing flights, hotel, or car.</div>
     <div id="outstandingBookingsModalBody"></div>
-    <button class="form-btn" onclick="reviewOutstandingInTracker()">Review in Travel Tracker</button>
+    <button class="form-btn" onclick="reviewOutstandingInTracker()">Review in Travel for Trips</button>
     <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissOutstandingBookingsModal()">Dismiss</button>
   </div>
 </div>
@@ -9152,14 +9152,32 @@ function travelFieldMissing(t, field) {
   return v !== 'booked' && v !== 'na';
 }
 
-// Trips in the current calendar year with at least one of flights/hotel/car outstanding.
+// Trips departing within the next 6 months with at least one of flights/hotel/car
+// outstanding. Trips with an unparseable/TBD date are skipped since we can't
+// place them in the window. Sorted chronologically by actual trip date.
 function computeOutstandingBookings(data) {
-  const thisYear = String(new Date().getFullYear());
-  const trips = (data[thisYear] && data[thisYear].trips) || {};
-  const outstanding = Object.entries(trips).filter(([, t]) =>
-    ['flights', 'hotel', 'car'].some(f => travelFieldMissing(t, f))
-  );
-  return sortTripEntries(outstanding);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(now);
+  windowEnd.setMonth(windowEnd.getMonth() + 6);
+
+  const outstanding = [];
+  Object.keys(data).forEach(yStr => {
+    const year = parseInt(yStr, 10);
+    if (isNaN(year)) return;
+    const trips = (data[yStr] && data[yStr].trips) || {};
+    Object.entries(trips).forEach(([id, t]) => {
+      const dk = parseTripDateSort(t.dates);
+      if (dk.m === 99) return;
+      const tripDate = new Date(year, dk.m, dk.d);
+      if (tripDate < now || tripDate > windowEnd) return;
+      if (['flights', 'hotel', 'car'].some(f => travelFieldMissing(t, f))) {
+        outstanding.push({ id, t, tripDate });
+      }
+    });
+  });
+  outstanding.sort((a, b) => a.tripDate - b.tripDate);
+  return outstanding.map(o => [o.id, o.t]);
 }
 
 const OUTSTANDING_FIELD_META = {
