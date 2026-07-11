@@ -648,6 +648,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   font-size: 18px; padding: 2px 4px; line-height: 1; flex-shrink: 0; width: 30px; text-align: center;
 }
 .travel-del-btn:hover { color: var(--terracotta); }
+/* ── OUTSTANDING BOOKINGS POPUP ── */
+.outstanding-trip-row { padding: 10px 0; border-bottom: 1px solid var(--sand); }
+.outstanding-trip-row:last-child { border-bottom: none; }
+.outstanding-trip-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.outstanding-trip-dates { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.outstanding-trip-missing { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.outstanding-chip { font-size: 11px; font-weight: 600; color: var(--terracotta); background: rgba(192,106,61,0.1); border-radius: 20px; padding: 3px 10px; }
 .travel-inline-edit {
   font-size: 13px; font-weight: 500; font-family: inherit; color: var(--ink);
   border: none; border-bottom: 1.5px solid var(--terracotta); background: transparent;
@@ -1728,6 +1735,18 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   </div>
 </div>
 
+<!-- ══ OUTSTANDING BOOKINGS MODAL ══ -->
+<div class="modal-overlay" id="outstandingBookingsModal" onclick="dismissOutstandingBookingsModal(event)">
+  <div class="modal-sheet" style="max-height:80vh;overflow-y:auto;">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Outstanding Travel Bookings</div>
+    <div style="font-size:12px;color:var(--muted);margin:-10px 0 14px;">Trips in the next 6 months still missing flights, hotel, or car.</div>
+    <div id="outstandingBookingsModalBody"></div>
+    <button class="form-btn" onclick="reviewOutstandingInTracker()">Review in Travel for Trips</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissOutstandingBookingsModal()">Dismiss</button>
+  </div>
+</div>
+
 <!-- ══ TOAST ══ -->
 <div id="lightbox">
   <button id="lightbox-close" onclick="closeLightbox()">✕</button>
@@ -1883,6 +1902,7 @@ let currentUser = null;      // Firebase User object
 let userRole = null;         // "admin" | "guest" | null
 let guestTripIds = [];       // trip IDs accessible to guests
 let adminUser = '';          // display name for attribution
+let outstandingBookingsPopupShown = false; // gates the outstanding-bookings popup to once per signed-in session
 let appName = 'Hardin';
 let allTrips = {};
 let currentTripId = null;
@@ -1936,6 +1956,7 @@ function setupAuth() {
   window._onAuthStateChanged(window._auth, async (user) => {
     if (!user) {
       currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+      outstandingBookingsPopupShown = false;
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -1975,6 +1996,7 @@ function setupAuth() {
       renderAppName();
       document.getElementById('lockBtn').style.display = '';
       document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
+      if (userRole === 'admin') checkOutstandingBookings();
       initApp();
     } catch(e) {
       console.error('Auth lookup failed:', e);
@@ -2139,6 +2161,7 @@ window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function() {
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+  outstandingBookingsPopupShown = false;
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripRefreshBtn').style.display = 'none';
@@ -2404,14 +2427,15 @@ function renderTripItinerary(trip) {
   const days = trip.days ? Object.entries(trip.days) : [];
   days.sort((a,b) => (a[1].sortOrder||0)-(b[1].sortOrder||0));
 
-  // Compute region date ranges from actual day data so headers are always populated
+  // Compute region date ranges live from actual day data so headers are always accurate
   const _regionDatesMap = {};
   days.forEach(([, d]) => {
-    if (!d.region || !d.dateISO) return;
-    if (!_regionDatesMap[d.region]) _regionDatesMap[d.region] = { first: d.dateISO, last: d.dateISO };
+    const iso = _sdGetISO(d, trip.year);
+    if (!d.region || !iso) return;
+    if (!_regionDatesMap[d.region]) _regionDatesMap[d.region] = { first: iso, last: iso };
     else {
-      if (d.dateISO < _regionDatesMap[d.region].first) _regionDatesMap[d.region].first = d.dateISO;
-      if (d.dateISO > _regionDatesMap[d.region].last)  _regionDatesMap[d.region].last  = d.dateISO;
+      if (iso < _regionDatesMap[d.region].first) _regionDatesMap[d.region].first = iso;
+      if (iso > _regionDatesMap[d.region].last)  _regionDatesMap[d.region].last  = iso;
     }
   });
 
@@ -2420,7 +2444,7 @@ function renderTripItinerary(trip) {
     if (day.region && day.region !== currentRegion) {
       currentRegion = day.region;
       const _rd = _regionDatesMap[day.region];
-      const _rdStr = day.regionDates || (_rd ? _sdFormatRegionDates(_rd.first, _rd.last) : '');
+      const _rdStr = _rd ? _sdFormatRegionDates(_rd.first, _rd.last) : '';
       panel.innerHTML += `
         <div class="region-header">
           <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
@@ -3022,11 +3046,12 @@ async function renderTripOverview(trip) {
     if (sortedForItinerary.length) {
       const _shareRegionDatesMap = {};
       sortedForItinerary.forEach(([, d]) => {
-        if (!d.region || !d.dateISO) return;
-        if (!_shareRegionDatesMap[d.region]) _shareRegionDatesMap[d.region] = { first: d.dateISO, last: d.dateISO };
+        const iso = _sdGetISO(d, trip.year);
+        if (!d.region || !iso) return;
+        if (!_shareRegionDatesMap[d.region]) _shareRegionDatesMap[d.region] = { first: iso, last: iso };
         else {
-          if (d.dateISO < _shareRegionDatesMap[d.region].first) _shareRegionDatesMap[d.region].first = d.dateISO;
-          if (d.dateISO > _shareRegionDatesMap[d.region].last)  _shareRegionDatesMap[d.region].last  = d.dateISO;
+          if (iso < _shareRegionDatesMap[d.region].first) _shareRegionDatesMap[d.region].first = iso;
+          if (iso > _shareRegionDatesMap[d.region].last)  _shareRegionDatesMap[d.region].last  = iso;
         }
       });
       let shareRegion = null;
@@ -3035,7 +3060,7 @@ async function renderTripOverview(trip) {
           if (day.region && day.region !== shareRegion) {
             shareRegion = day.region;
             const _srd = _shareRegionDatesMap[day.region];
-            const _srdStr = day.regionDates || (_srd ? _sdFormatRegionDates(_srd.first, _srd.last) : '');
+            const _srdStr = _srd ? _sdFormatRegionDates(_srd.first, _srd.last) : '';
             regionHeader = `<div class="region-header">
               <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
               <div class="region-name-text">${escHtml(day.region)}</div>
@@ -3981,7 +4006,6 @@ window.importCSV = async function() {
       hotel: obj['hotel']||'',
       region: obj['region']||'',
       regionColor: obj['regioncolor']||'#c06a3d',
-      regionDates: obj['regiondates']||'',
       activities,
       sortOrder: sortOrder++
     };
@@ -4026,7 +4050,7 @@ window.loadDemoData = async function() {
   });
 
   const days = [
-    { dateNum:'24', dateMonth:'May', dayName:'Sunday', city:'🛬 Arrive Lyon', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', regionDates:'May 24–27', sortOrder:0,
+    { dateNum:'24', dateMonth:'May', dayName:'Sunday', city:'🛬 Arrive Lyon', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', sortOrder:0,
       activities:[{text:'Land in afternoon',emoji:'🛬'},{text:'Wine at Octobre caviste',emoji:'🍷'},{text:"Dinner at Carmelo's",emoji:'🍽️'}]},
     { dateNum:'25', dateMonth:'May', dayName:'Monday', city:'Lyon', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', sortOrder:1,
       activities:[{text:'Lyon Secret Food Tour',emoji:'🥐',time:'11:30am–3pm'}]},
@@ -4034,7 +4058,7 @@ window.loadDemoData = async function() {
       activities:[{text:'Private Full Day Beaujolais Wine Tour from Lyon w/Insiders',emoji:'🍇'},{text:'Dinner at Les Bouchon des Filles?',emoji:'🍽️'}]},
     { dateNum:'27', dateMonth:'May', dayName:'Wednesday', city:'Lyon · Explore', hotel:'Intercontinental Lyon Hotel Dieu', region:'Lyon', regionColor:'#c06a3d', sortOrder:3,
       activities:[{text:'Explore Lyon',emoji:'🗺️'},{text:'Cocktail at Abstract',emoji:'🍸'},{text:'Dinner at Soma',emoji:'🍽️',time:'7:15pm'}]},
-    { dateNum:'28', dateMonth:'May', dayName:'Thursday', city:'🚗 Drive to Luberon', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', regionDates:'May 28–31', sortOrder:4,
+    { dateNum:'28', dateMonth:'May', dayName:'Thursday', city:'🚗 Drive to Luberon', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', sortOrder:4,
       activities:[{text:'Tasting at Domaine de Corps de Loup',emoji:'🍷',time:'10–11am'},{text:'Lunch at Le Vineum / tasting Paul Jaboulet Ainé',emoji:'🍽️',time:'12–2pm'},{text:'Walk to Chapelle Saint-Christophe',emoji:'⛪',time:'2–3pm'},{text:'Vieux Télégraphe — walk in if we want',emoji:'🏔️',time:'4:30–5:30pm'},{text:'Chateau Bois D\'Arlène – charcuterie and tasting',emoji:'🧀',time:'6pm'},{text:'Arrive to hotel ~8–8:30pm',emoji:'🏨'}]},
     { dateNum:'29', dateMonth:'May', dayName:'Friday', city:'Luberon · Villages', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', sortOrder:5,
       activities:[{text:'Oppede and Menerbes',emoji:'🏘️'},{text:'Explore Bonnieux – market day',emoji:'🛍️'},{text:'Lunch or Dinner at Brasserie Les Terrasses',emoji:'🍽️',time:'2:30 or 6:30pm'}]},
@@ -4042,7 +4066,7 @@ window.loadDemoData = async function() {
       activities:[{text:'Roussillon, Gordes, Goult, Lourmarin',emoji:'🏘️'}]},
     { dateNum:'31', dateMonth:'May', dayName:'Sunday', city:'Luberon · E-bikes', hotel:'Domaine Les Roullets', region:'Luberon', regionColor:'#6d9b72', sortOrder:7,
       activities:[{text:'Rent e-bikes – Véloroute du Calavon',emoji:'🚲'}]},
-    { dateNum:'1', dateMonth:'Jun', dayName:'Monday', city:'🚗 Drive to Bandol', hotel:'Thalazur Bandol Ile Rousse Hotel', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', regionDates:'Jun 1–3', sortOrder:8,
+    { dateNum:'1', dateMonth:'Jun', dayName:'Monday', city:'🚗 Drive to Bandol', hotel:'Thalazur Bandol Ile Rousse Hotel', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', sortOrder:8,
       activities:[{text:'Cassis and Calanques on the way to Bandol',emoji:'🏖️'},{text:'Dinner at Restaurant Les Oliviers (hotel restaurant)',emoji:'⭐',michelin:true}]},
     { dateNum:'2', dateMonth:'Jun', dayName:'Tuesday', city:'Bandol · Wine Day', hotel:'Thalazur Bandol Ile Rousse Hotel', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', sortOrder:9,
       activities:[{text:'Relax at hotel pool',emoji:'🏊'},{text:'Domaine Bastide Blanche',emoji:'🍷',time:'1:30pm (45 min)'},{text:'Domaine Tempier',emoji:'🍷',time:'2:30pm (90 min)'},{text:'Château Canadel',emoji:'🍷',time:'4:30pm (30 min)'},{text:'Domaines Bunan',emoji:'🍷',time:'5:30pm (30 min)'}]},
@@ -4050,7 +4074,7 @@ window.loadDemoData = async function() {
       activities:[{text:'Drive along Corniche des Maures',emoji:'🌊'},{text:'Lunch in St. Tropez',emoji:'🍽️'},{text:'Pool time at Hôtel Martinez',emoji:'🏊'}]},
     { dateNum:'4', dateMonth:'Jun', dayName:'Thursday', city:'Cannes', hotel:'Hôtel Martinez', region:'Bandol & Côte d\'Azur', regionColor:'#4a7fb5', sortOrder:11,
       activities:[{text:'Lunch at La Plage du Martinez (hotel)',emoji:'🍽️'},{text:'Dinner at Table 22 (Le Suquet)',emoji:'🍽️'},{text:'Cocktail at Martinez Bar (hotel)',emoji:'🍸'}]},
-    { dateNum:'5', dateMonth:'Jun', dayName:'Friday', city:'Berlin', hotel:'Me and All Hotel Berlin East Side', region:'Berlin', regionColor:'#8a6aad', regionDates:'Jun 5–6', sortOrder:12,
+    { dateNum:'5', dateMonth:'Jun', dayName:'Friday', city:'Berlin', hotel:'Me and All Hotel Berlin East Side', region:'Berlin', regionColor:'#8a6aad', sortOrder:12,
       activities:[{text:'Explore Berlin',emoji:'🏛️'}]},
     { dateNum:'6', dateMonth:'Jun', dayName:'Saturday', city:'Berlin', hotel:'Me and All Hotel Berlin East Side', region:'Berlin', regionColor:'#8a6aad', sortOrder:13,
       activities:[{text:'Last day in Berlin',emoji:'🏙️'}]},
@@ -4194,6 +4218,18 @@ window.generateTripPDF = async function(tripId) {
   const sortedDays = (trip.days ? Object.entries(trip.days) : [])
     .sort(([,a],[,b]) => (a.sortOrder||0) - (b.sortOrder||0));
 
+  // Compute region date ranges live from actual day data
+  const _pdfRegionDatesMap = {};
+  sortedDays.forEach(([, d]) => {
+    const iso = _sdGetISO(d, trip.year);
+    if (!d.region || !iso) return;
+    if (!_pdfRegionDatesMap[d.region]) _pdfRegionDatesMap[d.region] = { first: iso, last: iso };
+    else {
+      if (iso < _pdfRegionDatesMap[d.region].first) _pdfRegionDatesMap[d.region].first = iso;
+      if (iso > _pdfRegionDatesMap[d.region].last)  _pdfRegionDatesMap[d.region].last  = iso;
+    }
+  });
+
   // 4. Pre-collect city coordinates for the map
   const seenCities = new Set();
   const cityPoints = [];
@@ -4218,10 +4254,12 @@ window.generateTripPDF = async function(tripId) {
     let regionPrefixHTML = '';
     if (day.region && day.region !== currentRegion) {
       currentRegion = day.region;
+      const _prd = _pdfRegionDatesMap[day.region];
+      const _prdStr = _prd ? _sdFormatRegionDates(_prd.first, _prd.last) : '';
       regionPrefixHTML = `<div class="region-header">
         <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
         <div class="region-name">${_esc(day.region)}</div>
-        <div class="region-dates">${_esc(day.regionDates||'')}</div>
+        <div class="region-dates">${_esc(_prdStr)}</div>
       </div>`;
     }
 
@@ -4734,9 +4772,9 @@ window.saveEditedTrip = async function() {
 // fall back to the exact original route/times if a fresh lookup fails.
 function _parseFlightFormatted(formatted) {
   const s = formatted || '';
-  const m = s.match(/^(\S+)\s+(\S+)\s*→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
+  const m = s.match(/^(\S+)\s+(?:(\S+)\s+)?→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
   if (!m) return { num: s.split(' ')[0] || '', orig: '', dest: '', dep: '', arr: '' };
-  return { num: m[1], orig: m[2], dest: m[3], dep: (m[4]||'').trim(), arr: (m[5]||'').trim() };
+  return { num: m[1], orig: m[2] || '', dest: m[3], dep: (m[4]||'').trim(), arr: (m[5]||'').trim() };
 }
 
 window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVal, depVal, arrVal, offsetVal) {
@@ -4764,6 +4802,7 @@ window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVa
     '<input class="form-input fr-traveler" placeholder="Traveler (optional)" value="' + (nameVal||'') + '" style="flex:1;min-width:80px;">' +
     '<button class="flight-chip-del" onclick="removeFlightRow(' + n + ')">×</button>';
   document.getElementById('flightEntryRows').appendChild(row);
+  return row;
 };
 
 window.removeFlightRow = function(n) {
@@ -4785,24 +4824,42 @@ window.lookupAllFlights = async function() {
     const dir  = row.querySelector('.fr-dir').value;
     const travelerName = (row.querySelector('.fr-traveler')?.value || '').trim();
     if (!num || !date) { failCount++; _markFlightRowFailed(row, 'Missing flight number or date'); continue; }
-    try {
-      const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/flight-lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flightNumber: num, date })
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      if (!data.formatted) throw new Error();
-      const humanDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
-      const dayOffset = row.dataset.dayOffset !== '' ? parseInt(row.dataset.dayOffset, 10) : null;
-      await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName, dayOffset);
-      row.remove();
-      added++;
-    } catch(e) {
+    // Space out sequential calls — AeroDataBox's per-second rate cap otherwise
+    // trips on the 2nd+ flight in a batch even though these aren't parallel.
+    if (row !== rows[0]) await new Promise(r => setTimeout(r, 1100));
+    let data = null;
+    for (let attempt = 0; attempt < 2 && !data; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 2500));
+      try {
+        const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/flight-lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flightNumber: num, date })
+        });
+        if (!res.ok) throw new Error();
+        data = await res.json();
+        if (!data.formatted) data = null;
+      } catch(e) { data = null; }
+    }
+    if (!data) {
       _markFlightRowFailed(row, 'Not found — enter manually:');
       failCount++;
+      continue;
     }
+    if (!data.departure || !data.arrival) {
+      const parsed = _parseFlightFormatted(data.formatted);
+      _markFlightRowFailed(row, 'Partial match — fill in the rest:', {
+        orig: data.departure || parsed.orig, dest: data.arrival || parsed.dest,
+        dep: parsed.dep, arr: parsed.arr
+      });
+      failCount++;
+      continue;
+    }
+    const humanDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    const dayOffset = row.dataset.dayOffset !== '' ? parseInt(row.dataset.dayOffset, 10) : null;
+    await _addFlightEntry(dir, date, humanDate, data.formatted, travelerName, dayOffset);
+    row.remove();
+    added++;
   }
   document.getElementById('flightLookupBtn').disabled = false;
   if (failCount === 0) {
@@ -4814,16 +4871,17 @@ window.lookupAllFlights = async function() {
   }
 };
 
-function _markFlightRowFailed(row, msg) {
+function _markFlightRowFailed(row, msg, partial) {
   row.querySelector('.fr-num').classList.add('flight-row-error');
   if (row.querySelector('.fr-manual')) return;
-  // Pre-fill from the original route/times if this row came from editing an
-  // existing flight, so clicking "Add" with the fields untouched restores the
-  // flight as-is instead of silently dropping it.
-  const orig = row.dataset.orig || '';
-  const dest = row.dataset.dest || '';
-  const dep  = row.dataset.dep  || '';
-  const arr  = row.dataset.arr  || '';
+  // Pre-fill from fresh (if incomplete) lookup data when given, otherwise from
+  // the original route/times if this row came from editing an existing
+  // flight, so clicking "Add" with the fields untouched restores whatever was
+  // already known instead of silently dropping it.
+  const orig = (partial && partial.orig) || row.dataset.orig || '';
+  const dest = (partial && partial.dest) || row.dataset.dest || '';
+  const dep  = (partial && partial.dep)  || row.dataset.dep  || '';
+  const arr  = (partial && partial.arr)  || row.dataset.arr  || '';
   const manual = document.createElement('div');
   manual.className = 'fr-manual';
   manual.style.cssText = 'width:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;';
@@ -4939,7 +4997,13 @@ window.editFlightChip = function(dir, index) {
   else                    { [f] = _editFlightsIntrip.splice(index, 1); }
   if (!f) return;
   const { num, orig, dest, dep, arr } = _parseFlightFormatted(f.formatted);
-  addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr, f.dayOffset);
+  const row = addFlightRow(num, f.isoDate || '', dir, f.travelerName || '', orig, dest, dep, arr, f.dayOffset);
+  // A previously-saved flight with a missing origin/destination has no way to
+  // be completed otherwise — surface the manual fields right away instead of
+  // requiring a fresh lookup to fail first.
+  if (!orig || !dest) {
+    _markFlightRowFailed(row, 'Incomplete — fill in the rest:', { orig, dest, dep, arr });
+  }
   renderFlightChips();
 };
 
@@ -5213,42 +5277,11 @@ window.applyShiftDays = async function() {
     updates[`trips/${editingTripId}/days/${dayId}`] = {
       ...nd,
       city:'', description:'', hotel:'',
-      region:'', regionColor:'#c06a3d', regionDates:'',
+      region:'', regionColor:'#c06a3d',
       activities:[], notes:null, flightInfo:null,
       dailySpend:null, spendLog:null,
       sortOrder: day.sortOrder ?? 0
     };
-  }
-
-  // Recalculate regionDates for regions that have shifted days
-  // Build a map of region -> all days after applying shifts (excluding deleted/blanked)
-  const deletedIds = new Set(daysToDelete.map(([id])=>id));
-  const blankIds   = new Set(daysToBlank.map(([id])=>id));
-  const regionMap  = {}; // region -> [{dayId, newISO}]
-
-  for (const [dayId, day] of days) {
-    if (deletedIds.has(dayId) || blankIds.has(dayId)) continue;
-    const isShifted = daysToShift.some(([id])=>id===dayId);
-    let iso = isShifted ? (updates[`trips/${editingTripId}/days/${dayId}/dateISO`] || _sdGetISO(day, trip.year)) : _sdGetISO(day, trip.year);
-    if (!iso || !day.region) continue;
-    if (!regionMap[day.region]) regionMap[day.region] = [];
-    regionMap[day.region].push({dayId, iso, day, isShifted});
-  }
-
-  // Only update regionDates for regions that contain at least one shifted day
-  for (const [region, entries] of Object.entries(regionMap)) {
-    const hasShifted = entries.some(e=>e.isShifted);
-    if (!hasShifted) continue;
-    entries.sort((a,b)=>a.iso.localeCompare(b.iso));
-    const firstISO = entries[0].iso, lastISO = entries[entries.length-1].iso;
-    const rdStr = _sdFormatRegionDates(firstISO, lastISO);
-    // Find the first day of this region (lowest sortOrder among its entries)
-    const firstDayEntry = entries[0];
-    updates[`trips/${editingTripId}/days/${firstDayEntry.dayId}/regionDates`] = rdStr;
-    // Clear regionDates from other days in this region that have it set (to avoid stale values)
-    for (const e of entries.slice(1)) {
-      if (e.day.regionDates) updates[`trips/${editingTripId}/days/${e.dayId}/regionDates`] = '';
-    }
   }
 
   await window._update(window._ref(window._db, '/'), updates);
@@ -5598,7 +5631,6 @@ window.saveDayEdit = async function() {
     ...(existing.dailySpend != null ? { dailySpend: existing.dailySpend } : {}),
     ...(existing.spendLog != null ? { spendLog: existing.spendLog } : {}),
     ...(existing.flightInfo != null ? { flightInfo: existing.flightInfo } : {}),
-    ...(existing.regionDates != null ? { regionDates: existing.regionDates } : {}),
   };
   await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
 
@@ -5878,7 +5910,6 @@ window.saveQuickActivityEdit = async function() {
     ...(existing.dailySpend  != null && { dailySpend:  existing.dailySpend  }),
     ...(existing.spendLog    != null && { spendLog:    existing.spendLog    }),
     ...(existing.flightInfo  != null && { flightInfo:  existing.flightInfo  }),
-    ...(existing.regionDates != null && { regionDates: existing.regionDates }),
   };
 
   await window._set(
@@ -9114,21 +9145,33 @@ window.cancelAIChange = function() {
 
 let travelTrackerData = {};
 let travelTrackerLoaded = false;
+let travelTrackerLoadPromise = null;
 let travelIdeasYear = null;
 
+// Fetches travelTracker/ once, caches in travelTrackerData/travelTrackerLoaded,
+// and dedupes concurrent callers (e.g. the outstanding-bookings popup check
+// racing with the admin manually opening the Travel Tracker panel).
+function fetchTravelTrackerData() {
+  if (travelTrackerLoaded) return Promise.resolve(travelTrackerData);
+  if (travelTrackerLoadPromise) return travelTrackerLoadPromise;
+  travelTrackerLoadPromise = window._get(window._ref(window._db, 'travelTracker')).then(snap => {
+    travelTrackerData = snap.val() || {};
+    travelTrackerLoaded = true;
+    travelTrackerLoadPromise = null;
+    return travelTrackerData;
+  }).catch(e => {
+    travelTrackerLoadPromise = null;
+    throw e;
+  });
+  return travelTrackerLoadPromise;
+}
+
 window.initTravelTracker = function() {
-  if (travelTrackerLoaded) return;
   const el = document.getElementById('travelTrackerContent');
   if (!el) return;
+  if (travelTrackerLoaded) { renderTravelTracker(); return; }
   el.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px;">Loading…</div>';
-  window._get(window._ref(window._db, 'travelTracker')).then(snap => {
-    const raw = snap.val();
-    if (!raw) {
-      el.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--muted);">No travel data yet.</div>';
-      return;
-    }
-    travelTrackerData = raw;
-    travelTrackerLoaded = true;
+  fetchTravelTrackerData().then(() => {
     renderTravelTracker();
   }).catch(e => {
     el.innerHTML = `<div style="padding:16px;color:var(--terracotta);font-size:13px;">Error: ${e.message}</div>`;
@@ -9166,6 +9209,87 @@ function sortTripEntries(entries) {
     return ka.m !== kb.m ? ka.m - kb.m : ka.d !== kb.d ? ka.d - kb.d : (a[1].sortOrder||0) - (b[1].sortOrder||0);
   });
 }
+
+// True if this trip still needs `field` (flights/hotel/car) booked or marked N/A.
+function travelFieldMissing(t, field) {
+  const v = t[field] || '';
+  return v !== 'booked' && v !== 'na';
+}
+
+// Trips departing within the next 6 months with at least one of flights/hotel/car
+// outstanding. Trips with an unparseable/TBD date are skipped since we can't
+// place them in the window. Sorted chronologically by actual trip date.
+function computeOutstandingBookings(data) {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(now);
+  windowEnd.setMonth(windowEnd.getMonth() + 6);
+
+  const outstanding = [];
+  Object.keys(data).forEach(yStr => {
+    const year = parseInt(yStr, 10);
+    if (isNaN(year)) return;
+    const trips = (data[yStr] && data[yStr].trips) || {};
+    Object.entries(trips).forEach(([id, t]) => {
+      const dk = parseTripDateSort(t.dates);
+      if (dk.m === 99) return;
+      const tripDate = new Date(year, dk.m, dk.d);
+      if (tripDate < now || tripDate > windowEnd) return;
+      if (['flights', 'hotel', 'car'].some(f => travelFieldMissing(t, f))) {
+        outstanding.push({ id, t, tripDate });
+      }
+    });
+  });
+  outstanding.sort((a, b) => a.tripDate - b.tripDate);
+  return outstanding.map(o => [o.id, o.t]);
+}
+
+const OUTSTANDING_FIELD_META = {
+  flights: { icon: '✈️', label: 'Flights' },
+  hotel:   { icon: '🏨', label: 'Hotel' },
+  car:     { icon: '🚗', label: 'Car' },
+};
+
+function buildOutstandingBookingsHtml(entries) {
+  return entries.map(([, t]) => {
+    const missing = ['flights', 'hotel', 'car'].filter(f => travelFieldMissing(t, f));
+    const chips = missing.map(f =>
+      `<span class="outstanding-chip">${OUTSTANDING_FIELD_META[f].icon} ${OUTSTANDING_FIELD_META[f].label}</span>`
+    ).join('');
+    return `<div class="outstanding-trip-row">
+      <div class="outstanding-trip-name">${escHtml(t.name || 'Untitled trip')}</div>
+      ${t.dates ? `<div class="outstanding-trip-dates">${escHtml(t.dates)}</div>` : ''}
+      <div class="outstanding-trip-missing">${chips}</div>
+    </div>`;
+  }).join('');
+}
+
+function checkOutstandingBookings() {
+  if (outstandingBookingsPopupShown) return;
+  outstandingBookingsPopupShown = true; // set before the async fetch so a re-fired auth callback can't double-trigger
+  fetchTravelTrackerData().then(data => {
+    const entries = computeOutstandingBookings(data);
+    if (!entries.length) return; // nothing outstanding — no popup
+    document.getElementById('outstandingBookingsModalBody').innerHTML = buildOutstandingBookingsHtml(entries);
+    document.getElementById('outstandingBookingsModal').classList.add('open');
+  }).catch(e => console.warn('checkOutstandingBookings: fetch failed, skipping popup:', e));
+}
+
+window.dismissOutstandingBookingsModal = function(event) {
+  if (event && event.target !== document.getElementById('outstandingBookingsModal')) return;
+  document.getElementById('outstandingBookingsModal').classList.remove('open');
+};
+
+window.reviewOutstandingInTracker = function() {
+  document.getElementById('outstandingBookingsModal').classList.remove('open');
+  showScreen('screen-admin');
+  const body = document.getElementById('travelTrackerBody');
+  if (body && body.style.display === 'none') {
+    window.toggleAdminSection('travelTracker'); // opens + renders from cache (already fetched)
+  } else {
+    window.initTravelTracker();
+  }
+};
 
 function renderTravelYears() {
   const curEl = document.getElementById('travelCurrentContainer');
