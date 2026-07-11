@@ -648,6 +648,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   font-size: 18px; padding: 2px 4px; line-height: 1; flex-shrink: 0; width: 30px; text-align: center;
 }
 .travel-del-btn:hover { color: var(--terracotta); }
+/* ── OUTSTANDING BOOKINGS POPUP ── */
+.outstanding-trip-row { padding: 10px 0; border-bottom: 1px solid var(--sand); }
+.outstanding-trip-row:last-child { border-bottom: none; }
+.outstanding-trip-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.outstanding-trip-dates { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.outstanding-trip-missing { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.outstanding-chip { font-size: 11px; font-weight: 600; color: var(--terracotta); background: rgba(192,106,61,0.1); border-radius: 20px; padding: 3px 10px; }
 .travel-inline-edit {
   font-size: 13px; font-weight: 500; font-family: inherit; color: var(--ink);
   border: none; border-bottom: 1.5px solid var(--terracotta); background: transparent;
@@ -1728,6 +1735,18 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   </div>
 </div>
 
+<!-- ══ OUTSTANDING BOOKINGS MODAL ══ -->
+<div class="modal-overlay" id="outstandingBookingsModal" onclick="dismissOutstandingBookingsModal(event)">
+  <div class="modal-sheet" style="max-height:80vh;overflow-y:auto;">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Outstanding Travel Bookings</div>
+    <div style="font-size:12px;color:var(--muted);margin:-10px 0 14px;">Flights, hotel, or car still needed for these trips.</div>
+    <div id="outstandingBookingsModalBody"></div>
+    <button class="form-btn" onclick="reviewOutstandingInTracker()">Review in Travel Tracker</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissOutstandingBookingsModal()">Dismiss</button>
+  </div>
+</div>
+
 <!-- ══ TOAST ══ -->
 <div id="lightbox">
   <button id="lightbox-close" onclick="closeLightbox()">✕</button>
@@ -1873,7 +1892,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 240 };
+window.BUILD_INFO = { prNumber: 241 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -1883,6 +1902,7 @@ let currentUser = null;      // Firebase User object
 let userRole = null;         // "admin" | "guest" | null
 let guestTripIds = [];       // trip IDs accessible to guests
 let adminUser = '';          // display name for attribution
+let outstandingBookingsPopupShown = false; // gates the outstanding-bookings popup to once per signed-in session
 let appName = 'Hardin';
 let allTrips = {};
 let currentTripId = null;
@@ -1936,6 +1956,7 @@ function setupAuth() {
   window._onAuthStateChanged(window._auth, async (user) => {
     if (!user) {
       currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+      outstandingBookingsPopupShown = false;
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -1975,6 +1996,7 @@ function setupAuth() {
       renderAppName();
       document.getElementById('lockBtn').style.display = '';
       document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
+      if (userRole === 'admin') checkOutstandingBookings();
       initApp();
     } catch(e) {
       console.error('Auth lookup failed:', e);
@@ -2139,6 +2161,7 @@ window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function() {
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+  outstandingBookingsPopupShown = false;
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripRefreshBtn').style.display = 'none';
@@ -9058,21 +9081,33 @@ window.cancelAIChange = function() {
 
 let travelTrackerData = {};
 let travelTrackerLoaded = false;
+let travelTrackerLoadPromise = null;
 let travelIdeasYear = null;
 
+// Fetches travelTracker/ once, caches in travelTrackerData/travelTrackerLoaded,
+// and dedupes concurrent callers (e.g. the outstanding-bookings popup check
+// racing with the admin manually opening the Travel Tracker panel).
+function fetchTravelTrackerData() {
+  if (travelTrackerLoaded) return Promise.resolve(travelTrackerData);
+  if (travelTrackerLoadPromise) return travelTrackerLoadPromise;
+  travelTrackerLoadPromise = window._get(window._ref(window._db, 'travelTracker')).then(snap => {
+    travelTrackerData = snap.val() || {};
+    travelTrackerLoaded = true;
+    travelTrackerLoadPromise = null;
+    return travelTrackerData;
+  }).catch(e => {
+    travelTrackerLoadPromise = null;
+    throw e;
+  });
+  return travelTrackerLoadPromise;
+}
+
 window.initTravelTracker = function() {
-  if (travelTrackerLoaded) return;
   const el = document.getElementById('travelTrackerContent');
   if (!el) return;
+  if (travelTrackerLoaded) { renderTravelTracker(); return; }
   el.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px;">Loading…</div>';
-  window._get(window._ref(window._db, 'travelTracker')).then(snap => {
-    const raw = snap.val();
-    if (!raw) {
-      el.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--muted);">No travel data yet.</div>';
-      return;
-    }
-    travelTrackerData = raw;
-    travelTrackerLoaded = true;
+  fetchTravelTrackerData().then(() => {
     renderTravelTracker();
   }).catch(e => {
     el.innerHTML = `<div style="padding:16px;color:var(--terracotta);font-size:13px;">Error: ${e.message}</div>`;
@@ -9110,6 +9145,69 @@ function sortTripEntries(entries) {
     return ka.m !== kb.m ? ka.m - kb.m : ka.d !== kb.d ? ka.d - kb.d : (a[1].sortOrder||0) - (b[1].sortOrder||0);
   });
 }
+
+// True if this trip still needs `field` (flights/hotel/car) booked or marked N/A.
+function travelFieldMissing(t, field) {
+  const v = t[field] || '';
+  return v !== 'booked' && v !== 'na';
+}
+
+// Trips in the current calendar year with at least one of flights/hotel/car outstanding.
+function computeOutstandingBookings(data) {
+  const thisYear = String(new Date().getFullYear());
+  const trips = (data[thisYear] && data[thisYear].trips) || {};
+  const outstanding = Object.entries(trips).filter(([, t]) =>
+    ['flights', 'hotel', 'car'].some(f => travelFieldMissing(t, f))
+  );
+  return sortTripEntries(outstanding);
+}
+
+const OUTSTANDING_FIELD_META = {
+  flights: { icon: '✈️', label: 'Flights' },
+  hotel:   { icon: '🏨', label: 'Hotel' },
+  car:     { icon: '🚗', label: 'Car' },
+};
+
+function buildOutstandingBookingsHtml(entries) {
+  return entries.map(([, t]) => {
+    const missing = ['flights', 'hotel', 'car'].filter(f => travelFieldMissing(t, f));
+    const chips = missing.map(f =>
+      `<span class="outstanding-chip">${OUTSTANDING_FIELD_META[f].icon} ${OUTSTANDING_FIELD_META[f].label}</span>`
+    ).join('');
+    return `<div class="outstanding-trip-row">
+      <div class="outstanding-trip-name">${escHtml(t.name || 'Untitled trip')}</div>
+      ${t.dates ? `<div class="outstanding-trip-dates">${escHtml(t.dates)}</div>` : ''}
+      <div class="outstanding-trip-missing">${chips}</div>
+    </div>`;
+  }).join('');
+}
+
+function checkOutstandingBookings() {
+  if (outstandingBookingsPopupShown) return;
+  outstandingBookingsPopupShown = true; // set before the async fetch so a re-fired auth callback can't double-trigger
+  fetchTravelTrackerData().then(data => {
+    const entries = computeOutstandingBookings(data);
+    if (!entries.length) return; // nothing outstanding — no popup
+    document.getElementById('outstandingBookingsModalBody').innerHTML = buildOutstandingBookingsHtml(entries);
+    document.getElementById('outstandingBookingsModal').classList.add('open');
+  }).catch(e => console.warn('checkOutstandingBookings: fetch failed, skipping popup:', e));
+}
+
+window.dismissOutstandingBookingsModal = function(event) {
+  if (event && event.target !== document.getElementById('outstandingBookingsModal')) return;
+  document.getElementById('outstandingBookingsModal').classList.remove('open');
+};
+
+window.reviewOutstandingInTracker = function() {
+  document.getElementById('outstandingBookingsModal').classList.remove('open');
+  showScreen('screen-admin');
+  const body = document.getElementById('travelTrackerBody');
+  if (body && body.style.display === 'none') {
+    window.toggleAdminSection('travelTracker'); // opens + renders from cache (already fetched)
+  } else {
+    window.initTravelTracker();
+  }
+};
 
 function renderTravelYears() {
   const curEl = document.getElementById('travelCurrentContainer');
