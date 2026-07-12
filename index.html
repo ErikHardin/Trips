@@ -679,6 +679,16 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .travel-add-year-row {
   display: flex; align-items: center; gap: 8px; padding: 10px 0;
 }
+.travel-toolbar {
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  background: var(--warm-white); border-bottom: 2px solid var(--sand);
+}
+.travel-schedule-btn {
+  font-size: 11px; padding: 4px 10px; background: var(--sand); color: var(--ink);
+  border: none; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+  font-weight: 500; white-space: nowrap;
+}
+.travel-schedule-btn:hover { background: #d4c9b8; }
 .travel-ideas-section {
   border-top: 2px solid var(--sand);
 }
@@ -1892,7 +1902,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 244 };
+window.BUILD_INFO = { prNumber: 245 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -9181,7 +9191,14 @@ window.initTravelTracker = function() {
 window.renderTravelTracker = function() {
   const el = document.getElementById('travelTrackerContent');
   if (!el) return;
-  el.innerHTML = '<div id="travelCurrentContainer"></div><div id="travelIdeasContainer"></div><div id="travelPastContainer"></div>';
+  el.innerHTML = `
+    <div class="travel-toolbar">
+      <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Add a year (e.g. 2027)" style="flex:1;">
+      <button class="travel-add-btn" id="travelAddYearBtn" onclick="addTravelYear()">+ Add Year</button>
+    </div>
+    <div id="travelCurrentContainer"></div>
+    <div id="travelIdeasContainer"></div>
+    <div id="travelPastContainer"></div>`;
   renderTravelYears();
   renderTravelIdeasSection();
 };
@@ -9433,6 +9450,7 @@ function renderTravelIdeasSection() {
     rows += `
       <div class="travel-idea-row">
         <span class="travel-idea-text">${escHtml(text)}</span>
+        <button class="travel-schedule-btn" onclick="scheduleIdea('${yr}','${id}')">Schedule</button>
         <button class="travel-del-btn" onclick="deleteTravelIdea('${yr}','${id}')">×</button>
       </div>`;
   });
@@ -9460,11 +9478,7 @@ function renderTravelIdeasSection() {
           <div style="display:flex;gap:6px;margin-top:10px;">
             <input class="travel-add-input" id="travelAddIdeaInput" placeholder="Add an idea…"
               style="flex:1;" onkeydown="if(event.key==='Enter')addTravelIdea()">
-            <button class="travel-add-btn" onclick="addTravelIdea()">Add</button>
-          </div>
-          <div class="travel-add-year-row" style="margin-top:14px;padding-left:0;padding-right:0;border-top:1px solid var(--sand);">
-            <input class="travel-add-input" id="travelNewYearInput" type="number" placeholder="Add a year (e.g. 2027)" style="flex:1;">
-            <button class="travel-add-btn" onclick="addTravelYear()">+ Add Year</button>
+            <button class="travel-add-btn" id="travelAddIdeaBtn" onclick="addTravelIdea()">Add</button>
           </div>
         </div>
       </div>
@@ -9509,7 +9523,8 @@ window.cycleTravelStatus = function(year, tripId, field, btn) {
   const cur = trips[tripId][field] || '';
   const next = cur === '' ? 'booked' : cur === 'booked' ? 'na' : '';
   trips[tripId][field] = next;
-  window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: next});
+  window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: next})
+    .catch(() => showToast('Error — check connection'));
   btn.textContent = next === 'booked' ? '✓' : next === 'na' ? 'N/A' : '–';
   btn.className = 'travel-status-btn' + (next === 'booked' ? ' booked' : next === 'na' ? ' na' : '');
   const card = document.getElementById(`travelRow_${year}_${tripId}`);
@@ -9536,13 +9551,14 @@ window.addTravelTrip = function(year) {
     travelTrackerData[year].trips[ref.key] = newTrip;
     rerenderTravelYear(year);
     showToast('Trip added ✓');
-  });
+  }).catch(() => showToast('Error — check connection'));
 };
 
 window.deleteTravelTrip = function(year, tripId) {
   const name = (travelTrackerData[year] && travelTrackerData[year].trips && travelTrackerData[year].trips[tripId] && travelTrackerData[year].trips[tripId].name) || 'this trip';
   if (!confirm(`Delete "${name}"?`)) return;
-  window._remove(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`));
+  window._remove(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`))
+    .catch(() => showToast('Error — check connection'));
   if (travelTrackerData[year] && travelTrackerData[year].trips) {
     delete travelTrackerData[year].trips[tripId];
   }
@@ -9551,35 +9567,121 @@ window.deleteTravelTrip = function(year, tripId) {
 
 window.addTravelIdea = function() {
   const input = document.getElementById('travelAddIdeaInput');
+  const btn = document.getElementById('travelAddIdeaBtn');
   const text = input && input.value.trim();
   if (!text) return;
   const yr = travelIdeasYear;
   const idea = {text, createdAt: Date.now()};
+  if (input) input.disabled = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
   window._push(window._ref(window._db, `travelTracker/${yr}/ideas`), idea).then(ref => {
     if (!travelTrackerData[yr]) travelTrackerData[yr] = {trips:{}, ideas:{}};
     if (!travelTrackerData[yr].ideas) travelTrackerData[yr].ideas = {};
     travelTrackerData[yr].ideas[ref.key] = idea;
     renderTravelIdeasSection();
+  }).catch(() => {
+    if (input) { input.disabled = false; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Add'; }
+    showToast('Error — check connection');
   });
 };
 
 window.deleteTravelIdea = function(year, ideaId) {
-  window._remove(window._ref(window._db, `travelTracker/${year}/ideas/${ideaId}`));
+  window._remove(window._ref(window._db, `travelTracker/${year}/ideas/${ideaId}`))
+    .catch(() => showToast('Error — check connection'));
   if (travelTrackerData[year] && travelTrackerData[year].ideas) {
     delete travelTrackerData[year].ideas[ideaId];
   }
   renderTravelIdeasSection();
 };
 
-window.addTravelYear = function() {
-  const input = document.getElementById('travelNewYearInput');
-  const yr = input && input.value.trim();
-  if (!yr || isNaN(yr) || yr.length !== 4) { showToast('Enter a valid 4-digit year'); return; }
-  if (travelTrackerData[yr] && travelTrackerData[yr].trips && Object.keys(travelTrackerData[yr].trips).length) {
-    showToast('Year ' + yr + ' already exists'); return;
-  }
-  travelTrackerData[yr] = {trips: {}, ideas: {}};
-  renderTravelYears();
+window.scheduleIdea = function(year, ideaId) {
+  const raw = travelTrackerData[year] && travelTrackerData[year].ideas && travelTrackerData[year].ideas[ideaId];
+  if (!raw) { showToast('Idea not found — try refreshing the tab'); return; }
+  const ideaText = typeof raw === 'string' ? raw : raw.text || '';
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;';
+  modal.innerHTML = `
+    <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 40px;box-sizing:border-box;">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Schedule Idea</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${escHtml(ideaText)}</div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Trip Name</div>
+      <input id="scheduleTripName" type="text" value="${escAttr(ideaText)}"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;">
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;">
+          <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Start</div>
+          <input id="scheduleStartDate" type="date"
+            style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);box-sizing:border-box;">
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">End</div>
+          <input id="scheduleEndDate" type="date"
+            style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);box-sizing:border-box;">
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Year</div>
+      <input id="scheduleTargetYear" type="number" value="${escAttr(year)}"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;">
+      <div style="display:flex;gap:10px;">
+        <button onclick="this.closest('[style*=fixed]').remove()"
+          style="flex:1;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;cursor:pointer;">Cancel</button>
+        <button id="scheduleConfirmBtn"
+          style="flex:1;padding:12px;border:none;border-radius:12px;background:var(--terracotta);color:#fff;font-size:14px;font-weight:500;cursor:pointer;">Schedule Trip</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const startInput = modal.querySelector('#scheduleStartDate');
+  const yearInput = modal.querySelector('#scheduleTargetYear');
+  startInput.addEventListener('change', () => {
+    if (startInput.value) yearInput.value = new Date(startInput.value + 'T00:00:00').getFullYear();
+  });
+
+  modal.querySelector('#scheduleConfirmBtn').onclick = async function() {
+    const name = modal.querySelector('#scheduleTripName').value.trim();
+    const startVal = modal.querySelector('#scheduleStartDate').value;
+    const endVal = modal.querySelector('#scheduleEndDate').value;
+    const targetYearVal = modal.querySelector('#scheduleTargetYear').value;
+    if (!name) { showToast('Enter a trip name'); return; }
+    if (!startVal || !endVal) { showToast('Pick a start and end date'); return; }
+    const startDate = new Date(startVal + 'T00:00:00');
+    const endDate = new Date(endVal + 'T00:00:00');
+    if (endDate < startDate) { showToast('End date must be after start date'); return; }
+
+    const fmtShort = d => d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    const dates = `${fmtShort(startDate)} – ${fmtShort(endDate)}`;
+    const targetYear = String(parseInt(targetYearVal, 10) || startDate.getFullYear());
+
+    const btn = modal.querySelector('#scheduleConfirmBtn');
+    btn.disabled = true; btn.textContent = 'Scheduling…';
+    try {
+      const existing = (travelTrackerData[targetYear] && travelTrackerData[targetYear].trips) || {};
+      const sortOrder = Object.keys(existing).length;
+      const newTrip = {name, dates, flights: '', hotel: '', car: '', sortOrder};
+      const ref = await window._push(window._ref(window._db, `travelTracker/${targetYear}/trips`), newTrip);
+      await window._remove(window._ref(window._db, `travelTracker/${year}/ideas/${ideaId}`));
+
+      if (!travelTrackerData[targetYear]) travelTrackerData[targetYear] = {trips:{}, ideas:{}};
+      if (!travelTrackerData[targetYear].trips) travelTrackerData[targetYear].trips = {};
+      travelTrackerData[targetYear].trips[ref.key] = newTrip;
+      if (travelTrackerData[year] && travelTrackerData[year].ideas) {
+        delete travelTrackerData[year].ideas[ideaId];
+      }
+
+      modal.remove();
+      showToast('Idea scheduled ✓');
+      rerenderTravelYear(targetYear);
+      renderTravelIdeasSection();
+    } catch (err) {
+      showToast('Error — check connection');
+      btn.disabled = false; btn.textContent = 'Schedule Trip';
+    }
+  };
+};
+
+function openAndScrollToTravelYear(yr) {
   setTimeout(() => {
     const body = document.getElementById('travelYearBody_' + yr);
     const chev = document.getElementById('travelYearChev_' + yr);
@@ -9588,6 +9690,30 @@ window.addTravelYear = function() {
     const block = document.getElementById('travelYearBlock_' + yr);
     if (block) block.scrollIntoView({behavior:'smooth', block:'nearest'});
   }, 50);
+}
+
+window.addTravelYear = function() {
+  const input = document.getElementById('travelNewYearInput');
+  const btn = document.getElementById('travelAddYearBtn');
+  const yr = input && input.value.trim();
+  if (!yr || isNaN(yr) || yr.length !== 4) { showToast('Enter a valid 4-digit year'); return; }
+  if (travelTrackerData[yr]) {
+    showToast('Year ' + yr + ' already added');
+    renderTravelYears();
+    openAndScrollToTravelYear(yr);
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+  window._set(window._ref(window._db, `travelTracker/${yr}/createdAt`), Date.now()).then(() => {
+    travelTrackerData[yr] = {trips: {}, ideas: {}, createdAt: Date.now()};
+    if (input) input.value = '';
+    if (btn) { btn.disabled = false; btn.textContent = '+ Add Year'; }
+    renderTravelYears();
+    openAndScrollToTravelYear(yr);
+  }).catch(() => {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Add Year'; }
+    showToast('Error — check connection');
+  });
 };
 
 function rerenderTravelYear(year) {
@@ -9620,7 +9746,8 @@ window.editTravelField = function(year, tripId, field, el) {
     if (!travelTrackerData[year].trips) travelTrackerData[year].trips = {};
     if (!travelTrackerData[year].trips[tripId]) return;
     travelTrackerData[year].trips[tripId][field] = newVal;
-    window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: newVal});
+    window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), {[field]: newVal})
+      .catch(() => showToast('Error — check connection'));
     rerenderTravelYear(year);
   };
   input.addEventListener('blur', save);
