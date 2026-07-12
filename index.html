@@ -1902,7 +1902,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 245 };
+window.BUILD_INFO = { prNumber: 246 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -9609,18 +9609,9 @@ window.scheduleIdea = function(year, ideaId) {
       <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Trip Name</div>
       <input id="scheduleTripName" type="text" value="${escAttr(ideaText)}"
         style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;">
-      <div style="display:flex;gap:10px;margin-bottom:14px;">
-        <div style="flex:1;">
-          <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Start</div>
-          <input id="scheduleStartDate" type="date"
-            style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);box-sizing:border-box;">
-        </div>
-        <div style="flex:1;">
-          <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">End</div>
-          <input id="scheduleEndDate" type="date"
-            style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);box-sizing:border-box;">
-        </div>
-      </div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Dates</div>
+      <input id="scheduleDates" type="text" placeholder="e.g. Jun 12 – Jun 19"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;">
       <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Year</div>
       <input id="scheduleTargetYear" type="number" value="${escAttr(year)}"
         style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;">
@@ -9633,26 +9624,13 @@ window.scheduleIdea = function(year, ideaId) {
     </div>`;
   document.body.appendChild(modal);
 
-  const startInput = modal.querySelector('#scheduleStartDate');
-  const yearInput = modal.querySelector('#scheduleTargetYear');
-  startInput.addEventListener('change', () => {
-    if (startInput.value) yearInput.value = new Date(startInput.value + 'T00:00:00').getFullYear();
-  });
-
   modal.querySelector('#scheduleConfirmBtn').onclick = async function() {
     const name = modal.querySelector('#scheduleTripName').value.trim();
-    const startVal = modal.querySelector('#scheduleStartDate').value;
-    const endVal = modal.querySelector('#scheduleEndDate').value;
+    const dates = modal.querySelector('#scheduleDates').value.trim();
     const targetYearVal = modal.querySelector('#scheduleTargetYear').value;
     if (!name) { showToast('Enter a trip name'); return; }
-    if (!startVal || !endVal) { showToast('Pick a start and end date'); return; }
-    const startDate = new Date(startVal + 'T00:00:00');
-    const endDate = new Date(endVal + 'T00:00:00');
-    if (endDate < startDate) { showToast('End date must be after start date'); return; }
-
-    const fmtShort = d => d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
-    const dates = `${fmtShort(startDate)} – ${fmtShort(endDate)}`;
-    const targetYear = String(parseInt(targetYearVal, 10) || startDate.getFullYear());
+    if (!targetYearVal || isNaN(targetYearVal) || String(targetYearVal).length !== 4) { showToast('Enter a valid 4-digit year'); return; }
+    const targetYear = String(parseInt(targetYearVal, 10));
 
     const btn = modal.querySelector('#scheduleConfirmBtn');
     btn.disabled = true; btn.textContent = 'Scheduling…';
