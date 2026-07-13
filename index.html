@@ -1902,7 +1902,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 247 };
+window.BUILD_INFO = { prNumber: 248 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -2477,7 +2477,7 @@ function renderTripItinerary(trip) {
       // Build search URL using region for cleaner location context
       const regionClean = (day.region||'').trim();
       const searchQ = regionClean ? text + ' ' + regionClean : text;
-      const countryCode = getCityCountryCode(day.region||day.city||'');
+      const countryCode = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
       const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQ) + (countryCode ? '&gl=' + countryCode : '');
       const mapsQuery = text + (regionClean ? ', ' + regionClean : '');
       return `
@@ -2569,7 +2569,7 @@ function renderTripItinerary(trip) {
     days.forEach(([dayId, day]) => {
       const _iso = _dayISO(day);
       if (trip.status === 'active' && _iso && _iso < _todayISO) return;
-      const txCC = getCityCountryCode(day.region || day.city || '');
+      const txCC = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
       if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
         const txCity = day.city || day.region || '';
         const txCityLow = txCity.toLowerCase();
@@ -2605,7 +2605,7 @@ function renderTripItinerary(trip) {
       let fetched = 0;
       for (const [, day] of days) {
         if (fetched >= 3) break;
-        const txCC = getCityCountryCode(day.region || day.city || '');
+        const txCC = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
         if (!txCC || TRANSLATION_SKIP.has(txCC) || !TRANSLATION_LANG_MAP[txCC]) continue;
         const txCity = day.city || day.region || '';
         const txCityLow = txCity.toLowerCase();
@@ -3120,7 +3120,7 @@ async function renderTripOverview(trip) {
       // Inject translation chips for days with non-English locations
       setTimeout(() => {
         for (const [dayId, day] of sortedForItinerary) {
-          const txCC = getCityCountryCode(day.region || day.city || '');
+          const txCC = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
           if (!txCC || TRANSLATION_SKIP.has(txCC) || !TRANSLATION_LANG_MAP[txCC]) continue;
           const txCity = day.city || day.region || '';
           const txCityLow = txCity.toLowerCase();
@@ -6437,9 +6437,9 @@ function getCityCountryCode(location) {
   // UK
   if (c.includes('london') || c.includes('edinburgh') || c.includes('manchester')) return 'gb';
   // Denmark
-  if (c.includes('copenhagen') || c.includes('aarhus') || c.includes('odense')) return 'dk';
+  if (c.includes('copenhagen') || c.includes('aarhus') || c.includes('odense') || c.includes('denmark')) return 'dk';
   // Sweden
-  if (c.includes('stockholm') || c.includes('gothenburg') || c.includes('malmo') || c.includes('malmö')) return 'se';
+  if (c.includes('stockholm') || c.includes('gothenburg') || c.includes('malmo') || c.includes('malmö') || c.includes('sweden')) return 'se';
   return '';
 }
 
