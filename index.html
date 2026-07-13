@@ -1476,6 +1476,35 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
 
+    <!-- TRANSLATIONS -->
+    <div class="admin-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="translationsSectionHeader" onclick="toggleAdminSection('translationsSection')">
+          <div class="admin-section-title">Translations</div>
+          <span class="admin-panel-toggle" id="translationsSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="translationsSectionBody" style="display:none;padding-bottom:8px;">
+          <div class="admin-card" style="margin-bottom:12px;">
+            <p style="color:var(--muted);font-size:13px;margin-bottom:10px;">Locations below get a 🗣️ phrase-translation icon on their itinerary day. Add a keyword — matched against the day's city or region — to enable it for a new place.</p>
+            <div id="translationLocationsList"></div>
+          </div>
+          <div class="admin-card">
+            <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Location</div>
+            <label class="form-label">City or region keyword</label>
+            <input class="form-input" id="newTxKeyword" placeholder="e.g. oslo" style="margin-bottom:8px;">
+            <label class="form-label">Country code (2-letter)</label>
+            <input class="form-input" id="newTxCC" placeholder="e.g. no" maxlength="2" style="margin-bottom:8px;">
+            <label class="form-label">Language name</label>
+            <input class="form-input" id="newTxLangName" placeholder="e.g. Norwegian" style="margin-bottom:8px;">
+            <label class="form-label">Language locale code (BCP-47)</label>
+            <input class="form-input" id="newTxBcp47" placeholder="e.g. no-NO" style="margin-bottom:8px;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Language name & locale code are only needed the first time you add a country that isn't supported yet.</div>
+            <button class="form-btn" onclick="addTranslationLocation()">Add Location</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- IMPORT FROM CSV -->
     <div class="admin-section">
       <div class="admin-panel">
@@ -2116,6 +2145,10 @@ async function initApp() {
   window._onValue(window._ref(window._db, 'config/appName'), snap => {
     if (snap.val()) appName = snap.val();
     renderAppName();
+  });
+  window._onValue(window._ref(window._db, 'config/translationLocations'), snap => {
+    customTranslationLocations = snap.val() || {};
+    rebuildCustomTranslationData();
   });
   window._onValue(window._ref(window._db, 'trips'), snap => {
     allTrips = snap.val() || {};
@@ -6395,51 +6428,41 @@ window.handleCSVFile = function(e) {
 //  UTILITIES
 // ════════════════════════════════════════
 
-// Maps city name to Google country code (gl param) — per-day so multi-country trips work correctly
+// Maps city/region name to Google country code (gl param) & drives the translation chip —
+// data-driven so it can be listed/extended from the Translations settings panel.
+const BUILTIN_COUNTRY_KEYWORDS = [
+  { cc: 'fr', country: 'France', keywords: ['lyon','paris','luberon','bandol','cannes','azur','provence','beaujolais','alsace','champagne','burgundy','amboise','loire','nice','tropez','bordeaux','marseille'] },
+  { cc: 'de', country: 'Germany', keywords: ['berlin','munich','hamburg','frankfurt'] },
+  { cc: 'it', country: 'Italy', keywords: ['milan','rome','florence','venice','como','portofino','piedmont','tuscany'] },
+  { cc: 'pt', country: 'Portugal', keywords: ['lisbon','porto','douro','algarve','lagos'] },
+  { cc: 'au', country: 'Australia', keywords: ['sydney','melbourne','adelaide','hobart','tasmania','lofty','mornington'] },
+  { cc: 'nz', country: 'New Zealand', keywords: ['auckland','queenstown','wellington','marahau','havelock','bay of islands'] },
+  { cc: 'za', country: 'South Africa', keywords: ['cape town','franschhoek','stellenbosch','hluhluwe','durban'] },
+  { cc: 'ae', country: 'UAE', keywords: ['dubai','abu dhabi'] },
+  { cc: 'mv', country: 'Maldives', keywords: ['maldives','male'] },
+  { cc: 'th', country: 'Thailand', keywords: ['bangkok','chiang mai','koh','phuket'] },
+  { cc: 'vn', country: 'Vietnam', keywords: ['hanoi','hoi an','halong','ho chi minh'] },
+  { cc: 'sg', country: 'Singapore', keywords: ['singapore'] },
+  { cc: 'es', country: 'Spain', keywords: ['madrid','barcelona','seville'] },
+  { cc: 'jp', country: 'Japan', keywords: ['tokyo','kyoto','osaka'] },
+  { cc: 'gb', country: 'United Kingdom', keywords: ['london','edinburgh','manchester'] },
+  { cc: 'dk', country: 'Denmark', keywords: ['copenhagen','aarhus','odense','denmark'] },
+  { cc: 'se', country: 'Sweden', keywords: ['stockholm','gothenburg','malmo','malmö','sweden'] },
+];
+
+// User-added locations from Settings → Utilities → Translations (config/translationLocations)
+let customTranslationLocations = {};
+let customCountryKeywords = []; // [{ id, cc, keyword }], checked before the built-in table
+
 function getCityCountryCode(location) {
   if (!location) return '';
   const c = location.toLowerCase();
-  // France
-  if (c.includes('lyon') || c.includes('paris') || c.includes('luberon') || c.includes('bandol') ||
-      c.includes('cannes') || c.includes('azur') || c.includes('provence') || c.includes('beaujolais') || c.includes('alsace') ||
-      c.includes('champagne') || c.includes('burgundy') || c.includes('amboise') || c.includes('loire') ||
-      c.includes('nice') || c.includes('tropez') || c.includes('bordeaux') || c.includes('marseille')) return 'fr';
-  // Germany
-  if (c.includes('berlin') || c.includes('munich') || c.includes('hamburg') || c.includes('frankfurt')) return 'de';
-  // Italy
-  if (c.includes('milan') || c.includes('rome') || c.includes('florence') || c.includes('venice') ||
-      c.includes('como') || c.includes('portofino') || c.includes('piedmont') || c.includes('tuscany')) return 'it';
-  // Portugal
-  if (c.includes('lisbon') || c.includes('porto') || c.includes('douro') || c.includes('algarve') || c.includes('lagos')) return 'pt';
-  // Australia
-  if (c.includes('sydney') || c.includes('melbourne') || c.includes('adelaide') || c.includes('hobart') ||
-      c.includes('tasmania') || c.includes('lofty') || c.includes('mornington')) return 'au';
-  // New Zealand
-  if (c.includes('auckland') || c.includes('queenstown') || c.includes('wellington') || c.includes('marahau') ||
-      c.includes('havelock') || c.includes('bay of islands')) return 'nz';
-  // South Africa
-  if (c.includes('cape town') || c.includes('franschhoek') || c.includes('stellenbosch') ||
-      c.includes('hluhluwe') || c.includes('durban')) return 'za';
-  // UAE
-  if (c.includes('dubai') || c.includes('abu dhabi')) return 'ae';
-  // Maldives
-  if (c.includes('maldives') || c.includes('male')) return 'mv';
-  // Thailand
-  if (c.includes('bangkok') || c.includes('chiang mai') || c.includes('koh') || c.includes('phuket')) return 'th';
-  // Vietnam
-  if (c.includes('hanoi') || c.includes('hoi an') || c.includes('halong') || c.includes('ho chi minh')) return 'vn';
-  // Singapore
-  if (c.includes('singapore')) return 'sg';
-  // Spain
-  if (c.includes('madrid') || c.includes('barcelona') || c.includes('seville')) return 'es';
-  // Japan
-  if (c.includes('tokyo') || c.includes('kyoto') || c.includes('osaka')) return 'jp';
-  // UK
-  if (c.includes('london') || c.includes('edinburgh') || c.includes('manchester')) return 'gb';
-  // Denmark
-  if (c.includes('copenhagen') || c.includes('aarhus') || c.includes('odense') || c.includes('denmark')) return 'dk';
-  // Sweden
-  if (c.includes('stockholm') || c.includes('gothenburg') || c.includes('malmo') || c.includes('malmö') || c.includes('sweden')) return 'se';
+  for (const entry of customCountryKeywords) {
+    if (entry.keyword && c.includes(entry.keyword)) return entry.cc;
+  }
+  for (const group of BUILTIN_COUNTRY_KEYWORDS) {
+    if (group.keywords.some(k => c.includes(k))) return group.cc;
+  }
   return '';
 }
 
@@ -7937,6 +7960,81 @@ const TRANSLATION_LANG_MAP = {
   se: { name: 'Swedish',    bcp47: 'sv-SE' },
 };
 const TRANSLATION_SKIP = new Set(['au', 'nz', 'gb', 'sg']);
+
+// Merge Settings → Utilities → Translations custom locations into the runtime lookup tables.
+function rebuildCustomTranslationData() {
+  customCountryKeywords = Object.entries(customTranslationLocations)
+    .map(([id, e]) => ({ id, cc: (e.cc||'').toLowerCase(), keyword: (e.keyword||'').toLowerCase() }))
+    .filter(e => e.cc && e.keyword);
+  Object.values(customTranslationLocations).forEach(e => {
+    const cc = (e.cc||'').toLowerCase();
+    if (cc && e.langName && e.bcp47 && !TRANSLATION_LANG_MAP[cc]) {
+      TRANSLATION_LANG_MAP[cc] = { name: e.langName, bcp47: e.bcp47 };
+    }
+  });
+  renderTranslationLocationsList();
+}
+
+function renderTranslationLocationsList() {
+  const el = document.getElementById('translationLocationsList');
+  if (!el) return;
+  const byCC = {};
+  BUILTIN_COUNTRY_KEYWORDS.forEach(g => {
+    byCC[g.cc] = byCC[g.cc] || { keywords: [], custom: [] };
+    byCC[g.cc].keywords.push(...g.keywords);
+  });
+  Object.entries(customTranslationLocations).forEach(([id, e]) => {
+    const cc = (e.cc||'').toLowerCase();
+    if (!cc) return;
+    byCC[cc] = byCC[cc] || { keywords: [], custom: [] };
+    byCC[cc].custom.push({ id, keyword: e.keyword || '' });
+  });
+  const ccList = Object.keys(byCC).sort((a, b) => {
+    const na = TRANSLATION_LANG_MAP[a]?.name || a;
+    const nb = TRANSLATION_LANG_MAP[b]?.name || b;
+    return na.localeCompare(nb);
+  });
+  el.innerHTML = ccList.map(cc => {
+    const lang = TRANSLATION_LANG_MAP[cc];
+    const skipped = TRANSLATION_SKIP.has(cc);
+    const group = byCC[cc];
+    const label = lang ? lang.name : cc.toUpperCase();
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-weight:500;font-size:13px;">${escHtml(label)} <span style="color:var(--muted);font-weight:400;">(${cc})</span>${skipped ? ' <span style="color:var(--muted);font-size:11px;">— skipped, English-speaking</span>' : ''}</div>
+      ${group.keywords.length ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(group.keywords.join(', '))}</div>` : ''}
+      ${group.custom.length ? `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">${group.custom.map(c => `<span style="font-size:11px;background:var(--sand);padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:4px;">${escHtml(c.keyword)} <button onclick="deleteTranslationLocation('${c.id}')" title="Remove" style="background:none;border:none;color:var(--terracotta);cursor:pointer;font-size:12px;padding:0;line-height:1;">✕</button></span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:13px;">No translation locations configured.</div>';
+}
+
+window.addTranslationLocation = async function() {
+  const keywordEl  = document.getElementById('newTxKeyword');
+  const ccEl       = document.getElementById('newTxCC');
+  const langNameEl = document.getElementById('newTxLangName');
+  const bcp47El    = document.getElementById('newTxBcp47');
+  const keyword = (keywordEl.value || '').trim().toLowerCase();
+  const cc      = (ccEl.value || '').trim().toLowerCase();
+  const langName = (langNameEl.value || '').trim();
+  const bcp47    = (bcp47El.value || '').trim();
+  if (!keyword || cc.length !== 2) { alert('Enter a location keyword and a 2-letter country code.'); return; }
+  if (!TRANSLATION_LANG_MAP[cc] && (!langName || !bcp47)) {
+    alert(`"${cc}" isn't a supported language yet — also fill in the language name and locale code (e.g. Norwegian / no-NO).`);
+    return;
+  }
+  const entry = { keyword, cc };
+  if (langName) entry.langName = langName;
+  if (bcp47) entry.bcp47 = bcp47;
+  try {
+    await window._push(window._ref(window._db, 'config/translationLocations'), entry);
+    keywordEl.value = ''; ccEl.value = ''; langNameEl.value = ''; bcp47El.value = '';
+  } catch(e) { alert('Failed to save: ' + e.message); }
+};
+
+window.deleteTranslationLocation = async function(id) {
+  if (!confirm('Remove this location?')) return;
+  try { await window._remove(window._ref(window._db, `config/translationLocations/${id}`)); }
+  catch(e) { alert('Failed to remove: ' + e.message); }
+};
 
 function injectTranslationChip(cardId, city, countryCode, activityTexts) {
   if (TRANSLATION_SKIP.has(countryCode) || !TRANSLATION_LANG_MAP[countryCode]) return;
