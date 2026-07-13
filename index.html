@@ -6436,6 +6436,10 @@ function getCityCountryCode(location) {
   if (c.includes('tokyo') || c.includes('kyoto') || c.includes('osaka')) return 'jp';
   // UK
   if (c.includes('london') || c.includes('edinburgh') || c.includes('manchester')) return 'gb';
+  // Denmark
+  if (c.includes('copenhagen') || c.includes('aarhus') || c.includes('odense')) return 'dk';
+  // Sweden
+  if (c.includes('stockholm') || c.includes('gothenburg') || c.includes('malmo') || c.includes('malmö')) return 'se';
   return '';
 }
 
@@ -7718,36 +7722,9 @@ function wxInfo(code) {
 async function fetchTripWeather(days, tripYear) {
   tripWeatherByDay = {};
 
-  // ── Load & inject already-stored weather from Firebase ──
-  let storedWeather = {};
-  if (currentTripId) {
-    try {
-      const snap = await window._get(window._ref(window._db, `trips/${currentTripId}/dayWeather`));
-      storedWeather = snap.val() || {};
-      for (const [dayId, wx] of Object.entries(storedWeather)) {
-        tripWeatherByDay[dayId] = { wx, coords: null, city: null };
-        injectWeatherChip('dc-' + dayId, wx, null, null);
-        injectOverviewWeatherChip(dayId, wx, null, null);
-      }
-    } catch(e) {}
-  }
-
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const forecastCutoff = new Date(today);
-  forecastCutoff.setDate(forecastCutoff.getDate() + 15);
-
-  // Three buckets: historical (past), real forecast (≤15 days), climate average (>15 days)
-  const historicalCityDays = {};   // city -> [{dayId, dateISO, cardId}]
-  const forecastCityDays   = {};   // city -> [{dayId, dateISO, cardId}]
-  const climateCityDays    = {};   // city -> [{dayId, dateISO, cardId, month}]
-
+  const daysMap = new Map(days);
   const MONTHS_MAP = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
-
-  for (const [dayId, day] of days) {
-    if (!day.city) continue;
-    if (storedWeather[dayId]) continue;  // Already loaded from Firebase
-    // Derive dateISO from stored field or fall back to dateNum+dateMonth+year
+  const dateISOForDay = (day) => {
     let dateISO = day.dateISO;
     if (!dateISO && day.dateNum && day.dateMonth && tripYear) {
       const m = MONTHS_MAP[day.dateMonth.slice(0,3)];
@@ -7757,6 +7734,48 @@ async function fetchTripWeather(days, tripYear) {
         dateISO = tripYear + '-' + mm + '-' + dd;
       }
     }
+    return dateISO;
+  };
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const forecastCutoff = new Date(today);
+  forecastCutoff.setDate(forecastCutoff.getDate() + 15);
+
+  // ── Load & inject already-stored weather from Firebase ──
+  let storedWeather = {};
+  if (currentTripId) {
+    try {
+      const snap = await window._get(window._ref(window._db, `trips/${currentTripId}/dayWeather`));
+      storedWeather = snap.val() || {};
+      for (const [dayId, wx] of Object.entries(storedWeather)) {
+        const day = daysMap.get(dayId);
+        const dateISO = day ? dateISOForDay(day) : null;
+        // Stale climate-average estimate whose date has now entered the real
+        // forecast/historical window — drop it so it gets refetched with real data below.
+        if (wx.avg && dateISO) {
+          const d = new Date(dateISO + 'T00:00:00');
+          if (d <= forecastCutoff) { delete storedWeather[dayId]; continue; }
+        }
+        const city = day ? (day.city || '').replace(/[🛬🚗✈️🏠]/g,'').trim() : '';
+        const coords = city ? await getCityCoords(city) : null;
+        tripWeatherByDay[dayId] = { wx, coords, city };
+        injectWeatherChip('dc-' + dayId, wx, coords, city);
+        injectOverviewWeatherChip(dayId, wx, coords, city);
+      }
+    } catch(e) {}
+  }
+
+  // Three buckets: historical (past), real forecast (≤15 days), climate average (>15 days)
+  const historicalCityDays = {};   // city -> [{dayId, dateISO, cardId}]
+  const forecastCityDays   = {};   // city -> [{dayId, dateISO, cardId}]
+  const climateCityDays    = {};   // city -> [{dayId, dateISO, cardId, month}]
+
+  for (const [dayId, day] of days) {
+    if (!day.city) continue;
+    if (storedWeather[dayId]) continue;  // Already loaded from Firebase
+    // Derive dateISO from stored field or fall back to dateNum+dateMonth+year
+    const dateISO = dateISOForDay(day);
     if (!dateISO) continue;
     const d = new Date(dateISO + 'T00:00:00');
     const clean = day.city.replace(/[🛬🚗✈️🏠]/g,'').trim();
@@ -7914,6 +7933,8 @@ const TRANSLATION_LANG_MAP = {
   ae: { name: 'Arabic',     bcp47: 'ar-AE' },
   mv: { name: 'Dhivehi',    bcp47: 'dv-MV' },
   za: { name: 'Afrikaans',  bcp47: 'af-ZA' },
+  dk: { name: 'Danish',     bcp47: 'da-DK' },
+  se: { name: 'Swedish',    bcp47: 'sv-SE' },
 };
 const TRANSLATION_SKIP = new Set(['au', 'nz', 'gb', 'sg']);
 
