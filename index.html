@@ -1931,7 +1931,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 249 };
+window.BUILD_INFO = { prNumber: 250 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -8003,9 +8003,24 @@ function renderTranslationLocationsList() {
       <div style="font-weight:500;font-size:13px;">${escHtml(label)} <span style="color:var(--muted);font-weight:400;">(${cc})</span>${skipped ? ' <span style="color:var(--muted);font-size:11px;">— skipped, English-speaking</span>' : ''}</div>
       ${group.keywords.length ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(group.keywords.join(', '))}</div>` : ''}
       ${group.custom.length ? `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">${group.custom.map(c => `<span style="font-size:11px;background:var(--sand);padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:4px;">${escHtml(c.keyword)} <button onclick="deleteTranslationLocation('${c.id}')" title="Remove" style="background:none;border:none;color:var(--terracotta);cursor:pointer;font-size:12px;padding:0;line-height:1;">✕</button></span>`).join('')}</div>` : ''}
+      <div style="margin-top:6px;display:flex;gap:6px;">
+        <input type="text" id="quickAddKeyword-${cc}" placeholder="add another city or region…" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--ink);" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAddTranslationKeyword('${cc}');}">
+        <button onclick="quickAddTranslationKeyword('${cc}')" title="Add city to ${escAttr(label)}" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--terracotta);cursor:pointer;font-size:13px;padding:4px 10px;">+</button>
+      </div>
     </div>`;
   }).join('') || '<div style="color:var(--muted);font-size:13px;">No translation locations configured.</div>';
 }
+
+window.quickAddTranslationKeyword = async function(cc) {
+  const input = document.getElementById('quickAddKeyword-' + cc);
+  if (!input) return;
+  const keyword = (input.value || '').trim().toLowerCase();
+  if (!keyword) return;
+  try {
+    await window._push(window._ref(window._db, 'config/translationLocations'), { keyword, cc });
+    input.value = '';
+  } catch(e) { alert('Failed to save: ' + e.message); }
+};
 
 window.addTranslationLocation = async function() {
   const keywordEl  = document.getElementById('newTxKeyword');
