@@ -1941,7 +1941,8 @@ let currentUser = null;      // Firebase User object
 let userRole = null;         // "admin" | "guest" | null
 let guestTripIds = [];       // trip IDs accessible to guests
 let adminUser = '';          // display name for attribution
-let outstandingBookingsPopupShown = false; // gates the outstanding-bookings popup to once per signed-in session
+let outstandingBookingsCheckStarted = false; // same-session guard: prevents a re-fired auth callback from double-triggering the check
+let lastOutstandingPopupAt = null; // ms timestamp the popup was last shown to this admin (from access/{emailKey}/lastOutstandingPopupAt); gates it to once per 24h
 let appName = 'Hardin';
 let allTrips = {};
 let currentTripId = null;
@@ -1995,7 +1996,8 @@ function setupAuth() {
   window._onAuthStateChanged(window._auth, async (user) => {
     if (!user) {
       currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
-      outstandingBookingsPopupShown = false;
+      outstandingBookingsCheckStarted = false;
+      lastOutstandingPopupAt = null;
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -2031,6 +2033,7 @@ function setupAuth() {
       userRole = access.role;
       adminUser = access.name || user.displayName || user.email;
       guestTripIds = access.trips ? Object.keys(access.trips) : [];
+      lastOutstandingPopupAt = access.lastOutstandingPopupAt || null;
       try { await window._set(window._ref(window._db, `access/${emailKey}/lastLogin`), Date.now()); } catch(e) {}
       renderAppName();
       document.getElementById('lockBtn').style.display = '';
@@ -2204,7 +2207,8 @@ window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function() {
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
-  outstandingBookingsPopupShown = false;
+  outstandingBookingsCheckStarted = false;
+  lastOutstandingPopupAt = null;
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripRefreshBtn').style.display = 'none';
@@ -9415,14 +9419,22 @@ function buildOutstandingBookingsHtml(entries) {
   }).join('');
 }
 
+const OUTSTANDING_POPUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 function checkOutstandingBookings() {
-  if (outstandingBookingsPopupShown) return;
-  outstandingBookingsPopupShown = true; // set before the async fetch so a re-fired auth callback can't double-trigger
+  if (outstandingBookingsCheckStarted) return;
+  outstandingBookingsCheckStarted = true; // set before the async fetch so a re-fired auth callback can't double-trigger
+  if (lastOutstandingPopupAt && (Date.now() - lastOutstandingPopupAt) < OUTSTANDING_POPUP_INTERVAL_MS) return; // shown within the last 24h — skip
   fetchTravelTrackerData().then(data => {
     const entries = computeOutstandingBookings(data);
-    if (!entries.length) return; // nothing outstanding — no popup
+    if (!entries.length) return; // nothing outstanding — no popup, and no timestamp write (don't suppress a future real popup)
     document.getElementById('outstandingBookingsModalBody').innerHTML = buildOutstandingBookingsHtml(entries);
     document.getElementById('outstandingBookingsModal').classList.add('open');
+    if (currentUser) {
+      const emailKey = currentUser.email.replace(/\./g, ',');
+      lastOutstandingPopupAt = Date.now();
+      window._set(window._ref(window._db, `access/${emailKey}/lastOutstandingPopupAt`), lastOutstandingPopupAt).catch(e => console.warn('checkOutstandingBookings: failed to persist lastOutstandingPopupAt:', e));
+    }
   }).catch(e => console.warn('checkOutstandingBookings: fetch failed, skipping popup:', e));
 }
 

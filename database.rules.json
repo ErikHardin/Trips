@@ -33,6 +33,9 @@
         ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (!data.exists() && !root.child('access').exists() && auth.token.email.replace('.', ',') == $emailKey))",
         "lastLogin": {
           ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
+        },
+        "lastOutstandingPopupAt": {
+          ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
         }
       }
     }
