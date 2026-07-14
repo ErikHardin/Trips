@@ -1931,7 +1931,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 251 };
+window.BUILD_INFO = { prNumber: 252 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4611,7 +4611,7 @@ async function renderUserManagement() {
       list.innerHTML = '<div style="padding:12px 14px;color:var(--muted);font-size:13px;font-style:italic;">No users configured.</div>';
       return;
     }
-    list.innerHTML = entries.map(([emailKey, u]) => {
+    const renderUserRow = ([emailKey, u]) => {
       const tripNames = u.trips
         ? Object.keys(u.trips).map(tid => allTrips[tid]?.name || tid).join(', ')
         : '';
@@ -4631,7 +4631,16 @@ async function renderUserManagement() {
             ${u.role !== 'admin' ? `<button onclick="removeUser('${escAttr(emailKey)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Remove</button>` : ''}
           </div>
         </div>`;
-    }).join('');
+    };
+    const admins = entries.filter(([, u]) => u.role === 'admin');
+    const guests = entries.filter(([, u]) => u.role !== 'admin');
+    const renderGroup = (label, members) => {
+      if (!members.length) return '';
+      return `
+        <div style="padding:8px 14px 4px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);background:var(--sand);">${label} (${members.length})</div>
+        ${members.map(renderUserRow).join('')}`;
+    };
+    list.innerHTML = renderGroup('Admins', admins) + renderGroup('Guests', guests);
   } catch(e) {
     list.innerHTML = '<div style="padding:12px 14px;color:var(--terracotta);font-size:13px;">Error loading users.</div>';
   }
