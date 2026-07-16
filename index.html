@@ -1931,7 +1931,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 254 };
+window.BUILD_INFO = { prNumber: 255 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -7804,11 +7804,15 @@ async function fetchTripWeather(days, tripYear) {
       for (const [dayId, wx] of Object.entries(storedWeather)) {
         const day = daysMap.get(dayId);
         const dateISO = day ? dateISOForDay(day) : null;
-        // Stale climate-average estimate whose date has now entered the real
-        // forecast/historical window — drop it so it gets refetched with real data below.
-        if (wx.avg && dateISO) {
+        if (dateISO) {
           const d = new Date(dateISO + 'T00:00:00');
-          if (d <= forecastCutoff) { delete storedWeather[dayId]; continue; }
+          // Stale climate-average estimate whose date has now entered the real
+          // forecast/historical window — drop it so it gets refetched with real data below.
+          if (wx.avg && d <= forecastCutoff) { delete storedWeather[dayId]; continue; }
+          // Real forecast for an upcoming date: forecasts drift as the date nears,
+          // so refetch every open. Show the cached value now; the fresh fetch
+          // below overwrites the chip and the stored value.
+          if (!wx.avg && d >= today && d <= forecastCutoff) delete storedWeather[dayId];
         }
         const city = day ? (day.city || '').replace(/[🛬🚗✈️🏠]/g,'').trim() : '';
         const coords = city ? await getCityCoords(city) : null;
