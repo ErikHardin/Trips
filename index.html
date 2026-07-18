@@ -921,9 +921,19 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   padding: 8px 14px 8px 44px; border-top: 1px solid var(--border);
 }
 .booking-add-row.open { display: flex; }
-.booking-date-input {
-  border: none; background: transparent; font-size: 12px; color: var(--ink);
-  outline: none; font-family: inherit; width: 110px; flex-shrink: 0;
+.booking-date-pill {
+  position: relative; display: inline-flex; align-items: center; flex-shrink: 0;
+  border: 1px solid var(--sand-dark); border-radius: 8px; background: var(--cream);
+  padding: 6px 10px; font-size: 12px; color: var(--muted); cursor: pointer;
+  white-space: nowrap; transition: all 0.15s;
+}
+.booking-date-pill.set {
+  color: var(--ink); border-color: var(--sage); background: var(--sage-light);
+}
+.booking-date-pill.missing { border-color: var(--terracotta); color: var(--terracotta); }
+.booking-date-pill input[type=date] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; border: 0; padding: 0; margin: 0;
 }
 .logistics-progress {
   margin: 0 16px 16px; padding: 10px 14px;
@@ -1953,7 +1963,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 256 };
+window.BUILD_INFO = { prNumber: 257 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -7034,7 +7044,10 @@ async function _renderLogisticsInner(tripId, panel) {
         '</div>';
     }).join('');
     var dateInput = item.key === 'flightsBooked'
-      ? '<input type="date" class="booking-date-input" id="badd-date-' + item.key + '">'
+      ? '<label class="booking-date-pill" id="badd-datepill-' + item.key + '">' +
+          '<span id="badd-datelabel-' + item.key + '">📅 Date</span>' +
+          '<input type="date" class="booking-date-input" id="badd-date-' + item.key + '" onchange="bookingDatePicked(\'' + item.key + '\')">' +
+        '</label>'
       : '';
     var placeholder = item.key === 'flightsBooked' ? 'DEN → SEA' : 'City…';
     var addRow = '<div class="booking-add-row" id="baddrow-' + item.key + '">' +
@@ -7518,12 +7531,35 @@ window.toggleBookingAddRow = function(key) {
   }
 };
 
+// ── Update the flights date pill when a date is picked ──
+window.bookingDatePicked = function(key) {
+  const input = document.getElementById('badd-date-' + key);
+  const labelSpan = document.getElementById('badd-datelabel-' + key);
+  const pill = document.getElementById('badd-datepill-' + key);
+  if (!input || !labelSpan || !pill) return;
+  if (input.value) {
+    const d = new Date(input.value + 'T12:00:00');
+    labelSpan.textContent = '📅 ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    pill.classList.add('set');
+    pill.classList.remove('missing');
+  } else {
+    labelSpan.textContent = '📅 Date';
+    pill.classList.remove('set');
+  }
+};
+
 // ── Add a booking sub-item ──
 window.addBookingSubItem = async function(tripId, key) {
   const textEl = document.getElementById('badd-' + key);
   const dateEl = document.getElementById('badd-date-' + key);
   const text = (textEl && textEl.value || '').trim();
   if (!text) return;
+  if (dateEl && !dateEl.value) {
+    const pill = document.getElementById('badd-datepill-' + key);
+    if (pill) pill.classList.add('missing');
+    showToast('Select a date for this flight');
+    return;
+  }
   let label = text;
   if (dateEl && dateEl.value) {
     const d = new Date(dateEl.value + 'T12:00:00'); // noon avoids timezone date shift
