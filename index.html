@@ -882,11 +882,12 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .logistics-item {
   display: flex; align-items: center; gap: 14px;
-  padding: 13px 14px; border-bottom: 1px solid var(--border);
+  padding: 13px 14px;
   cursor: pointer; transition: background 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.logistics-item:last-child { border-bottom: none; }
+.booking-group { border-bottom: 1px solid var(--border); }
+.booking-group:last-child { border-bottom: none; }
 .logistics-item:active { background: var(--cream); }
 .logistics-checkbox {
   width: 22px; height: 22px; border-radius: 6px;
@@ -903,6 +904,27 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .logistics-item-label { font-size: 14px; font-weight: 500; color: var(--ink); flex: 1; }
 .logistics-item-label.checked { color: var(--muted); text-decoration: line-through; }
 .logistics-item-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.logistics-checkbox.sm { width: 18px; height: 18px; border-radius: 5px; }
+.logistics-checkbox.sm.checked::after { font-size: 11px; }
+.booking-sub-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 14px 9px 44px;
+  border-top: 1px solid var(--border); cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.booking-sub-item:active { background: var(--cream); }
+.logistics-item-label.sub { font-size: 13px; font-weight: 400; }
+.booking-add-toggle { opacity: 0.55; font-size: 20px; padding: 2px 8px; }
+.booking-add-row {
+  display: none; align-items: center; gap: 8px;
+  padding: 8px 14px 8px 44px; border-top: 1px solid var(--border);
+}
+.booking-add-row.open { display: flex; }
+.booking-date-input {
+  border: none; background: transparent; font-size: 12px; color: var(--ink);
+  outline: none; font-family: inherit; width: 110px; flex-shrink: 0;
+}
 .logistics-progress {
   margin: 0 16px 16px; padding: 10px 14px;
   background: var(--sage-light); border: 1px solid #b8d8bb;
@@ -1931,7 +1953,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 255 };
+window.BUILD_INFO = { prNumber: 256 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -6851,6 +6873,12 @@ function normalizePackingList(val) {
     return person;
   }).filter(Boolean);
 }
+function normalizeBookingSubItems(raw) {
+  raw = raw || {};
+  var out = {};
+  BOOKING_ITEMS.forEach(function(it) { out[it.key] = normalizeArray(raw[it.key]); });
+  return out;
+}
 
 // ════════════════════════════════════════
 //  CHANGES TAB
@@ -6909,6 +6937,7 @@ async function renderLogisticsPanel(tripId) {
   const panel = document.getElementById('tripLogisticsPanel');
   // Capture which person blocks are open, and the scroll position, before tearing down the panel
   const openBlocks = new Set([...panel.querySelectorAll('.packing-person-body.open')].map(el => el.id));
+  const openAddRows = new Set([...panel.querySelectorAll('.booking-add-row.open')].map(el => el.id));
   const scrollContainer = panel.closest('.screen') || panel;
   const scrollTop = scrollContainer.scrollTop;
   const hasContent = panel.innerHTML.trim().length > 0;
@@ -6920,6 +6949,10 @@ async function renderLogisticsPanel(tripId) {
       const body = document.getElementById(id);
       const chev = document.getElementById('chev-' + id);
       if (body) { body.classList.add('open'); if (chev) chev.classList.add('open'); }
+    });
+    openAddRows.forEach(id => {
+      const row = document.getElementById(id);
+      if (row) row.classList.add('open');
     });
     // Restore scroll position so re-renders (e.g. after toggling a packing item) don't jump to top
     scrollContainer.scrollTop = scrollTop;
@@ -6978,14 +7011,43 @@ async function _renderLogisticsInner(tripId, panel) {
       '<div class="packing-divider"></div>'
     : '';
 
-  // Booking checklist
-  const checkedCount = BOOKING_ITEMS.filter(function(i) { return logistics[i.key]; }).length;
-  const pct = Math.round((checkedCount / BOOKING_ITEMS.length) * 100);
+  // Booking checklist — sections with optional individual sub-items (flights/hotels/cars)
+  const subItems = normalizeBookingSubItems(logistics.bookingSubItems);
+  // Each section contributes an equal fraction: checked/total when it has sub-items, else its boolean 0/1
+  const sectionFrac = function(k) {
+    const s = subItems[k];
+    return s.length ? s.filter(function(i){ return i.checked; }).length / s.length : (logistics[k] ? 1 : 0);
+  };
+  const checkedCount = BOOKING_ITEMS.filter(function(i) { return sectionFrac(i.key) === 1; }).length;
+  const pct = Math.round(BOOKING_ITEMS.reduce(function(s, i) { return s + sectionFrac(i.key); }, 0) / BOOKING_ITEMS.length * 100);
   var bookingHTML = BOOKING_ITEMS.map(function(item) {
-    var chk = !!logistics[item.key];
-    return '<div class="logistics-item" onclick="toggleBookingItem(\'' + tripId + '\',\'' + item.key + '\',' + (!chk) + ')">' +
+    var subs = subItems[item.key];
+    var chk = subs.length ? subs.every(function(i){ return i.checked; }) : !!logistics[item.key];
+    var doneBadge = subs.length
+      ? ' <span class="logistics-item-meta" style="display:inline;">' + subs.filter(function(i){ return i.checked; }).length + '/' + subs.length + '</span>'
+      : '';
+    var subRows = subs.map(function(si) {
+      return '<div class="booking-sub-item" onclick="toggleBookingSubItem(\'' + tripId + '\',\'' + item.key + '\',\'' + si.id + '\',' + (!si.checked) + ')">' +
+        '<div class="logistics-checkbox sm' + (si.checked ? ' checked' : '') + '"></div>' +
+        '<div class="logistics-item-label sub' + (si.checked ? ' checked' : '') + '">' + escHtml(si.label) + '</div>' +
+        '<button class="packing-delete-btn" onclick="event.stopPropagation();deleteBookingSubItem(\'' + tripId + '\',\'' + item.key + '\',\'' + si.id + '\')">×</button>' +
+        '</div>';
+    }).join('');
+    var dateInput = item.key === 'flightsBooked'
+      ? '<input type="date" class="booking-date-input" id="badd-date-' + item.key + '">'
+      : '';
+    var placeholder = item.key === 'flightsBooked' ? 'DEN → SEA' : 'City…';
+    var addRow = '<div class="booking-add-row" id="baddrow-' + item.key + '">' +
+      dateInput +
+      '<input class="packing-add-input" placeholder="' + placeholder + '" id="badd-' + item.key + '" onkeydown="if(event.key===\'Enter\')addBookingSubItem(\'' + tripId + '\',\'' + item.key + '\')">' +
+      '<button class="packing-add-btn" onclick="addBookingSubItem(\'' + tripId + '\',\'' + item.key + '\')">+</button>' +
+      '</div>';
+    return '<div class="booking-group">' +
+      '<div class="logistics-item" onclick="toggleBookingItem(\'' + tripId + '\',\'' + item.key + '\',' + (!chk) + ')">' +
       '<div class="logistics-checkbox' + (chk ? ' checked' : '') + '"></div>' +
-      '<div class="logistics-item-label' + (chk ? ' checked' : '') + '">' + item.icon + ' ' + item.label + '</div>' +
+      '<div class="logistics-item-label' + (chk ? ' checked' : '') + '">' + item.icon + ' ' + item.label + doneBadge + '</div>' +
+      '<button class="packing-add-btn booking-add-toggle" onclick="event.stopPropagation();toggleBookingAddRow(\'' + item.key + '\')" title="Add item">+</button>' +
+      '</div>' + subRows + addRow +
       '</div>';
   }).join('');
 
@@ -7384,18 +7446,103 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
   } catch(e) { showToast('Add error: ' + e.message); console.error('addPackingItem error:', e); }
 };
 
-// ── Toggle booking checklist item ──
+// ── Toggle booking checklist item (cascades to sub-items when present) ──
 window.toggleBookingItem = async function(tripId, key, value) {
   try {
+    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/bookingSubItems/' + key));
+    const subs = normalizeArray(snap.val());
+    if (subs.length) {
+      subs.forEach(function(i) { i.checked = value; });
+      await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/bookingSubItems/' + key), subs);
+    }
     await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/' + key), value);
     if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
     allTrips[tripId].logistics[key] = value;
+    if (subs.length) {
+      if (!allTrips[tripId].logistics.bookingSubItems) allTrips[tripId].logistics.bookingSubItems = {};
+      allTrips[tripId].logistics.bookingSubItems[key] = subs;
+    }
+    const itemDef = BOOKING_ITEMS.find(function(i) { return i.key === key; });
+    logChange(tripId, 'Booking updated', (itemDef ? itemDef.label : key) + (value ? ' ✓' : ' ✗'));
     renderLogisticsPanel(tripId);
   } catch(e) { showToast('Could not save'); console.error(e); }
 };
 
 // Keep old name as alias
 window.toggleLogisticsItem = window.toggleBookingItem;
+
+// ── Toggle a single booking sub-item ──
+window.toggleBookingSubItem = async function(tripId, key, itemId, newChecked) {
+  try {
+    const path = 'trips/' + tripId + '/logistics/bookingSubItems/' + key;
+    const snap = await window._get(window._ref(window._db, path));
+    const subs = normalizeArray(snap.val());
+    const item = subs.find(function(i) { return i && i.id === itemId; });
+    if (!item) return;
+    item.checked = newChecked;
+    await window._set(window._ref(window._db, path), subs);
+    if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
+    if (!allTrips[tripId].logistics.bookingSubItems) allTrips[tripId].logistics.bookingSubItems = {};
+    allTrips[tripId].logistics.bookingSubItems[key] = subs;
+    renderLogisticsPanel(tripId);
+  } catch(e) { showToast('Could not save'); console.error(e); }
+};
+
+// ── Delete a booking sub-item ──
+window.deleteBookingSubItem = async function(tripId, key, itemId) {
+  const confirmed = await showConfirmDialog('Remove item?', 'This will delete this item from the booking checklist.');
+  if (!confirmed) return;
+  try {
+    const path = 'trips/' + tripId + '/logistics/bookingSubItems/' + key;
+    const snap = await window._get(window._ref(window._db, path));
+    const subs = normalizeArray(snap.val());
+    const removed = subs.find(function(i) { return i && i.id === itemId; });
+    const remaining = subs.filter(function(i) { return i && i.id !== itemId; });
+    await window._set(window._ref(window._db, path), remaining);
+    if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
+    if (!allTrips[tripId].logistics.bookingSubItems) allTrips[tripId].logistics.bookingSubItems = {};
+    allTrips[tripId].logistics.bookingSubItems[key] = remaining;
+    if (removed) logChange(tripId, 'Removed booking item', removed.label);
+    renderLogisticsPanel(tripId);
+  } catch(e) { showToast('Delete error: ' + e.message); console.error(e); }
+};
+
+// ── Show/hide the add row for a booking section ──
+window.toggleBookingAddRow = function(key) {
+  const row = document.getElementById('baddrow-' + key);
+  if (!row) return;
+  row.classList.toggle('open');
+  if (row.classList.contains('open')) {
+    const input = document.getElementById('badd-' + key);
+    if (input) input.focus();
+  }
+};
+
+// ── Add a booking sub-item ──
+window.addBookingSubItem = async function(tripId, key) {
+  const textEl = document.getElementById('badd-' + key);
+  const dateEl = document.getElementById('badd-date-' + key);
+  const text = (textEl && textEl.value || '').trim();
+  if (!text) return;
+  let label = text;
+  if (dateEl && dateEl.value) {
+    const d = new Date(dateEl.value + 'T12:00:00'); // noon avoids timezone date shift
+    label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' — ' + text;
+  }
+  const newItem = { id: 'bi' + Date.now(), label: label, checked: false };
+  try {
+    const path = 'trips/' + tripId + '/logistics/bookingSubItems/' + key;
+    const snap = await window._get(window._ref(window._db, path));
+    const subs = normalizeArray(snap.val());
+    subs.push(newItem);
+    await window._set(window._ref(window._db, path), subs);
+    if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
+    if (!allTrips[tripId].logistics.bookingSubItems) allTrips[tripId].logistics.bookingSubItems = {};
+    allTrips[tripId].logistics.bookingSubItems[key] = subs;
+    logChange(tripId, 'Added booking item', label);
+    renderLogisticsPanel(tripId);
+  } catch(e) { showToast('Add error: ' + e.message); console.error(e); }
+};
 
 function refreshPackingPct(packingList) {
   if (!packingList) return;
