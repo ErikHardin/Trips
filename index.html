@@ -1966,7 +1966,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 261 };
+window.BUILD_INFO = { prNumber: 262 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -2429,9 +2429,21 @@ async function renderHome() {
     return sa === 2 ? ib.localeCompare(ia) : ia.localeCompare(ib);
   });
 
+  function buildAddTripBtn() {
+    const btn = document.createElement('button');
+    btn.className = 'add-trip-btn';
+    btn.innerHTML = '＋ Add New Trip';
+    btn.onclick = () => showScreen('screen-admin');
+    return btn;
+  }
+
   if (remainingKeys.length === 0 && !Object.keys(byUserOwner).length) {
     list.innerHTML = '';
+    empty.innerHTML = '<div class="empty-state-icon">🌍</div><div class="empty-state-text">No trips yet — add your first!</div>';
     empty.style.display = '';
+    if (userRole === 'admin' || userRole === 'user') {
+      empty.appendChild(buildAddTripBtn());
+    }
     return;
   }
   empty.style.display = 'none';
@@ -2458,11 +2470,7 @@ async function renderHome() {
     });
 
   if (userRole === 'admin' || userRole === 'user') {
-    const btn = document.createElement('button');
-    btn.className = 'add-trip-btn';
-    btn.innerHTML = '＋ Add New Trip';
-    btn.onclick = () => showScreen('screen-admin');
-    list.appendChild(btn);
+    list.appendChild(buildAddTripBtn());
   }
 }
 
