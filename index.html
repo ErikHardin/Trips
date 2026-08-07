@@ -1966,7 +1966,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 262 };
+window.BUILD_INFO = { prNumber: 263 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4669,6 +4669,21 @@ ${bodyHTML}
 window.deleteTrip = async function(tripId) {
   if (!confirm('Delete this trip and all its data?')) return;
   await window._remove(window._ref(window._db, `trips/${tripId}`));
+
+  // Clean up any lingering per-user grants pointing at this now-deleted trip,
+  // so it doesn't linger as an unresolved ID in the User Access list.
+  try {
+    const accessSnap = await window._get(window._ref(window._db, 'access'));
+    const accessData = accessSnap.val() || {};
+    await Promise.all(
+      Object.entries(accessData)
+        .filter(([, u]) => u.trips && u.trips[tripId])
+        .map(([emailKey]) => window._remove(window._ref(window._db, `access/${emailKey}/trips/${tripId}`)))
+    );
+  } catch(e) {
+    console.error('deleteTrip: failed to clean up orphaned trip grants:', e);
+  }
+
   showToast('Trip deleted');
 };
 
@@ -4760,8 +4775,10 @@ async function renderUserManagement() {
       return;
     }
     const renderUserRow = ([emailKey, u]) => {
+      // Filter out grants pointing at trips that no longer exist (e.g. deleted
+      // before cleanup ran) so a raw Firebase ID never shows up instead of a name.
       const tripNames = u.trips
-        ? Object.keys(u.trips).map(tid => allTrips[tid]?.name || tid).join(', ')
+        ? Object.keys(u.trips).filter(tid => allTrips[tid]).map(tid => allTrips[tid].name || tid).join(', ')
         : '';
       const lastLoginStr = u.lastLogin
         ? new Date(u.lastLogin).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
