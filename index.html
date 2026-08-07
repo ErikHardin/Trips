@@ -1966,7 +1966,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 263 };
+window.BUILD_INFO = { prNumber: 264 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4097,7 +4097,11 @@ window.createTrip = async function() {
 
   const newRef = window._push(window._ref(window._db, 'trips'));
   const tripId = newRef.key;
-  await window._set(newRef, { name, year, dates, emoji, status, startDateISO: startVal, ownerId: currentUser.email });
+  const tripData = { name, year, dates, emoji, status, startDateISO: startVal, ownerId: currentUser.email };
+  // Users can't see/toggle the World Map checkbox themselves (admin-only), so their
+  // trips shouldn't silently default to shown on the family's shared map.
+  if (userRole === 'user') tripData.includeInWorldMap = false;
+  await window._set(newRef, tripData);
 
   // Auto-generate a blank day for each date in the range
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4775,11 +4779,13 @@ async function renderUserManagement() {
       return;
     }
     const renderUserRow = ([emailKey, u]) => {
-      // Filter out grants pointing at trips that no longer exist (e.g. deleted
-      // before cleanup ran) so a raw Firebase ID never shows up instead of a name.
-      const tripNames = u.trips
-        ? Object.keys(u.trips).filter(tid => allTrips[tid]).map(tid => allTrips[tid].name || tid).join(', ')
-        : '';
+      // Combine explicit grants (filtered to trips that still exist, so a
+      // deleted trip's raw Firebase ID never shows up instead of a name) with
+      // trips this person owns/created, so both show up on their card.
+      const grantedIds = u.trips ? Object.keys(u.trips).filter(tid => allTrips[tid]) : [];
+      const ownedIds = Object.keys(allTrips).filter(tid => allTrips[tid].ownerId === u.email);
+      const tripNames = [...new Set([...grantedIds, ...ownedIds])]
+        .map(tid => allTrips[tid].name || tid).join(', ');
       const lastLoginStr = u.lastLogin
         ? new Date(u.lastLogin).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
         : 'Never';
