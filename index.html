@@ -2342,13 +2342,72 @@ function canManageTrip(tripId) {
   return userRole === 'admin' || (userRole === 'user' && (isTripOwner(tripId) || guestTripIds.includes(tripId)));
 }
 
-function renderHome() {
+// Splits a set of trip IDs into trips created by a 'user'-role account (bucketed
+// by owner, for a collapsed per-creator section) and everything else. Only admins
+// can read the access list, so non-admins just get everything back as "remaining".
+async function groupTripsByUserOwner(keys) {
+  const userOwnerNames = {}; // ownerId (email) -> display name, only for role:'user' owners
+  if (userRole === 'admin') {
+    try {
+      const accessSnap = await window._get(window._ref(window._db, 'access'));
+      Object.values(accessSnap.val() || {}).forEach(u => {
+        if (u.role === 'user' && u.email) userOwnerNames[u.email] = u.name || u.email;
+      });
+    } catch(e) { /* ignore — falls back to no grouping */ }
+  }
+
+  const byUserOwner = {}; // ownerId -> [tripId,...]
+  const remainingKeys = [];
+  keys.forEach(k => {
+    const ownerId = allTrips[k].ownerId;
+    if (ownerId && userOwnerNames[ownerId]) {
+      (byUserOwner[ownerId] = byUserOwner[ownerId] || []).push(k);
+    } else {
+      remainingKeys.push(k);
+    }
+  });
+
+  return { userOwnerNames, byUserOwner, remainingKeys };
+}
+
+function buildTripCard(k) {
+  const t = allTrips[k];
+  const card = document.createElement('div');
+  card.className = 'trip-card';
+  const datesHTML2    = t.dates ? '<span class="trip-pill">' + t.dates + '</span>' : '';
+  const prog2 = getTripProgress(t);
+  const progressInlineHTML2 = prog2
+    ? '<div class="trip-card-progress-inline">' +
+        '<div class="trip-card-progress-track-sm"><div class="trip-card-progress-fill-sm" style="width:' + prog2.pct + '%"></div></div>' +
+        '<span class="trip-card-progress-label-sm">' + prog2.nightsCompleted + '/' + prog2.totalNights + ' nt</span>' +
+      '</div>'
+    : '';
+  const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' + progressInlineHTML2 : '';
+  const countdownHTML2 = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
+  card.innerHTML =
+    '<div class="trip-card-cover"><span class="trip-card-cover-emoji">' + (t.emoji||'✈️') + '</span></div>' +
+    '<div class="trip-card-body">' +
+      '<div class="trip-card-name">' + (t.name||'Untitled Trip') + '</div>' +
+      '<div class="trip-card-meta">' +
+        '<span class="trip-pill">' + (t.year||'') + '</span>' +
+        datesHTML2 + activeHTML2 + countdownHTML2 +
+      '</div>' +
+    '</div>';
+  card.onclick = () => openTrip(k);
+  return card;
+}
+
+async function renderHome() {
   const list = document.getElementById('tripsList');
   const empty = document.getElementById('homeEmpty');
   // Guests/users only see their assigned or owned trips; admins see all
   let keys = Object.keys(allTrips).filter(id =>
     userRole === 'admin' || guestTripIds.includes(id) || isTripOwner(id)
   );
+
+  // Trips created by a 'user'-role account get their own collapsed section at
+  // the bottom (admins only) instead of sitting in the main list.
+  const { userOwnerNames, byUserOwner, remainingKeys } = await groupTripsByUserOwner(keys);
 
   // Sort: active first, then upcoming (soonest first), then past (newest first)
   const _statusOrder = { active: 0, upcoming: 1, past: 2 };
@@ -2360,7 +2419,7 @@ function renderHome() {
     }
     return String(t.year || 0);
   }
-  keys.sort((a, b) => {
+  remainingKeys.sort((a, b) => {
     const ta = allTrips[a], tb = allTrips[b];
     const sa = _statusOrder[ta.status] ?? 2;
     const sb = _statusOrder[tb.status] ?? 2;
@@ -2370,7 +2429,7 @@ function renderHome() {
     return sa === 2 ? ib.localeCompare(ia) : ia.localeCompare(ib);
   });
 
-  if (keys.length === 0) {
+  if (remainingKeys.length === 0 && !Object.keys(byUserOwner).length) {
     list.innerHTML = '';
     empty.style.display = '';
     return;
@@ -2378,32 +2437,25 @@ function renderHome() {
   empty.style.display = 'none';
   list.innerHTML = '';
 
-  keys.forEach(k => {
-    const t = allTrips[k];
-    const card = document.createElement('div');
-    card.className = 'trip-card';
-    const datesHTML2    = t.dates ? '<span class="trip-pill">' + t.dates + '</span>' : '';
-    const prog2 = getTripProgress(t);
-    const progressInlineHTML2 = prog2
-      ? '<div class="trip-card-progress-inline">' +
-          '<div class="trip-card-progress-track-sm"><div class="trip-card-progress-fill-sm" style="width:' + prog2.pct + '%"></div></div>' +
-          '<span class="trip-card-progress-label-sm">' + prog2.nightsCompleted + '/' + prog2.totalNights + ' nt</span>' +
-        '</div>'
-      : '';
-    const activeHTML2    = t.status === 'active' ? '<span class="trip-pill active-pill">🟢 In Progress</span>' + progressInlineHTML2 : '';
-    const countdownHTML2 = t.status === 'upcoming' ? '<span class="trip-pill">' + getTripCountdown(t) + '</span>' : '';
-    card.innerHTML =
-      '<div class="trip-card-cover"><span class="trip-card-cover-emoji">' + (t.emoji||'✈️') + '</span></div>' +
-      '<div class="trip-card-body">' +
-        '<div class="trip-card-name">' + (t.name||'Untitled Trip') + '</div>' +
-        '<div class="trip-card-meta">' +
-          '<span class="trip-pill">' + (t.year||'') + '</span>' +
-          datesHTML2 + activeHTML2 + countdownHTML2 +
+  remainingKeys.forEach(k => list.appendChild(buildTripCard(k)));
+
+  Object.keys(byUserOwner)
+    .sort((a, b) => userOwnerNames[a].localeCompare(userOwnerNames[b]))
+    .forEach(ownerId => {
+      const groupId = 'homeTripGroupOwner_' + ownerId.replace(/[^a-zA-Z0-9]/g, '_');
+      const section = document.createElement('div');
+      section.className = 'admin-trip-group';
+      section.style.margin = '4px 16px 12px';
+      section.innerHTML =
+        '<div class="admin-trip-group-header" onclick="toggleTripGroup(\'' + groupId + '\')">' +
+          '<span class="admin-trip-group-label">' + escHtml(userOwnerNames[ownerId]) + '<span class="admin-trip-group-count">(' + byUserOwner[ownerId].length + ')</span></span>' +
+          '<span id="' + groupId + 'Chev" class="admin-collapsible-chev">›</span>' +
         '</div>' +
-      '</div>';
-    card.onclick = () => openTrip(k);
-    list.appendChild(card);
-  });
+        '<div id="' + groupId + 'Body" class="admin-trip-group-body" style="display:none;padding:0;"></div>';
+      list.appendChild(section);
+      const body = section.querySelector('#' + groupId + 'Body');
+      byUserOwner[ownerId].forEach(k => body.appendChild(buildTripCard(k)));
+    });
 
   if (userRole === 'admin' || userRole === 'user') {
     const btn = document.createElement('button');
@@ -4231,26 +4283,7 @@ async function renderAdminTripList() {
 
   // Trips created by a 'user'-role account get their own collapsed group at the
   // bottom, named after the creator, instead of sitting in Active/Upcoming/Past.
-  const userOwnerNames = {}; // ownerId (email) -> display name, only for role:'user' owners
-  if (userRole === 'admin') {
-    try {
-      const accessSnap = await window._get(window._ref(window._db, 'access'));
-      Object.values(accessSnap.val() || {}).forEach(u => {
-        if (u.role === 'user' && u.email) userOwnerNames[u.email] = u.name || u.email;
-      });
-    } catch(e) { /* ignore — falls back to the normal status grouping */ }
-  }
-
-  const byUserOwner = {}; // ownerId -> [tripId,...]
-  const remainingKeys = [];
-  keys.forEach(k => {
-    const ownerId = allTrips[k].ownerId;
-    if (ownerId && userOwnerNames[ownerId]) {
-      (byUserOwner[ownerId] = byUserOwner[ownerId] || []).push(k);
-    } else {
-      remainingKeys.push(k);
-    }
-  });
+  const { userOwnerNames, byUserOwner, remainingKeys } = await groupTripsByUserOwner(keys);
 
   const active   = remainingKeys.filter(k => allTrips[k].status === 'active');
   const upcoming = remainingKeys.filter(k => allTrips[k].status === 'upcoming');
