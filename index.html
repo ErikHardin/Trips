@@ -1966,7 +1966,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 260 };
+window.BUILD_INFO = { prNumber: 261 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4109,8 +4109,9 @@ window.createTrip = async function() {
     d.setDate(d.getDate() + 1);
   }
 
-  // Seed packing list from master template if one exists
-  if (masterPackingList && masterPackingList.length) {
+  // Seed packing list from the family's master template — admin-created trips only.
+  // Trips a User creates start blank; they build their own list from scratch.
+  if (userRole === 'admin' && masterPackingList && masterPackingList.length) {
     let idCounter = Date.now();
     const tripList = masterPackingList.map(p => ({
       person: p.person,
@@ -7173,7 +7174,9 @@ async function _renderLogisticsInner(tripId, panel) {
     ? '<div style="display:flex;justify-content:flex-end;padding:0 16px 8px;">' +
         '<button onclick="clearPackingList(\'' + tripId + '\')" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;">Clear list &amp; regenerate</button>' +
       '</div>'
-    : '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">Copy from Master Packing List</button>';
+    : (userRole === 'admin'
+        ? '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">Copy from Master Packing List</button>'
+        : '<button class="packing-generate-btn" id="packingStartBtn" data-start-trip="' + tripId + '">Start a Packing List</button>');
 
   panel.innerHTML =
     '<div style="height:16px;"></div>' +
@@ -7386,6 +7389,26 @@ window.generatePackingList = async function(tripId) {
   }
 };
 
+// ── Start a blank packing list (non-admins — no master template to copy) ──
+window.startBlankPackingList = async function(tripId) {
+  const btn = document.getElementById('packingStartBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Starting…'; }
+
+  try {
+    const packingList = [{ person: 'General', sections: [{ title: 'Items', items: [] }] }];
+    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+    if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
+    allTrips[tripId].logistics.packingList = packingList;
+
+    renderLogisticsPanel(tripId);
+    showToast('Packing list started ✓');
+  } catch(e) {
+    console.error('startBlankPackingList error', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Start a Packing List'; }
+    showToast('Failed — check connection');
+  }
+};
+
 // ── Edit/Delete packing items via delegated handlers (avoids apostrophe issues) ──
 document.addEventListener('click', function(e) {
   // Edit button
@@ -7459,6 +7482,13 @@ document.addEventListener('click', function(e) {
   if (genBtn && !e.target.closest('[data-edit-item]') && !e.target.closest('[data-del-item]')) {
     const tid = genBtn.dataset.genTrip;
     if (tid) { generatePackingList(tid); return; }
+  }
+
+  // Start blank packing list button (non-admins)
+  const startBtn = e.target.closest('[data-start-trip]');
+  if (startBtn) {
+    const tid = startBtn.dataset.startTrip;
+    if (tid) { startBlankPackingList(tid); return; }
   }
 
   // Delete item button
