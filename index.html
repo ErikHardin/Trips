@@ -1639,11 +1639,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
         </select>
         <label class="form-label">Currency Symbol</label>
         <input class="form-input" id="editTripCurrency" placeholder="€  $ £ ¥ …">
-        <label class="form-label" style="margin-top:8px;">World Map</label>
-        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
-          <input type="checkbox" id="editTripIncludeInWorldMap" style="width:16px;height:16px;accent-color:var(--terracotta);">
-          <span style="font-size:14px;color:var(--ink);">Show on world map</span>
-        </label>
+        <div id="editTripWorldMapSection">
+          <label class="form-label" style="margin-top:8px;">World Map</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+            <input type="checkbox" id="editTripIncludeInWorldMap" style="width:16px;height:16px;accent-color:var(--terracotta);">
+            <span style="font-size:14px;color:var(--ink);">Show on world map</span>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -1964,7 +1966,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 258 };
+window.BUILD_INFO = { prNumber: 259 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -2004,7 +2006,7 @@ const BOOKING_STATUSES = [
 ];
 
 function renderAppName() {
-  const isGuest = userRole === 'guest';
+  const isGuest = userRole === 'guest' || userRole === 'user';
   const displayName = isGuest ? `${adminUser}'s` : appName;
 
   const loginLogo = document.querySelector('.login-logo');
@@ -4811,6 +4813,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   document.getElementById('editTripStatus').value = trip.status || 'upcoming';
   document.getElementById('editTripCurrency').value = trip.currency || '';
   document.getElementById('editTripIncludeInWorldMap').checked = trip.includeInWorldMap !== false;
+  document.getElementById('editTripWorldMapSection').style.display = userRole === 'admin' ? '' : 'none';
   // Parse existing trip-level flight strings into chip arrays
   _editFlightsOut = (trip.flightOut || '').split('\n').filter(Boolean)
     .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '', dayOffset: (trip.flightOutDayOffsets || [])[i] ?? null }));
