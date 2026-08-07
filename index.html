@@ -4220,7 +4220,7 @@ function populateImportSelect() {
   }
 }
 
-function renderAdminTripList() {
+async function renderAdminTripList() {
   const list = document.getElementById('adminTripList');
   if (!list) return;
   const keys = Object.keys(allTrips);
@@ -4228,9 +4228,33 @@ function renderAdminTripList() {
     list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:12px 16px;">No trips yet.</p>';
     return;
   }
-  const active   = keys.filter(k => allTrips[k].status === 'active');
-  const upcoming = keys.filter(k => allTrips[k].status === 'upcoming');
-  const past     = keys.filter(k => !allTrips[k].status || allTrips[k].status === 'past');
+
+  // Trips created by a 'user'-role account get their own collapsed group at the
+  // bottom, named after the creator, instead of sitting in Active/Upcoming/Past.
+  const userOwnerNames = {}; // ownerId (email) -> display name, only for role:'user' owners
+  if (userRole === 'admin') {
+    try {
+      const accessSnap = await window._get(window._ref(window._db, 'access'));
+      Object.values(accessSnap.val() || {}).forEach(u => {
+        if (u.role === 'user' && u.email) userOwnerNames[u.email] = u.name || u.email;
+      });
+    } catch(e) { /* ignore — falls back to the normal status grouping */ }
+  }
+
+  const byUserOwner = {}; // ownerId -> [tripId,...]
+  const remainingKeys = [];
+  keys.forEach(k => {
+    const ownerId = allTrips[k].ownerId;
+    if (ownerId && userOwnerNames[ownerId]) {
+      (byUserOwner[ownerId] = byUserOwner[ownerId] || []).push(k);
+    } else {
+      remainingKeys.push(k);
+    }
+  });
+
+  const active   = remainingKeys.filter(k => allTrips[k].status === 'active');
+  const upcoming = remainingKeys.filter(k => allTrips[k].status === 'upcoming');
+  const past     = remainingKeys.filter(k => !allTrips[k].status || allTrips[k].status === 'past');
 
   function tripCard(k) {
     const t = allTrips[k];
@@ -4260,10 +4284,19 @@ function renderAdminTripList() {
     </div>`;
   }
 
-  list.innerHTML =
+  let html =
     group('tripGroupActive',   'Active',   active,   true)  +
     group('tripGroupUpcoming', 'Upcoming', upcoming, true)  +
     group('tripGroupPast',     'Past',     past,     false);
+
+  Object.keys(byUserOwner)
+    .sort((a, b) => userOwnerNames[a].localeCompare(userOwnerNames[b]))
+    .forEach(ownerId => {
+      const groupId = 'tripGroupOwner_' + ownerId.replace(/[^a-zA-Z0-9]/g, '_');
+      html += group(groupId, escHtml(userOwnerNames[ownerId]), byUserOwner[ownerId], false);
+    });
+
+  list.innerHTML = html;
 }
 
 function renderPDFTripList() {
@@ -4625,15 +4658,21 @@ let _editingUserKey = null;
 window.editUser = function(emailKey, name, role, tripsJson) {
   _editingUserKey = emailKey;
   const trips = tripsJson ? JSON.parse(tripsJson) : {};
+  const userEmail = emailKey.replace(/,/g, '.');
   document.getElementById('newUserFormTitle').textContent = 'Edit User';
   document.getElementById('newUserName').value = name;
-  document.getElementById('newUserEmail').value = emailKey.replace(/,/g, '.');
+  document.getElementById('newUserEmail').value = userEmail;
   document.getElementById('newUserEmail').readOnly = true;
   document.getElementById('newUserEmail').style.opacity = '0.6';
   document.getElementById('newUserRole').value = role;
   document.getElementById('newUserTripSection').style.display = (role === 'guest' || role === 'user') ? '' : 'none';
   document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => {
-    cb.checked = !!trips[cb.value];
+    // Trips this person created show as checked (they already have access via ownership) —
+    // locked so unchecking here can't look like it revokes access it doesn't actually remove.
+    const owned = allTrips[cb.value] && allTrips[cb.value].ownerId === userEmail;
+    cb.checked = !!trips[cb.value] || owned;
+    cb.disabled = owned;
+    cb.title = owned ? 'Created by this person — access can\'t be removed here.' : '';
   });
   document.getElementById('addUserBtn').textContent = 'Save Changes';
   document.getElementById('cancelEditUserBtn').style.display = '';
@@ -4649,7 +4688,7 @@ window.cancelEditUser = function() {
   document.getElementById('newUserEmail').style.opacity = '';
   document.getElementById('newUserRole').value = 'guest';
   document.getElementById('newUserTripSection').style.display = '';
-  document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => { cb.checked = false; cb.disabled = false; cb.title = ''; });
   document.getElementById('addUserBtn').textContent = 'Add User';
   document.getElementById('cancelEditUserBtn').style.display = 'none';
 };
