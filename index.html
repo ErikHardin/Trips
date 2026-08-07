@@ -1363,7 +1363,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- MANAGE TRIPS -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="manageTripsSectionHeader" onclick="toggleAdminSection('manageTripsSection')">
           <div class="admin-section-title">Manage Existing Trips</div>
@@ -1376,7 +1376,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- AI ASSISTANT -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="aiSectionHeader" onclick="toggleAdminSection('aiSection')">
           <div class="admin-section-title">AI Trip Assistant</div>
@@ -1446,7 +1446,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- TRAVEL FOR TRIPS -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel" style="overflow:hidden;">
         <div class="admin-panel-header" id="travelTrackerHeader" onclick="toggleAdminSection('travelTracker')">
           <div class="admin-section-title">Travel for Trips</div>
@@ -1459,10 +1459,10 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- UTILITIES GROUP -->
-    <div class="admin-group-header">Utilities</div>
+    <div class="admin-group-header admin-only-section">Utilities</div>
 
     <!-- USER ACCESS -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="userAccessSectionHeader" onclick="toggleUserAccessSection()">
           <div class="admin-section-title">User Access</div>
@@ -1477,6 +1477,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
             <label class="form-label">Role</label>
             <select class="form-input" id="newUserRole" onchange="toggleNewUserTripSelect()" style="margin-bottom:8px;">
               <option value="guest">Guest</option>
+              <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
             <div id="newUserTripSection">
@@ -1491,7 +1492,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- APP NAME -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="appNameSectionHeader" onclick="toggleAdminSection('appNameSection')">
           <div class="admin-section-title">App Name</div>
@@ -1509,7 +1510,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- TRANSLATIONS -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="translationsSectionHeader" onclick="toggleAdminSection('translationsSection')">
           <div class="admin-section-title">Translations</div>
@@ -1538,7 +1539,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- IMPORT FROM CSV -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="importSectionHeader" onclick="toggleAdminSection('importSection')">
           <div class="admin-section-title">Import from CSV</div>
@@ -1574,7 +1575,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- LOGISTICS PACKING LIST (master template) -->
-    <div class="admin-section">
+    <div class="admin-section admin-only-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="packingSectionHeader" onclick="toggleAdminSection('packingSection')">
           <div class="admin-section-title">Logistics Packing List</div>
@@ -1587,7 +1588,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- CREATE TRIP PDF -->
-    <div class="admin-section" style="padding-bottom:20px;">
+    <div class="admin-section admin-only-section" style="padding-bottom:20px;">
       <div class="admin-panel">
         <div class="admin-panel-header" id="pdfSectionHeader" onclick="toggleAdminSection('pdfSection')">
           <div class="admin-section-title">Create Trip PDF</div>
@@ -2234,6 +2235,12 @@ window.goBackFromEdit = function() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  if (id === 'screen-admin') {
+    const isAdmin = userRole === 'admin';
+    document.querySelectorAll('#screen-admin .admin-only-section').forEach(el => {
+      el.style.display = isAdmin ? '' : 'none';
+    });
+  }
 }
 window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
@@ -2316,16 +2323,29 @@ function getTripCountdown(t) {
   return '🗓️ ' + diff + ' days away';
 }
 
+function isTripOwner(tripId) {
+  const t = allTrips[tripId];
+  return !!(t && t.ownerId && currentUser && t.ownerId === currentUser.email);
+}
+
+// "Has access": view + contribute (itinerary edits, notes, wishlist, share link) —
+// true for admins, guests/users granted this trip, and a user's own trips.
 function canEditCurrentTrip() {
-  return userRole === 'admin' || guestTripIds.includes(currentTripId);
+  return userRole === 'admin' || guestTripIds.includes(currentTripId) || isTripOwner(currentTripId);
+}
+
+// "Can manage": trip creation entry points, edit-trip-details screen, logistics tab,
+// promoting wishlist items — admins always, users only for trips they own or were granted.
+function canManageTrip(tripId) {
+  return userRole === 'admin' || (userRole === 'user' && (isTripOwner(tripId) || guestTripIds.includes(tripId)));
 }
 
 function renderHome() {
   const list = document.getElementById('tripsList');
   const empty = document.getElementById('homeEmpty');
-  // Guests only see their assigned trips; admins see all
+  // Guests/users only see their assigned or owned trips; admins see all
   let keys = Object.keys(allTrips).filter(id =>
-    userRole === 'admin' || guestTripIds.includes(id)
+    userRole === 'admin' || guestTripIds.includes(id) || isTripOwner(id)
   );
 
   // Sort: active first, then upcoming (soonest first), then past (newest first)
@@ -2383,7 +2403,7 @@ function renderHome() {
     list.appendChild(card);
   });
 
-  if (userRole === 'admin') {
+  if (userRole === 'admin' || userRole === 'user') {
     const btn = document.createElement('button');
     btn.className = 'add-trip-btn';
     btn.innerHTML = '＋ Add New Trip';
@@ -2402,10 +2422,11 @@ function openTrip(tripId, defaultTab) {
   document.getElementById('tripDetailEyebrow').textContent = trip.year || 'Trip';
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
   document.getElementById('tripRefreshBtn').style.display = '';
-  document.getElementById('tripAdminBtn').style.display = userRole === 'admin' ? '' : 'none';
+  const canManage = canManageTrip(tripId);
+  document.getElementById('tripAdminBtn').style.display = canManage ? '' : 'none';
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
-  const hasAccess = userRole === 'admin' || guestTripIds.includes(tripId);
-  document.getElementById('logisticsTabBtn').style.display = (userRole === 'admin' && isUpcomingOrActive) ? '' : 'none';
+  const hasAccess = userRole === 'admin' || guestTripIds.includes(tripId) || isTripOwner(tripId);
+  document.getElementById('logisticsTabBtn').style.display = (canManage && isUpcomingOrActive) ? '' : 'none';
   document.getElementById('changesTabBtn').style.display = hasAccess ? '' : 'none';
   document.getElementById('wishlistTabBtn').style.display = hasAccess ? '' : 'none';
   renderTripItinerary(trip);
@@ -3404,7 +3425,7 @@ async function renderWishlistPanel(tripId) {
     // Cache items by ID so promoteWishlistItem can look them up without passing JSON through onclick
     _wishlistCache[tripId] = raw;
 
-    const _wishCanEdit = userRole === 'admin' || guestTripIds.includes(tripId);
+    const _wishCanEdit = userRole === 'admin' || guestTripIds.includes(tripId) || isTripOwner(tripId);
     const addFormHTML = _wishCanEdit ? `
       <div id="wishlistAddForm" class="requires-network" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
         <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Idea</div>
@@ -3433,7 +3454,7 @@ async function renderWishlistPanel(tripId) {
           </div>
           ${_wishCanEdit ? `
           <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-            ${userRole === 'admin' ? `<button onclick="promoteWishlistItem('${tripId}','${id}')"
+            ${canManageTrip(tripId) ? `<button onclick="promoteWishlistItem('${tripId}','${id}')"
               style="background:var(--sage);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">
               → Add to Day
             </button>` : ''}
@@ -4014,7 +4035,7 @@ window.createTrip = async function() {
 
   const newRef = window._push(window._ref(window._db, 'trips'));
   const tripId = newRef.key;
-  await window._set(newRef, { name, year, dates, emoji, status, startDateISO: startVal });
+  await window._set(newRef, { name, year, dates, emoji, status, startDateISO: startVal, ownerId: currentUser.email });
 
   // Auto-generate a blank day for each date in the range
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -4594,7 +4615,7 @@ window.toggleUserAccessSection = function() {
 
 window.toggleNewUserTripSelect = function() {
   const role = document.getElementById('newUserRole').value;
-  document.getElementById('newUserTripSection').style.display = role === 'guest' ? '' : 'none';
+  document.getElementById('newUserTripSection').style.display = (role === 'guest' || role === 'user') ? '' : 'none';
 };
 
 let _editingUserKey = null;
@@ -4608,7 +4629,7 @@ window.editUser = function(emailKey, name, role, tripsJson) {
   document.getElementById('newUserEmail').readOnly = true;
   document.getElementById('newUserEmail').style.opacity = '0.6';
   document.getElementById('newUserRole').value = role;
-  document.getElementById('newUserTripSection').style.display = role === 'guest' ? '' : 'none';
+  document.getElementById('newUserTripSection').style.display = (role === 'guest' || role === 'user') ? '' : 'none';
   document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => {
     cb.checked = !!trips[cb.value];
   });
@@ -4666,7 +4687,7 @@ async function renderUserManagement() {
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:500;color:var(--ink);">${escHtml(u.name||emailKey)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px;">${escHtml(u.email||emailKey.replace(/,/g,'.'))} · ${u.role==='admin'?'Admin':'Guest'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;">${escHtml(u.email||emailKey.replace(/,/g,'.'))} · ${u.role==='admin'?'Admin':u.role==='user'?'User':'Guest'}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:1px;">Last login: ${lastLoginStr}</div>
             ${tripNames ? `<div style="font-size:11px;color:var(--sage);margin-top:2px;">${escHtml(tripNames)}</div>` : ''}
           </div>
@@ -4677,14 +4698,15 @@ async function renderUserManagement() {
         </div>`;
     };
     const admins = entries.filter(([, u]) => u.role === 'admin');
-    const guests = entries.filter(([, u]) => u.role !== 'admin');
+    const users  = entries.filter(([, u]) => u.role === 'user');
+    const guests = entries.filter(([, u]) => u.role !== 'admin' && u.role !== 'user');
     const renderGroup = (label, members) => {
       if (!members.length) return '';
       return `
         <div style="padding:8px 14px 4px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);background:var(--sand);">${label} (${members.length})</div>
         ${members.map(renderUserRow).join('')}`;
     };
-    list.innerHTML = renderGroup('Admins', admins) + renderGroup('Guests', guests);
+    list.innerHTML = renderGroup('Admins', admins) + renderGroup('Users', users) + renderGroup('Guests', guests);
   } catch(e) {
     list.innerHTML = '<div style="padding:12px 14px;color:var(--terracotta);font-size:13px;">Error loading users.</div>';
   }
@@ -4698,11 +4720,13 @@ window.addUser = async function() {
   if (!email.includes('@')) { showToast('Enter a valid email address'); return; }
   const emailKey = _editingUserKey || email.replace(/\./g, ',');
   const data = { name, email, role };
-  if (role === 'guest') {
+  if (role === 'guest' || role === 'user') {
     const checks = document.querySelectorAll('#newUserTripChecks input[type=checkbox]:checked');
-    if (!checks.length) { showToast('Select at least one trip for guest access'); return; }
-    data.trips = {};
-    checks.forEach(cb => { data.trips[cb.value] = true; });
+    if (role === 'guest' && !checks.length) { showToast('Select at least one trip for guest access'); return; }
+    if (checks.length) {
+      data.trips = {};
+      checks.forEach(cb => { data.trips[cb.value] = true; });
+    }
   }
   try {
     await window._set(window._ref(window._db, `access/${emailKey}`), data);

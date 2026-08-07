@@ -4,9 +4,9 @@
       ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
       "$tripId": {
         ".read": true,
-        ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists())",
+        ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists() || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && !data.exists() && newData.child('ownerId').val() == auth.token.email) || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && data.exists() && newData.exists() && data.child('ownerId').val() == auth.token.email))",
         "logistics": {
-          ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+          ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && (root.child('trips').child($tripId).child('ownerId').val() == auth.token.email || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists())))"
         }
       }
     },
