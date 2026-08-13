@@ -9038,7 +9038,12 @@ async function getCityCoords(cityName, biasCoords = null) {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(raw)}&format=json&limit=1`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'HardinTrips/1.0' } });
     const data = await res.json();
-    if (data && data[0]) return cacheAndReturn(parseFloat(data[0].lat), parseFloat(data[0].lon));
+    if (data && data[0]) {
+      const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+      if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
+        return cacheAndReturn(lat, lng);
+      }
+    }
   } catch(e) { console.warn('Nominatim failed:', raw, e); }
 
   // 8. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
