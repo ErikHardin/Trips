@@ -1981,7 +1981,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 265 };
+window.BUILD_INFO = { prNumber: 266 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -8589,7 +8589,7 @@ function extractHotel(day) {
   return raw.replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim() || null;
 }
 
-const _VERB_PREFIX_RE = /^(explore|drive along|drive to|drive|visit|hike to|hike along|hike|see|walk along|walk to|walk|bike to|bike along|cycle to|cycle along|go to|head to|stop at|stop in|lunch at|lunch in|dinner at|dinner in|breakfast at|breakfast in|brunch at|brunch in|drinks at|cocktails at|swim at|swim in|relax at|pool time at|along|check into|check in at|arrive at|arrive in|tasting at|tasting in)\s+/i;
+const _VERB_PREFIX_RE = /^(?:[A-Za-z][\w'’-]*\s+){0,2}(explore|drive along|drive to|drive|visit|hike to|hike along|hike|see|walk along|walk to|walk|bike to|bike along|cycle to|cycle along|go to|head to|stop at|stop in|lunch at|lunch in|dinner at|dinner in|breakfast at|breakfast in|brunch at|brunch in|drinks at|cocktails at|swim at|swim in|relax at|pool time at|along|check into|check in at|arrive at|arrive in|tasting at|tasting in)\s+/i;
 
 function _stripActivityVerb(text) {
   let s = text.trim();
@@ -8705,6 +8705,7 @@ async function fetchTripDriveTimes(days, allDays) {
       const _allDays = allDays || days;
       const allIdx = _allDays.findIndex(([id]) => id === dayId);
       const prevDay = allIdx > 0 ? _allDays[allIdx - 1][1] : null;
+      const isFirstDayOfTrip = !prevDay;
       const prevCity = prevDay ? extractCity(prevDay) : extractCity(day);
       const curCity = extractCity(day);
       const prevHotel = prevDay ? extractHotel(prevDay) : null;
@@ -8712,6 +8713,8 @@ async function fetchTripDriveTimes(days, allDays) {
       const region = day.region || day.city || '';
 
       if (day.flightInfo) {
+        // On the trip's first day there's no known prior location to draw a "drive to the airport" leg from.
+        if (isFirstDayOfTrip) return;
         const iata = (day.flightInfo.formatted || '').split(' ')[1];
         if (iata && /^[A-Z]{3}$/.test(iata)) {
           const prevEndpoint = await resolveEndpoint(prevHotel, prevCity);
@@ -8736,9 +8739,11 @@ async function fetchTripDriveTimes(days, allDays) {
       const activityBias = isTravelDay ? null : regionCenter;
       const activityContext = [day.city, day.region].filter(Boolean).join(', ') || region;
 
-      // Resolve route endpoints: hotel name for accuracy, city as reliable fallback
+      // Resolve route endpoints: hotel name for accuracy, city as reliable fallback.
+      // On the trip's first day there's no known prior location — don't fabricate one
+      // from the current day's own city, just let the route start at the first activity.
       const [prevEndpoint, curEndpoint] = await Promise.all([
-        resolveEndpoint(prevHotel, prevCity),
+        isFirstDayOfTrip ? Promise.resolve({ name: null, coord: null }) : resolveEndpoint(prevHotel, prevCity),
         resolveEndpoint(curHotel, curCity),
       ]);
 
@@ -8747,6 +8752,8 @@ async function fetchTripDriveTimes(days, allDays) {
       const actNames = [];
       const actQueries = [];
       const actPinnedCoords = [];
+      const actRawTexts = [];
+      const actContexts = [];
       for (const a of acts) {
         if (a && a.drive && a.text) {
           const place = extractPlaceFromActivity(a.text);
@@ -8759,9 +8766,29 @@ async function fetchTripDriveTimes(days, allDays) {
             (a.coords && typeof a.coords.lat === 'number' && typeof a.coords.lng === 'number')
               ? [a.coords.lat, a.coords.lng] : null
           );
+          actRawTexts.push(a.text);
+          actContexts.push(context);
         }
       }
       const actGeoCoords = await Promise.all(actQueries.map(q => resolveCoord(q, activityBias)));
+
+      // AI fallback: for activities the regex+geocoding waterfall couldn't resolve,
+      // ask the AI worker for a clean place name and retry geocoding with it.
+      const failedIdx = actGeoCoords
+        .map((c, j) => (!c && !actPinnedCoords[j]) ? j : -1)
+        .filter(j => j !== -1);
+      if (failedIdx.length) {
+        const aiPlaces = await Promise.all(
+          failedIdx.map(j => resolveActivityPlaceViaAI(actRawTexts[j], actContexts[j]))
+        );
+        await Promise.all(failedIdx.map(async (j, k) => {
+          const cleaned = aiPlaces[k];
+          if (!cleaned) return; // AI found no location, or the call failed — stays in notFound
+          const q = cleaned + (actContexts[j] ? ', ' + actContexts[j] : '');
+          actGeoCoords[j] = await resolveCoord(q, activityBias);
+        }));
+      }
+
       const actCoords = actPinnedCoords.map((pinned, j) => pinned || actGeoCoords[j]);
 
       // Assemble full route: [hotel/city start, ...activities, hotel/city end]
@@ -9035,6 +9062,89 @@ async function getCityCoords(cityName, biasCoords = null) {
   } catch(e) {}
 
   return null;
+}
+
+// AI fallback for activity place-name extraction — used only when the regex-based
+// extraction + geocoding waterfall fails to resolve a drive-flagged activity's location.
+// Caches are module-level so identical activity text is only ever sent to the AI once
+// per page session, and results persist to Firebase so it's also only sent once ever.
+const localAIPlaceCache = {};   // normalized activity text -> resolved place string | null
+const aiPlaceInFlight = {};     // normalized activity text -> in-flight Promise
+const AI_PLACE_CACHE_V = 1;
+
+async function resolveActivityPlaceViaAI(rawText, context) {
+  const key = (rawText || '').trim().toLowerCase();
+  if (!key) return null;
+  if (key in localAIPlaceCache) return localAIPlaceCache[key];
+  if (key in aiPlaceInFlight) return aiPlaceInFlight[key];
+
+  const promise = (async () => {
+    const fbKey = key.replace(/[^a-z0-9]/g, '_').slice(0, 180);
+    try {
+      const snap = await window._get(window._ref(window._db, 'aiPlaceCache/' + fbKey));
+      const entry = snap.val();
+      if (entry && typeof entry.v === 'number' && entry.v >= AI_PLACE_CACHE_V) {
+        localAIPlaceCache[key] = entry.place;
+        return entry.place;
+      }
+    } catch(e) {}
+
+    const systemPrompt = [
+      'You are a travel-itinerary assistant. Given one activity description from a trip itinerary and the day\'s city/region context, identify the specific named place (business, venue, landmark, or address) that a map geocoding service could look up.',
+      '',
+      'Return ONLY valid JSON, no markdown, no explanation, in exactly this shape:',
+      '{"place": "<clean, geocodable place name>"}',
+      'or, if the activity has no specific mappable venue (e.g. "Relax at hotel", "Free morning", "Pack and check out"):',
+      '{"place": null}',
+      '',
+      'Rules:',
+      '- Do not invent or guess a venue name that isn\'t implied by the text.',
+      '- Do not include the city/region name in your answer — it will be appended separately by the caller.',
+      '- Strip leading verbs/filler like "Visit", "Drive to", "Wine tasting at", descriptive adjectives, and trailing parenthetical notes or time estimates.',
+      '- If genuinely uncertain whether a specific venue is being referenced, prefer {"place": null} over guessing.'
+    ].join('\n');
+
+    let place = null;
+    let ok = false;
+    try {
+      const response = await fetch('https://hardin-trips-ai.erikchardin.workers.dev', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 100,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Activity: "${rawText}"\nDay location context: "${context || 'unknown'}"` }]
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      const raw = data.content?.[0]?.text || '';
+      const clean = raw.replace(/^```json\s*/,'').replace(/\s*```$/,'').trim();
+      const parsed = JSON.parse(clean);
+      if ('place' in parsed && (parsed.place === null || typeof parsed.place === 'string')) {
+        place = parsed.place;
+        ok = true;
+      }
+    } catch(e) { console.warn('AI place resolution failed', rawText, e); }
+
+    if (!ok) return null; // transient failure — leave uncached so it can retry later
+
+    localAIPlaceCache[key] = place;
+    try {
+      await window._set(window._ref(window._db, 'aiPlaceCache/' + fbKey), {
+        place, v: AI_PLACE_CACHE_V, ts: Date.now(), sourceText: rawText.slice(0, 160)
+      });
+    } catch(e) {}
+    return place;
+  })();
+
+  aiPlaceInFlight[key] = promise;
+  try {
+    return await promise;
+  } finally {
+    delete aiPlaceInFlight[key];
+  }
 }
 
 let tripMapInstance = null;
