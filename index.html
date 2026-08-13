@@ -8735,8 +8735,13 @@ async function fetchTripDriveTimes(days, allDays) {
       if (!hasDriveActs) return;
 
       const isTravelDay = prevCity && curCity && prevCity.toLowerCase() !== curCity.toLowerCase();
-      const regionCenter = region ? await resolveCoord(region) : null;
-      const activityBias = isTravelDay ? null : regionCenter;
+      // Region labels are often informal ("Willamette Wine Country") and geocode poorly on
+      // their own — bias the region lookup by the city (which resolves reliably) so a bad,
+      // far-away top hit gets rejected instead of becoming the bias for every activity
+      // lookup this day. Fall back to the city coord itself if the region doesn't resolve.
+      const cityCoord = curCity ? await resolveCoord(curCity) : null;
+      const regionCenter = region ? await resolveCoord(region, cityCoord) : cityCoord;
+      const activityBias = isTravelDay ? null : (regionCenter || cityCoord);
       const activityContext = [day.city, day.region].filter(Boolean).join(', ') || region;
 
       // Resolve route endpoints: hotel name for accuracy, city as reliable fallback.
@@ -8898,6 +8903,9 @@ const KNOWN_COORDS = {
   'mornington peninsula':[-38.38,145.06],
   // New York / travel
   'new york':[40.71,-74.01],
+  // Oregon
+  'willamette wine country':[45.15,-123.15],'willamette valley wine country':[45.15,-123.15],
+  'willamette valley':[45.15,-123.15],'mcminnville':[45.21,-123.19],
   // France — Provence regions
   'bandol':[43.13,5.75],'luberon':[43.83,5.38],'gordes':[43.91,5.20],
   'roussillon':[43.90,5.29],'bonnieux':[43.84,5.31],'lourmarin':[43.76,5.36],
@@ -8952,7 +8960,7 @@ async function getCityCoords(cityName, biasCoords = null) {
   }
 
   const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
-  const GEO_V = 2; // bump to invalidate old cached results
+  const GEO_V = 3; // bump to invalidate old cached results (v3: fixes region-center bias corruption)
 
   // 2. Check local memory cache
   if (localGeoCache[cacheKey]) return localGeoCache[cacheKey];
