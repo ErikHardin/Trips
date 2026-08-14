@@ -22,6 +22,10 @@
       ".read": "auth != null",
       ".write": "auth != null"
     },
+    "drivecache": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
     "travelTracker": {
       ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
       ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
