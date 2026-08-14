@@ -1981,7 +1981,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 272 };
+window.BUILD_INFO = { prNumber: 273 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -8966,17 +8966,23 @@ async function getCityCoords(cityName, biasCoords = null) {
   const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
   const GEO_V = 3; // bump to invalidate old cached results (v3: fixes region-center bias corruption)
 
-  // 2. Check local memory cache
-  if (localGeoCache[cacheKey]) return localGeoCache[cacheKey];
+  // 2. Check local memory cache — `in` (not truthy) because a confirmed "not found" is
+  // cached as null, which is a real hit, not an absent one.
+  if (cacheKey in localGeoCache) return localGeoCache[cacheKey];
 
-  // 3. Check Firebase cache (only accept entries written by current geocoder version)
+  // 3. Check Firebase cache (only accept entries written by current geocoder version).
+  // A confirmed-not-found result is cached too (below), so a place that genuinely isn't in
+  // any provider's data doesn't re-run the entire slow fallback chain — Overpass alone can
+  // take up to 10s, Nominatim's rate-limit delay adds another 1.1s, and step 8 below retries
+  // the whole chain a second time — on every single render, forever, without this.
   try {
     const snap = await window._get(window._ref(window._db, `geocache/${cacheKey}`));
     if (snap.val()) {
       const c = snap.val();
       if ((c.v || 0) >= GEO_V) {
-        localGeoCache[cacheKey] = [c.lat, c.lng];
-        return [c.lat, c.lng];
+        const result = c.notFound ? null : [c.lat, c.lng];
+        localGeoCache[cacheKey] = result;
+        return result;
       }
       // stale entry — fall through to re-geocode with Mapbox
     }
@@ -9061,7 +9067,16 @@ async function getCityCoords(cityName, biasCoords = null) {
   // 8. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
   if (raw.includes(',')) {
     const base = raw.split(',')[0].trim();
-    if (base && base !== raw) return getCityCoords(base, biasCoords);
+    if (base && base !== raw) {
+      const result = await getCityCoords(base, biasCoords);
+      if (!result) {
+        // Cache "not found" under this outer (with-context) key too, so a future call with
+        // the exact same query skips the retry recursion as well, not just the base lookup.
+        localGeoCache[cacheKey] = null;
+        try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { notFound: true, v: GEO_V }); } catch(e) {}
+      }
+      return result;
+    }
   }
 
   // 9. Google Maps Geocoding via Worker (if endpoint configured)
@@ -9078,6 +9093,10 @@ async function getCityCoords(cityName, biasCoords = null) {
     }
   } catch(e) {}
 
+  // All providers exhausted — cache the negative result so a future lookup of this exact
+  // query returns instantly instead of repeating the entire slow fallback chain again.
+  localGeoCache[cacheKey] = null;
+  try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { notFound: true, v: GEO_V }); } catch(e) {}
   return null;
 }
 
