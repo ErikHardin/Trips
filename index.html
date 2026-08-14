@@ -1981,7 +1981,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 271 };
+window.BUILD_INFO = { prNumber: 272 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -8619,7 +8619,7 @@ function extractActivityLocation(text) {
 }
 
 async function getRouteDuration(coords) {
-  const key = ('dr2_' + coords.map(c => c.map(v => v.toFixed(3)).join(',')).join('|')).replace(/[^a-z0-9_,.-]/gi, '_');
+  const key = ('dr2_' + coords.map(c => c.map(v => v.toFixed(3)).join(',')).join('|')).replace(/[^a-z0-9_,-]/gi, '_');
   try {
     const snap = await window._get(window._ref(window._db, 'drivecache/' + key));
     const val = snap.val();
