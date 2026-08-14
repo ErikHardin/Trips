@@ -1981,7 +1981,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 268 };
+window.BUILD_INFO = { prNumber: 270 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -8804,8 +8804,12 @@ async function fetchTripDriveTimes(days, allDays) {
       ];
       const deduped = paired.filter((p, j) => j === 0 || p.coord[0] !== paired[j-1].coord[0] || p.coord[1] !== paired[j-1].coord[1]);
 
-      const dedupedNames = new Set(deduped.map(p => p.name));
-      const notFound = driveActNames.filter(n => !dedupedNames.has(n));
+      // Per-activity resolution status, not a name-string lookup against the final route —
+      // an activity whose extracted place name happens to match the hotel/city endpoint name
+      // (e.g. "Drive to <hotel name> and drop off bags") would otherwise always read as
+      // "found" via that other, independently-resolved endpoint even when its own geocode
+      // attempt silently failed, hiding a real failure instead of flagging it.
+      const notFound = driveActNames.filter((n, j) => !actCoords[j]);
 
       if (deduped.length < 2) {
         if (hasDriveActs) {
