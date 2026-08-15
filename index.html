@@ -867,6 +867,8 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .ov-day-city { font-size: 11px; color: var(--muted); margin-top: 1px; }
 .ov-day-summary { font-size: 13px; color: var(--ink); margin-top: 3px; line-height: 1.4; }
 .ov-act-list { list-style: none; margin: 0; padding: 6px 14px 8px; display: flex; flex-direction: column; gap: 4px; }
+/* Planned itinerary items shown on the share view for days that haven't happened yet */
+.ov-day-acts { margin-top: 5px; display: flex; flex-direction: column; gap: 4px; }
 .ov-act-item { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
 .ov-act-emoji { font-size: 14px; flex-shrink: 0; }
 .ov-act-text { color: var(--ink); flex: 1; }
@@ -2030,6 +2032,31 @@ function dayFields(iso) {
   };
 }
 
+// Activity times must read in 12-hour am/pm form ("7:30pm", "10am–2pm") — the day editor
+// flags anything else, and parseActivityStartMinutes() can't read 24-hour times either.
+// AI-generated itineraries routinely come back as "14:00", so rewrite them on the way in.
+function normalizeTimeLabel(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  if (/\d\s*(am|pm)\b/i.test(s)) return s;   // already 12-hour — leave the wording alone
+  return s.replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, function(_, h, m) {
+    let hr = parseInt(h, 10);
+    const ap = hr >= 12 ? 'pm' : 'am';
+    hr = hr % 12;
+    if (hr === 0) hr = 12;
+    return m === '00' ? hr + ap : hr + ':' + m + ap;
+  });
+}
+
+// Rewrites the time on every activity in a list (AI output) to 12-hour am/pm.
+function normalizeActivityTimes(activities) {
+  const acts = Array.isArray(activities) ? activities : Object.values(activities || {});
+  acts.forEach(function(a) {
+    if (a && typeof a === 'object' && a.time) a.time = normalizeTimeLabel(a.time);
+  });
+  return acts;
+}
+
 // ════════════════════════════════════════
 //  APP STATE
 // ════════════════════════════════════════
@@ -2384,13 +2411,21 @@ function isTripOwner(tripId) {
 
 // "Has access": view + contribute (itinerary edits, notes, wishlist, share link) —
 // true for admins, guests/users granted this trip, and a user's own trips.
+function hasTripAccess(tripId) {
+  return userRole === 'admin' || guestTripIds.includes(tripId) || isTripOwner(tripId);
+}
+
 function canEditCurrentTrip() {
-  return userRole === 'admin' || guestTripIds.includes(currentTripId) || isTripOwner(currentTripId);
+  // The share link is a read-only surface. Opening it while signed in with edit rights
+  // must not surface edit affordances (pencils, spend controls, note edit/delete).
+  if (isShareView) return false;
+  return hasTripAccess(currentTripId);
 }
 
 // "Can manage": trip creation entry points, edit-trip-details screen, logistics tab,
 // promoting wishlist items — admins always, users only for trips they own or were granted.
 function canManageTrip(tripId) {
+  if (isShareView) return false;
   return userRole === 'admin' || (userRole === 'user' && (isTripOwner(tripId) || guestTripIds.includes(tripId)));
 }
 
@@ -2539,7 +2574,7 @@ function openTrip(tripId, defaultTab) {
   const canManage = canManageTrip(tripId);
   document.getElementById('tripAdminBtn').style.display = canManage ? '' : 'none';
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
-  const hasAccess = userRole === 'admin' || guestTripIds.includes(tripId) || isTripOwner(tripId);
+  const hasAccess = !isShareView && hasTripAccess(tripId);
   document.getElementById('logisticsTabBtn').style.display = (canManage && isUpcomingOrActive) ? '' : 'none';
   document.getElementById('changesTabBtn').style.display = hasAccess ? '' : 'none';
   document.getElementById('wishlistTabBtn').style.display = hasAccess ? '' : 'none';
@@ -3017,6 +3052,20 @@ async function shareTrip() {
 }
 window.shareTrip = shareTrip;
 
+// Collects a day's memory text so recaps of days already travelled can describe what
+// actually happened rather than just what was planned.
+function _dayMemoryText(day) {
+  if (!day || !day.notes) return '';
+  const texts = [];
+  Object.values(day.notes).forEach(actNotes => {
+    if (!actNotes || typeof actNotes !== 'object') return;
+    Object.values(actNotes).forEach(note => {
+      if (note && note.text) texts.push(String(note.text).trim());
+    });
+  });
+  return texts.join(' ');
+}
+
 async function ensureDaySummaries(tripId) {
   const trip = allTrips[tripId];
 
@@ -3025,10 +3074,20 @@ async function ensureDaySummaries(tripId) {
 
   if (!missing.length) return;
 
+  // Days already travelled get a past-tense recap of what actually happened; days still
+  // ahead get a forward-looking preview. The tense each summary was written in is stored
+  // alongside it so the share view never shows a stale "we will…" line for a past day.
+  const _today = todayISO();
+  const tenseById = {};
   const dayLines = missing.map(([id, day]) => {
     const acts = Object.values(day.activities || {}).map(a => a.text).filter(Boolean).join(', ');
     const loc = day.description || day.city || '';
-    return `"${id}": ${day.dateNum} ${day.dateMonth}${loc ? ' in ' + loc : ''} — ${acts || 'travel day'}`;
+    const iso = dayISO(day, trip.year);
+    const isPast = !!iso && iso < _today;
+    tenseById[id] = isPast ? 'past' : 'upcoming';
+    const memories = isPast ? _dayMemoryText(day) : '';
+    return `"${id}": [${isPast ? 'PAST' : 'UPCOMING'}] ${day.dateNum} ${day.dateMonth}${loc ? ' in ' + loc : ''} — ${acts || 'travel day'}` +
+      (memories ? `\n    memories written that day: ${memories.slice(0, 400)}` : '');
   }).join('\n');
 
   const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/', {
@@ -3038,7 +3097,7 @@ async function ensureDaySummaries(tripId) {
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{role: 'user', content:
-        `For each day of this upcoming trip itinerary, write a short forward-looking preview based strictly on the activities listed — don't invent or add anything not in the list. Write in future tense, like "Morning at X, lunch at Y, then Z in the evening." Keep it under 25 words. Return ONLY a JSON object mapping each day ID (as provided in quotes) to its summary string.\n\nDays:\n${dayLines}`
+        `For each day of this trip itinerary, write a short summary based strictly on the activities listed (and, where given, the memories written that day) — don't invent or add anything that isn't there. Keep each under 25 words.\n\nDays marked [PAST] already happened: write them in past tense as a recap of what we did, e.g. "Morning at X, lunch at Y, then Z in the evening."\nDays marked [UPCOMING] haven't happened yet: write them in future tense as a preview.\n\nReturn ONLY a JSON object mapping each day ID (as provided in quotes) to its summary string.\n\nDays:\n${dayLines}`
       }]
     })
   });
@@ -3052,9 +3111,13 @@ async function ensureDaySummaries(tripId) {
   const updates = {};
   for (const [id, summary] of Object.entries(summaries)) {
     updates[`trips/${tripId}/daySummaries/${id}`] = summary;
+    updates[`trips/${tripId}/daySummaryTense/${id}`] = tenseById[id] || 'upcoming';
   }
   await window._update(window._ref(window._db, '/'), updates);
 }
+
+// Trips whose day summaries were already refreshed this session (see share view below).
+const _recapRefreshedTrips = {};
 
 async function renderTripOverview(trip) {
   const panel = document.getElementById('tripOverviewPanel');
@@ -3242,6 +3305,12 @@ async function renderTripOverview(trip) {
   if (isShareView) {
     const summariesSnap = await window._get(window._ref(window._db, `trips/${currentTripId}/daySummaries`));
     const daySummaries = summariesSnap.val() || {};
+    let daySummaryTense = {};
+    try {
+      const tenseSnap = await window._get(window._ref(window._db, `trips/${currentTripId}/daySummaryTense`));
+      daySummaryTense = tenseSnap.val() || {};
+    } catch(e) { /* older trips have no tense record — treated as previews below */ }
+    const _shareToday = todayISO();
     const sortedForItinerary = (trip.days ? Object.entries(trip.days) : [])
       .sort(([,a],[,b]) => (a.sortOrder||0)-(b.sortOrder||0));
     if (sortedForItinerary.length) {
@@ -3270,8 +3339,32 @@ async function renderTripOverview(trip) {
           }
           const loc = day.description || day.city || '';
           const city = day.city && day.city !== loc ? day.city : '';
-          const summary = daySummaries[dayId] || '';
-          const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName||'').slice(0,3);
+          const dayIso = dayISO(day, trip.year);
+          // A day only switches to the AI recap once it's actually behind us, and only if
+          // the stored summary was written as a recap. Everything still ahead shows the
+          // planned itinerary items themselves.
+          const isPastDay = !!dayIso && dayIso < _shareToday;
+          const recap = (isPastDay && daySummaryTense[dayId] === 'past') ? (daySummaries[dayId] || '') : '';
+          const shareActs = day.activities
+            ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
+            : [];
+          const actsHTML = shareActs.map(a => {
+            const text = typeof a === 'object' && a !== null ? (a.text || '') : String(a || '');
+            if (!text) return '';
+            const emoji = (typeof a === 'object' && a !== null && a.emoji) ? a.emoji : getEmoji(text);
+            const time = (typeof a === 'object' && a !== null && a.time) ? a.time : '';
+            return `<div class="ov-act-item">
+              <span class="ov-act-emoji">${emoji}</span>
+              <span class="ov-act-text">${escHtml(text)}</span>
+              ${time ? `<span class="ov-act-time">${escHtml(time)}</span>` : ''}
+            </div>`;
+          }).filter(Boolean).join('');
+          const bodyHTML = recap
+            ? `<div class="ov-day-summary">${escHtml(recap)}</div>`
+            : (actsHTML
+                ? `<div class="ov-day-acts">${actsHTML}</div>`
+                : (daySummaries[dayId] && !isPastDay ? `<div class="ov-day-summary">${escHtml(daySummaries[dayId])}</div>` : ''));
+          const dowFull = weekdayFromISO(dayIso, 'short') || (day.dayName||'').slice(0,3);
           return regionHeader + `<div class="ov-day-card" id="ov-dc-${dayId}">
             <div class="ov-day-header">
               <div class="ov-day-date">
@@ -3282,7 +3375,7 @@ async function renderTripOverview(trip) {
               <div class="ov-day-info">
                 ${loc ? `<div class="ov-day-loc">${escHtml(loc)}</div>` : ''}
                 ${city ? `<div class="ov-day-city">${escHtml(city)}</div>` : ''}
-                ${summary ? `<div class="ov-day-summary">${escHtml(summary)}</div>` : ''}
+                ${bodyHTML}
               </div>
             </div>
           </div>`;
@@ -3305,6 +3398,20 @@ async function renderTripOverview(trip) {
       // Apply any weather already fetched by the itinerary tab's weather fetch
       for (const [wDayId, { wx, coords, city: wCity }] of Object.entries(tripWeatherByDay)) {
         injectOverviewWeatherChip(wDayId, wx, coords, wCity);
+      }
+
+      // Summaries are written when the trip is shared, so days that have passed since then
+      // still carry a forward-looking preview (or none). Only someone with write access can
+      // refresh them — do it once per trip per session, in the background.
+      const _needsRecap = sortedForItinerary.some(([dayId, day]) => {
+        const iso = dayISO(day, trip.year);
+        return !!iso && iso < _shareToday && daySummaryTense[dayId] !== 'past';
+      });
+      if (_needsRecap && hasTripAccess(currentTripId) && !_recapRefreshedTrips[currentTripId]) {
+        _recapRefreshedTrips[currentTripId] = true;
+        ensureDaySummaries(currentTripId)
+          .then(() => { if (currentTripId && allTrips[currentTripId]) renderTripOverview(allTrips[currentTripId]); })
+          .catch(e => console.warn('Recap refresh failed', e));
       }
       // Inject translation chips for days with non-English locations
       setTimeout(() => {
@@ -3510,7 +3617,7 @@ async function renderWishlistPanel(tripId) {
     // Cache items by ID so promoteWishlistItem can look them up without passing JSON through onclick
     _wishlistCache[tripId] = raw;
 
-    const _wishCanEdit = userRole === 'admin' || guestTripIds.includes(tripId) || isTripOwner(tripId);
+    const _wishCanEdit = !isShareView && hasTripAccess(tripId);
     const addFormHTML = _wishCanEdit ? `
       <div id="wishlistAddForm" class="requires-network" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
         <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Idea</div>
@@ -9419,16 +9526,38 @@ window.runItineraryGenerator = async function() {
 
   const paceDesc = pace === 'relaxed' ? '2-3 activities' : pace === 'packed' ? '5+ activities' : '3-4 activities';
 
+  // The trip usually already has day shells from the date picker, and those often carry the
+  // lodging (and city/region) the family has actually booked. That's fixed input for the
+  // planner — it plans around it and never swaps in a hotel of its own.
+  const genExistingDays = Object.entries(trip.days || {})
+    .map(function(e) { return { id: e[0], day: e[1], iso: dayISO(e[1], trip.year) || '' }; })
+    .sort(function(a, b) {
+      if (a.iso && b.iso && a.iso !== b.iso) return a.iso.localeCompare(b.iso);
+      return (a.day.sortOrder || 0) - (b.day.sortOrder || 0);
+    });
+  const bookedLines = genExistingDays.map(function(e, i) {
+    var bits = [];
+    if (e.day.hotel)  bits.push('staying at "' + e.day.hotel + '"');
+    if (e.day.city)   bits.push('city "' + e.day.city + '"');
+    if (e.day.region) bits.push('region "' + e.day.region + '"');
+    if (!bits.length) return null;
+    return 'Day ' + (i + 1) + (e.iso ? ' (' + e.iso + ')' : '') + ': ' + bits.join(' · ');
+  }).filter(Boolean);
+
   const systemPrompt = 'You are an expert luxury travel planner. Return ONLY valid JSON, no markdown, no explanation.';
 
   const userPromptParts = [
     'Plan a complete day-by-day itinerary for this trip:',
     'Trip: ' + trip.name,
     'Duration: ' + (trip.nights || '?') + ' nights, dates: ' + (trip.dates || 'TBD'),
+    genExistingDays.length ? 'The trip has ' + genExistingDays.length + ' days — return exactly that many, in the same order.' : null,
     'Travel style: ' + preferences,
     'Pace: ' + paceDesc + ' per day',
     avoid ? 'Avoid: ' + avoid : null,
     specific ? 'Special requests: ' + specific : null,
+    bookedLines.length ? '' : null,
+    bookedLines.length ? 'ALREADY BOOKED — these lodgings and locations are fixed, plan around them:' : null,
+    bookedLines.length ? bookedLines.join('\n') : null,
     '',
     'Generate a full itinerary with specific real venue/restaurant names that match the travel style.',
     '',
@@ -9442,8 +9571,11 @@ window.runItineraryGenerator = async function() {
     '- regionColor order: #c06a3d #6d9b72 #4a7fb5 #8a6aad #b5834a #4a9b8a',
     '- sortOrder: 0-indexed day number',
     '- emoji guide: 🍽️ dining, 🍷 wine, ☕ breakfast, 🏛️ sightseeing, 🛍️ shopping, 🚶 walking, 🏨 hotel, ✈️ flight, 🚗 drive, 🍸 bar, 💆 spa, 🎭 show, 🏖️ beach, 🥾 hike',
-    '- time: optional, only for specific reservations',
-    '- Be specific with real venue names — avoid generic descriptions'
+    '- time: optional, only for specific reservations. ALWAYS 12-hour with am/pm — "7:30pm", "10am", "12–2pm". Never 24-hour/military time (not "19:30", not "14:00")',
+    '- Be specific with real venue names — avoid generic descriptions',
+    bookedLines.length ? '- Never recommend, name, or substitute a different hotel for a day that already has one booked above — keep that day based at the booked lodging and choose activities that work from there' : null,
+    bookedLines.length ? '- Do not add check-in/check-out or "stay at <hotel>" activities for lodging already listed above; the hotel is shown separately' : null,
+    bookedLines.length ? '- Keep the city/region already set for a day unless the booked lodging clearly sits elsewhere' : null
   ].filter(function(x){ return x !== null; }).join('\n');
 
   const userPrompt = userPromptParts;
@@ -9468,15 +9600,28 @@ window.runItineraryGenerator = async function() {
     if (!parsed.days || !parsed.days.length) throw new Error('No days returned');
 
     // Assign real calendar dates from the trip's start date rather than trusting the model to
-    // work out days of the week.
+    // work out days of the week, and pair each generated day with the day shell it replaces so
+    // the lodging already booked on that shell carries through instead of being overwritten.
     var startISO = trip.startDateISO
       || Object.values(trip.days || {}).map(function(d){ return dayISO(d, trip.year); }).filter(Boolean).sort()[0]
       || null;
     parsed.days.forEach(function(day, i) {
-      if (!startISO) return;
-      var d = isoToDate(startISO);
-      d.setDate(d.getDate() + i);
-      Object.assign(day, dayFields(localISO(d)));
+      normalizeActivityTimes(day.activities);
+      var existing = genExistingDays[i];
+      var iso = existing && existing.iso ? existing.iso : null;
+      if (!iso && startISO) {
+        var d = isoToDate(startISO);
+        d.setDate(d.getDate() + i);
+        iso = localISO(d);
+      }
+      if (iso) Object.assign(day, dayFields(iso));
+      if (existing) {
+        day._dayId = existing.id;
+        if (existing.day.hotel) day.hotel = existing.day.hotel;
+        if (!day.city && existing.day.city) day.city = existing.day.city;
+        if (!day.region && existing.day.region) day.region = existing.day.region;
+        if (existing.day.description) day.description = existing.day.description;
+      }
     });
 
     // Store pending and show preview
@@ -9488,9 +9633,10 @@ window.runItineraryGenerator = async function() {
         return '<div class="itinerary-preview-activity">' + (a.emoji ? a.emoji + ' ' : '') + a.text + (a.time ? ' <span style="color:var(--muted);font-size:11px;">· ' + a.time + '</span>' : '') + '</div>';
       }).join('');
       var label = day.dateISO ? day.dateNum + ' ' + day.dateMonth + ' · ' + day.dayName : 'Day ' + (i + 1);
+      var hotelLine = day.hotel ? '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">🏨 ' + day.hotel + '</div>' : '';
       return '<div class="itinerary-preview-day">' +
         '<div class="itinerary-preview-day-header">' + label + ' · ' + (day.description||day.city||'') + '</div>' +
-        acts +
+        hotelLine + acts +
         '</div>';
     }).join('');
 
@@ -9516,14 +9662,35 @@ window.confirmItinerary = async function() {
   if (!pendingItinerary) return;
   const { tripId, days } = pendingItinerary;
   try {
-    // Delete all existing days first (empty shells from date picker)
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/days'), null);
-    // Write each AI-generated day using push keys
+    // Merge onto the existing day shells rather than wiping the trip's days — those shells
+    // hold the hotels that were already booked (plus any memories, spend and flight info).
+    const freshSnap = await window._get(window._ref(window._db, 'trips/' + tripId));
+    const freshDays = (freshSnap.val() || {}).days || {};
+    const usedDayIds = {};
     for (var i = 0; i < days.length; i++) {
-      var day = days[i];
+      var day = Object.assign({}, days[i]);
+      var dayId = day._dayId;
+      delete day._dayId;
       day.sortOrder = i;
-      var newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/days'));
-      await window._set(newRef, day);
+      var existing = dayId ? freshDays[dayId] : null;
+      if (existing) {
+        if (!day.hotel && existing.hotel) day.hotel = existing.hotel;
+        usedDayIds[dayId] = true;
+        await window._update(window._ref(window._db, 'trips/' + tripId + '/days/' + dayId), day);
+      } else {
+        var newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/days'));
+        await window._set(newRef, day);
+      }
+    }
+    // Drop leftover empty shells the generated itinerary didn't cover, but never one that
+    // still carries content of its own.
+    for (const [leftId, leftDay] of Object.entries(freshDays)) {
+      if (usedDayIds[leftId]) continue;
+      const leftActs = leftDay && leftDay.activities
+        ? (Array.isArray(leftDay.activities) ? leftDay.activities : Object.values(leftDay.activities))
+        : [];
+      if (leftActs.filter(Boolean).length || (leftDay && (leftDay.hotel || leftDay.notes))) continue;
+      await window._set(window._ref(window._db, 'trips/' + tripId + '/days/' + leftId), null);
     }
     pendingItinerary = null;
     document.getElementById('aiPreview').style.display = 'none';
@@ -9572,7 +9739,7 @@ window.runItineraryParser = async function() {
   }
 
   const existingDays = Object.entries(trip.days || {})
-    .map(([id, d]) => ({ id, dateISO: d.dateISO || '' }))
+    .map(([id, d]) => ({ id, dateISO: d.dateISO || '', hotel: d.hotel || '' }))
     .filter(d => d.dateISO)
     .sort((a,b) => a.dateISO.localeCompare(b.dateISO));
 
@@ -9588,7 +9755,7 @@ window.runItineraryParser = async function() {
     '- If the notes mention multiple lodgings, infer which date range each covers from the day-by-day narrative (e.g. a "drive to X" or arriving in a new town signals a lodging switch on that day). Carry the same hotel forward across consecutive days until the notes indicate a change.',
     '- If a lodging line gives a region/location in parentheses (e.g. "(Willamette Wine Country)"), use that as "region" for the days at that lodging; otherwise infer a short region/area name from context.',
     '- "city": the specific town/city for that day if mentioned (e.g. "McMinnville"), else fall back to the region.',
-    '- "activities": list of {time, text, emoji} in the original order and wording — clean up formatting only, don\'t rephrase. Only set "time" if the notes give one for that item; omit it otherwise.',
+    '- "activities": list of {time, text, emoji} in the original order and wording — clean up formatting only, don\'t rephrase. Only set "time" if the notes give one for that item; omit it otherwise. Write every time in 12-hour am/pm form ("8pm", "1:30pm", "10am–2pm") — never 24-hour/military time.',
     '- regionColor: reuse the same color for every day sharing a region, cycling through this order as new regions appear: #c06a3d #6d9b72 #4a7fb5 #8a6aad #b5834a #4a9b8a',
     '- Emoji guide: 🍽️ dining, 🍷 wine, ☕ breakfast/coffee, 🏛️ sightseeing, 🛍️ shopping, 🚶 walking, 🏨 hotel/lodging, 🚗 drive, 🍸 bar/drinks, 🥾 hike, 🏖️ beach',
     '- Include EVERY date you find in the notes, even ones outside the trip\'s existing date list above — do not silently drop them.',
@@ -9616,13 +9783,16 @@ window.runItineraryParser = async function() {
     const parsed = JSON.parse(clean);
     if (!parsed.days || !parsed.days.length) throw new Error('No days found in your notes');
 
-    const byISO = new Map(existingDays.map(d => [d.dateISO, d.id]));
+    const byISO = new Map(existingDays.map(d => [d.dateISO, d]));
     const matchedDays = [];
     const skippedDates = [];
     parsed.days.forEach(function(day) {
-      const dayId = byISO.get(day.dateISO);
-      if (dayId) {
-        matchedDays.push(Object.assign({ dayId }, day));
+      const existing = byISO.get(day.dateISO);
+      if (existing) {
+        normalizeActivityTimes(day.activities);
+        // Keep the lodging already on the day when the notes don't name one.
+        if (!day.hotel && existing.hotel) day.hotel = existing.hotel;
+        matchedDays.push(Object.assign({ dayId: existing.id }, day));
       } else if (day.dateISO) {
         skippedDates.push(day.dateISO);
       }
@@ -9783,6 +9953,7 @@ Change types:
 IMPORTANT: To rename the traveler on a flight (e.g. fixing a misspelled name), ALWAYS use update_flight_traveler with the exact [index] shown above — never use update_trip_field with field "flightOut" or "flightReturn" for this. If you do use update_trip_field for "flightOut" or "flightReturn" (e.g. to add or correct a flight's route/time), the value MUST be the complete newline-separated list of ALL flights for that direction, one per line in the same order shown above — never just the single flight being changed, or you will delete the others. If you cannot find a matching flight index, set changes:[] and explain in summary instead of guessing.
 
 Emoji guide: 🍽️ dinner/lunch, 🍷 wine/tasting, 🥾 hike, 🏖️ beach, ✈️ flight, 🏨 hotel, 🚗 drive, ☕ breakfast/coffee, 🍸 cocktail/bar, 🎢 adventure, ⛵ cruise, 🗺️ explore, 🏛️ museum/sight, 🛍️ market/shopping, 💆 spa/massage
+Activity "time" is always 12-hour with am/pm — "7:30pm", "10am", "12–2pm". Never 24-hour/military time.
 If day not found set changes:[] and explain in summary.`;
 
   try {
@@ -9819,6 +9990,11 @@ If day not found set changes:[] and explain in summary.`;
     }
 
     if (!parsed.changes || !parsed.summary) throw new Error('Missing changes or summary in response');
+
+    // Times must reach the trip in 12-hour am/pm form regardless of what the model returned.
+    parsed.changes.forEach(function(c) {
+      if (c && c.activity && c.activity.time) c.activity.time = normalizeTimeLabel(c.activity.time);
+    });
 
     pendingAIChanges = parsed;
 
