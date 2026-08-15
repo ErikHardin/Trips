@@ -1982,7 +1982,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 275 };
+window.BUILD_INFO = { prNumber: 276 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -3299,7 +3299,15 @@ async function renderTripOverview(trip) {
 
   // Render synchronously so the map div is in the DOM before switchTripTab's initTripMap call
   panel.innerHTML = flightsHTML + (isShareView ? '' : statsHTML) + hotelsHTML + mapHTML + visibleMemories + visibleJournal + (isShareView ? '<div id="share-itinerary-slot"></div>' : '');
-  // Map is initialized lazily when Overview tab becomes visible (see switchTripTab)
+  // The line above swaps in a fresh (empty) #tripMap, so discard any existing map and
+  // cancel an init that is still geocoding — otherwise it would render into the detached node.
+  invalidateTripMap();
+  // Map is initialized lazily when the Overview tab becomes visible (see switchTripTab).
+  // When this panel is already on screen — the share view opens straight to it and then
+  // re-renders as trip data arrives — nothing else will trigger the init, so do it here.
+  if (panel.classList.contains('active')) {
+    setTimeout(() => initTripMap(trip).catch(e => console.warn('Map error:', e)), 50);
+  }
 
   // In share view: fetch summaries and append itinerary section after panel is already in DOM
   if (isShareView) {
@@ -9269,10 +9277,22 @@ async function resolveActivityPlaceViaAI(rawText, context) {
 
 let tripMapInstance = null;
 let worldMapInstance = null;
+// Bumped whenever the Overview panel is re-rendered or a new map init starts, so an
+// older in-flight initTripMap (which sits on slow geocoding awaits) knows to bail out
+// instead of building a Leaflet map on a #tripMap node that is no longer in the DOM.
+let tripMapToken = 0;
+
+// Call right after replacing the Overview panel's HTML: the old #tripMap node is gone,
+// so cancel any in-flight init and drop the now-orphaned Leaflet instance.
+function invalidateTripMap() {
+  tripMapToken++;
+  if (tripMapInstance) { tripMapInstance.remove(); tripMapInstance = null; }
+}
 
 async function initTripMap(trip) {
-  const el = document.getElementById('tripMap');
+  let el = document.getElementById('tripMap');
   if (!el) return;
+  const token = ++tripMapToken;
   if (tripMapInstance) { tripMapInstance.remove(); tripMapInstance = null; }
 
   el.parentElement.style.background = 'var(--sand)';
@@ -9288,9 +9308,17 @@ async function initTripMap(trip) {
     if (seen.has(clean)) continue;
     seen.add(clean);
     const coords = await getCityCoords(clean);
+    if (token !== tripMapToken) return; // superseded by a newer render/init
     if (!coords) continue;
     points.push({ coords, city: clean, color: day.regionColor||'#c06a3d', region: day.region||'' });
   }
+
+  // Geocoding above is async, and the Overview panel can be rebuilt while it runs (the
+  // share view re-renders on every Firebase snapshot). Re-resolve the container so the
+  // map is always built on the node that is actually on screen.
+  if (token !== tripMapToken) return;
+  el = document.getElementById('tripMap');
+  if (!el || !el.isConnected) return;
 
   el.innerHTML = '';
   el.parentElement.style.background = '';
