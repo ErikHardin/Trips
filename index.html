@@ -2228,6 +2228,37 @@ async function initUnauthenticatedShareView(tripId) {
   document.getElementById('loginSignOutBtn').style.display = 'none';
 }
 
+// Publish a world-readable pointer to the current trip (active, else the
+// soonest upcoming one) so the Scriptable widgets can find it without being
+// able to list /trips. Only the id and a label are exposed — the widgets read
+// the trip itself from /trips/{id}, which is already world-readable.
+let _widgetIndexJSON = null;
+function syncWidgetIndex(trips) {
+  // Skip while offline — this is a background write, not a user edit, and
+  // queueing it would trip the "changes synced" banner on reconnect.
+  if (isShareView || _isOffline || !window._db) return;
+  const entries = Object.entries(trips || {});
+  let chosen = entries.find(([, t]) => t && t.status === 'active');
+  if (!chosen) {
+    chosen = entries
+      .filter(([, t]) => t && t.status === 'upcoming' && t.startDateISO)
+      .sort((a, b) => a[1].startDateISO.localeCompare(b[1].startDateISO))[0];
+  }
+  const index = chosen ? {
+    tripId:       chosen[0],
+    name:         chosen[1].name || '',
+    emoji:        chosen[1].emoji || '✈️',
+    status:       chosen[1].status,
+    startDateISO: chosen[1].startDateISO || null,
+    updatedAt:    Date.now(),
+  } : null;
+  // updatedAt always differs, so compare everything else
+  const json = JSON.stringify(index && { ...index, updatedAt: 0 });
+  if (json === _widgetIndexJSON) return;
+  _widgetIndexJSON = json;
+  window._set(window._ref(window._db, 'widgetIndex'), index).catch(() => {});
+}
+
 function autoOpenActiveTrip() {
   if (autoOpenDone || isShareView) return;
   autoOpenDone = true;
@@ -2279,6 +2310,7 @@ async function initApp() {
   window._onValue(window._ref(window._db, 'trips'), snap => {
     allTrips = snap.val() || {};
     OfflineStore.save(allTrips).catch(() => {});
+    syncWidgetIndex(allTrips);
     renderHome();
     checkShareLink();
     autoOpenActiveTrip();
