@@ -21,7 +21,15 @@ const widget = new ListWidget();
 widget.backgroundColor = BG;
 widget.setPadding(10, 14, 10, 14);
 
-if (!data?.trip) {
+if (!data || data.error) {
+  const t = widget.addText("⚠️  Trip data unavailable");
+  t.font = Font.mediumSystemFont(15);
+  t.textColor = INK;
+  const detail = widget.addText(data?.error || "Couldn't reach the trips server");
+  detail.font = Font.systemFont(10);
+  detail.textColor = MUTED;
+  detail.lineLimit = 2;
+} else if (!data.trip) {
   const t = widget.addText("🚗  No active trip");
   t.font = Font.mediumSystemFont(15);
   t.textColor = INK;

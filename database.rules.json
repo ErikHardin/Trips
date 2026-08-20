@@ -10,6 +10,10 @@
         }
       }
     },
+    "widgetIndex": {
+      ".read": true,
+      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).exists()"
+    },
     "avatarUrls": {
       ".read": "auth != null",
       ".write": "auth != null"

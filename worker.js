@@ -102,21 +102,11 @@ async function handleWidgetData(env, request) {
   const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
   const dateParam = new URL(request.url).searchParams.get('date');
 
-  if (!env.FIREBASE_URL) {
-    return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
+  const { trip: chosen, error } = await fetchChosenTrip(env);
+  if (error) {
+    return new Response(JSON.stringify({ trip: null, today: null, error }), { headers: CORS });
   }
-
-  const fbUrl = env.FIREBASE_URL + '/trips.json' + (env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '');
-  let trips;
-  try {
-    const resp = await fetch(fbUrl);
-    if (!resp.ok) throw new Error('status ' + resp.status);
-    trips = await resp.json();
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
-  }
-
-  if (!trips) {
+  if (!chosen) {
     return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
   }
 
@@ -124,25 +114,13 @@ async function handleWidgetData(env, request) {
     ? dateParam
     : new Date().toISOString().slice(0, 10);
 
-  // Active trip takes priority; otherwise pick the soonest upcoming trip
-  const entries = Object.values(trips);
-  let chosen = entries.find(t => t.status === 'active');
-  if (!chosen) {
-    const upcoming = entries
-      .filter(t => t.status === 'upcoming' && t.startDateISO)
-      .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO));
-    chosen = upcoming[0] || null;
-  }
-
-  if (!chosen) {
-    return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
-  }
-
   let daysUntil = null;
   if (chosen.startDateISO) {
     const msPerDay = 86400000;
     daysUntil = Math.max(0, Math.ceil((new Date(chosen.startDateISO + 'T00:00:00Z') - Date.now()) / msPerDay));
   }
+
+  const spend = tripSpend(chosen);
 
   const tripInfo = {
     name:          chosen.name || '',
@@ -152,6 +130,11 @@ async function handleWidgetData(env, request) {
     daysUntil,
     flightOut:     chosen.flightOut     || null,
     flightOutDate: chosen.flightOutDate || null,
+    // Destination of this trip — lets the widget look up the local clock and
+    // weather for whatever trip is current, with nothing hardcoded in it.
+    destination:   tripDestination(chosen, todayISO),
+    currency:      chosen.currency || null,
+    spendTotal:    spend,
   };
 
   // Find today's day and build sorted activity list
@@ -188,35 +171,88 @@ async function handleWidgetData(env, request) {
   return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
 }
 
+// ── Trip lookup ───────────────────────────────────────────────────────────────
+
+// Whichever trip the widgets should show: an active trip wins, otherwise the
+// soonest upcoming one.
+function chooseTrip(trips) {
+  const active = trips.find(t => t && t.status === 'active');
+  if (active) return active;
+  return trips
+    .filter(t => t && t.status === 'upcoming' && t.startDateISO)
+    .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO))[0] || null;
+}
+
+// Load the current trip. Listing /trips needs a signed-in user, so that path
+// only works when FIREBASE_SECRET is configured. Without it we fall back to
+// /widgetIndex — a world-readable pointer the app keeps up to date — and then
+// read that one trip, which is world-readable by id.
+async function fetchChosenTrip(env) {
+  if (!env.FIREBASE_URL) return { trip: null, error: 'FIREBASE_URL not configured' };
+
+  if (env.FIREBASE_SECRET) {
+    try {
+      const resp = await fetch(env.FIREBASE_URL + '/trips.json?auth=' + env.FIREBASE_SECRET);
+      if (resp.ok) {
+        const trips = await resp.json();
+        return { trip: chooseTrip(Object.values(trips || {})) };
+      }
+    } catch (e) { /* fall through to the public index */ }
+  }
+
+  try {
+    const idxResp = await fetch(env.FIREBASE_URL + '/widgetIndex.json');
+    if (!idxResp.ok) {
+      return { trip: null, error: 'Firebase fetch failed: status ' + idxResp.status };
+    }
+    const index = await idxResp.json();
+    if (!index || !index.tripId) return { trip: null };
+
+    const tripResp = await fetch(env.FIREBASE_URL + '/trips/' + encodeURIComponent(index.tripId) + '.json');
+    if (!tripResp.ok) {
+      return { trip: null, error: 'Firebase fetch failed: status ' + tripResp.status };
+    }
+    const trip = await tripResp.json();
+    if (!trip) return { trip: null };
+    return { trip: chooseTrip([trip]) };
+  } catch (e) {
+    return { trip: null, error: 'Firebase fetch failed: ' + e.message };
+  }
+}
+
+// Where the trip is on the given date — falls back to the first day's city so
+// upcoming trips still have a destination to show.
+function tripDestination(trip, todayISO) {
+  const days = Object.values(trip.days || {})
+    .map(d => ({ iso: d.dateISO || dayDateISO(d, trip.year), day: d }))
+    .filter(d => d.iso)
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+  if (!days.length) return trip.name || '';
+  // The day itself, else the next one coming up, else the trip's last day
+  const match = days.find(d => d.iso >= todayISO) || days[days.length - 1];
+  return match.day.description || match.day.city || trip.name || '';
+}
+
+// Total logged spend for the trip, in the trip's own currency
+function tripSpend(trip) {
+  const tracked = Object.values(trip.days || {}).filter(d => d && d.dailySpend != null);
+  if (!tracked.length) return null;
+  return tracked.reduce((sum, d) => sum + (Number(d.dailySpend) || 0), 0);
+}
+
 async function handleWidgetDriving(env, request) {
   const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
-  if (!env.FIREBASE_URL) {
-    return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
-  }
-
   const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
-  let trips, geocache;
-  try {
-    [trips, geocache] = await Promise.all([
-      fetch(env.FIREBASE_URL + '/trips.json'    + auth).then(r => r.ok ? r.json() : null),
-      fetch(env.FIREBASE_URL + '/geocache.json' + auth).then(r => r.ok ? r.json() : null),
-    ]);
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
-  }
+  const [{ trip: chosen, error }, geocache] = await Promise.all([
+    fetchChosenTrip(env),
+    env.FIREBASE_URL
+      ? fetch(env.FIREBASE_URL + '/geocache.json' + auth).then(r => r.ok ? r.json() : null).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
-  if (!trips) {
-    return new Response(JSON.stringify({ trip: null, days: [] }), { headers: CORS });
-  }
-
-  const entries = Object.values(trips);
-  let chosen = entries.find(t => t.status === 'active');
-  if (!chosen) {
-    const upcoming = entries
-      .filter(t => t.status === 'upcoming' && t.startDateISO)
-      .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO));
-    chosen = upcoming[0] || null;
+  if (error) {
+    return new Response(JSON.stringify({ trip: null, days: [], error }), { headers: CORS });
   }
 
   if (!chosen) {

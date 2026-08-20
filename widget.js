@@ -3,11 +3,11 @@
 // to your home screen and select this script.
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const WORKER_URL    = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data";
-const FIREBASE_URL  = "https://hardin-trips-default-rtdb.firebaseio.com";
-const NAV_APP       = "google";        // "google" or "waze"
-const DEST_TIMEZONE = "Europe/Paris";  // IANA timezone of destination
-const DEST_CITY     = "Lyon";          // display name shown next to the time
+const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-data";
+const NAV_APP    = "google";  // "google" or "waze"
+
+// Destination city, its timezone, spend and weather all come from whichever
+// trip the app has marked active (or next upcoming) — nothing is hardcoded.
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const BG         = new Color("#e8ddd0");
@@ -35,26 +35,36 @@ try {
   tomorrowData = null;
 }
 
-// Fetch weather for today's and tomorrow's city in parallel
-let weather = null;
-let tomorrowWeather = null;
-[weather, tomorrowWeather] = await Promise.all([
-  data?.today?.city       ? fetchWeather(data.today.city)         : Promise.resolve(null),
-  tomorrowData?.description ? fetchWeather(tomorrowData.description) : Promise.resolve(null),
+// Look up today's city, tomorrow's city and the trip destination in parallel.
+// Each lookup returns weather plus the place's IANA timezone, which is what
+// drives the destination clock.
+const todayCity    = data?.today?.description    || data?.today?.city    || null;
+const tomorrowCity = tomorrowData?.description   || tomorrowData?.city   || null;
+const destCity     = data?.trip?.destination     || todayCity            || null;
+
+const [weather, tomorrowWeather, destPlace] = await Promise.all([
+  todayCity    ? fetchPlace(todayCity)    : Promise.resolve(null),
+  tomorrowCity ? fetchPlace(tomorrowCity) : Promise.resolve(null),
+  destCity     ? fetchPlace(destCity)     : Promise.resolve(null),
 ]);
 
-// Fetch spend total directly from Firebase
-let spendAmt = null;
-if (data?.trip) {
-  spendAmt = await fetchSpend();
-}
+// Convert the trip's logged spend into USD
+const spendAmt = data?.trip ? await formatSpend(data.trip) : null;
 
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
 widget.backgroundColor = BG;
 widget.setPadding(8, 14, 10, 14);
 
-if (!data || !data.trip) {
+if (!data || data.error) {
+  const t = widget.addText("⚠️  Trip data unavailable");
+  t.font = Font.mediumSystemFont(15);
+  t.textColor = INK;
+  const detail = widget.addText(data?.error || "Couldn't reach the trips server");
+  detail.font = Font.systemFont(10);
+  detail.textColor = MUTED;
+  detail.lineLimit = 2;
+} else if (!data.trip) {
   const t = widget.addText("✈️  No upcoming trips");
   t.font = Font.mediumSystemFont(15);
   t.textColor = INK;
@@ -168,13 +178,13 @@ function buildCountdownWidget(w, trip) {
     }
   }
 
-  // Destination local time
-  if (DEST_TIMEZONE) {
+  // Destination local time — timezone comes from geocoding the trip's own city
+  if (destPlace?.timezone) {
     const destTime = new Date().toLocaleTimeString("en-US", {
-      timeZone: DEST_TIMEZONE, hour: "numeric", minute: "2-digit", hour12: true
+      timeZone: destPlace.timezone, hour: "numeric", minute: "2-digit", hour12: true
     });
     w.addSpacer(4);
-    const dtTxt = w.addText("🕐  " + (DEST_CITY ? DEST_CITY + "  " : "") + destTime);
+    const dtTxt = w.addText("🕐  " + (destPlace.name ? destPlace.name + "  " : "") + destTime);
     dtTxt.font = Font.systemFont(11);
     dtTxt.textColor = MUTED;
   }
@@ -241,8 +251,9 @@ function buildItineraryWidget(w, { trip, today, tomorrow }) {
 
   w.addSpacer(3);
 
-  // Location row — show tomorrow's city when rolled over
-  const locDesc = showTomorrow ? tomorrow?.description : today?.description;
+  // Location row — show tomorrow's city when rolled over, and fall back to the
+  // trip's destination on days the itinerary doesn't cover
+  const locDesc = (showTomorrow ? tomorrow?.description : today?.description) || trip.destination;
   if (locDesc) {
     const locRow = w.addStack();
     locRow.layoutHorizontally();
@@ -252,7 +263,7 @@ function buildItineraryWidget(w, { trip, today, tomorrow }) {
     locTxt.textColor = MUTED;
     locTxt.lineLimit = 1;
     const wx = showTomorrow ? tomorrowWeather : weather;
-    if (wx) {
+    if (wx?.emoji) {
       locRow.addSpacer();
       const wxTxt = locRow.addText(wx.emoji + " " + wx.hi + "°/" + wx.lo + "°");
       wxTxt.font = Font.systemFont(11);
@@ -302,6 +313,12 @@ function buildItineraryWidget(w, { trip, today, tomorrow }) {
     w.addSpacer(3);
   }
 
+  if (!next) {
+    const emptyTxt = w.addText("No activities scheduled");
+    emptyTxt.font = Font.systemFont(11);
+    emptyTxt.textColor = MUTED;
+  }
+
   // Remaining activities (up to 4)
   for (const act of upcoming) {
     const row = w.addStack();
@@ -347,22 +364,31 @@ function addMinsToSort(timeSort, mins) {
   return String(Math.floor(total / 60) % 24).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
 }
 
-// Geocode city → fetch today's high/low + WMO weather code from Open-Meteo
-async function fetchWeather(city) {
+// Geocode a place → its name, IANA timezone, and today's high/low + WMO code.
+// Day descriptions like "Lyon · wine country" are trimmed to the city first.
+async function fetchPlace(place) {
+  const city = String(place).split(/\s*[·,–—|]\s*/)[0].trim();
+  if (!city) return null;
   try {
     const geoResp = await new Request(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`
     ).loadJSON();
     const loc = geoResp.results?.[0];
     if (!loc) return null;
+    const result = { name: loc.name || city, timezone: loc.timezone || null };
     const wxResp = await new Request(
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&forecast_days=1`
     ).loadJSON();
+    if (wxResp.timezone) result.timezone = wxResp.timezone;
     const code = wxResp.daily?.weathercode?.[0];
     const hi   = Math.round(wxResp.daily?.temperature_2m_max?.[0]);
     const lo   = Math.round(wxResp.daily?.temperature_2m_min?.[0]);
-    if (code == null || isNaN(hi) || isNaN(lo)) return null;
-    return { emoji: wxEmoji(code), hi, lo };
+    if (code != null && !isNaN(hi) && !isNaN(lo)) {
+      result.emoji = wxEmoji(code);
+      result.hi = hi;
+      result.lo = lo;
+    }
+    return result;
   } catch (e) {
     return null;
   }
@@ -381,33 +407,20 @@ function wxEmoji(code) {
   return "⛈️";
 }
 
-// Fetch trip spend total directly from Firebase and convert to USD
-async function fetchSpend() {
+// Format the trip's logged spend (from the worker) as a USD total
+async function formatSpend(trip) {
   const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'KRW','A$':'AUD','C$':'CAD','CHF':'CHF','kr':'SEK','zł':'PLN','₺':'TRY','₹':'INR','R':'ZAR' };
-  try {
-    const trips = await new Request(FIREBASE_URL + "/trips.json").loadJSON();
-    if (!trips) return null;
-    const entries = Object.values(trips);
-    let chosen = entries.find(t => t.status === 'active');
-    if (!chosen) {
-      chosen = entries
-        .filter(t => t.status === 'upcoming' && t.startDateISO)
-        .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO))[0] || null;
-    }
-    if (!chosen?.days) return null;
-    const tracked = Object.values(chosen.days).filter(d => d.dailySpend != null);
-    if (!tracked.length) return null;
-    const currency = chosen.currency || '';
-    const total = tracked.reduce((s, d) => s + (Number(d.dailySpend) || 0), 0);
-    if (currency === '$' || currency === 'USD') return "$" + Math.round(total).toLocaleString();
-    const code = CURRENCY_CODE_MAP[currency];
-    if (code) {
+  const total = Number(trip.spendTotal);
+  if (!total) return null;
+  const currency = trip.currency || '';
+  if (currency === '$' || currency === 'USD') return "$" + Math.round(total).toLocaleString();
+  const code = CURRENCY_CODE_MAP[currency];
+  if (code) {
+    try {
       const rateResp = await new Request('https://open.er-api.com/v6/latest/USD').loadJSON();
       const rate = rateResp?.rates?.[code];
       if (rate) return "$" + Math.round(total / rate).toLocaleString();
-    }
-    return (currency || '') + total.toLocaleString();
-  } catch (e) {
-    return null;
+    } catch (e) { /* fall back to the trip's own currency */ }
   }
+  return currency + total.toLocaleString();
 }
