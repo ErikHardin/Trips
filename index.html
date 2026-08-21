@@ -465,6 +465,14 @@ body {
 }
 .save-note-btn:active { opacity: 0.8; }
 .save-note-btn:disabled { opacity: 0.5; }
+.cancel-note-btn {
+  width: 100%; margin-top: 8px;
+  padding: 10px; background: none;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+  cursor: pointer;
+}
+.cancel-note-btn:active { opacity: 0.7; }
 
 .recommend-row {
   display: flex; align-items: center; gap: 10px;
@@ -1302,7 +1310,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
     <div class="notes-list" id="notesList"></div>
     <div id="addNoteForm" class="add-note-form" style="display:none;">
-      <div class="add-note-label">Add a Memory</div>
+      <div class="add-note-label" id="addNoteLabel">Add a Memory</div>
       <textarea class="note-textarea" id="noteText" placeholder="What did you think? Any tips for next time?"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <label class="photo-upload-btn requires-network" for="photoInputMain" style="flex:1;margin:0;">📷 Add Photos & Videos</label>
@@ -1310,6 +1318,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       <input type="file" id="photoInputMain" accept="image/*,video/*" multiple style="display:none" onchange="handlePhotoSelect(event)">
       <div id="photoPreviewGrid" style="display:none;margin-top:10px;"></div>
       <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
+      <button class="cancel-note-btn" id="cancelNoteEditBtn" onclick="cancelNoteEdit()" style="display:none;">Cancel</button>
     </div>
   </div>
 </div>
@@ -1982,7 +1991,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 276 };
+window.BUILD_INFO = { prNumber: 278 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -2080,6 +2089,8 @@ let currentDayKey = null;
 let selectedPhotoFiles = [];  // multi-photo array
 let notesUnsubscribe = null;
 let editingNoteId = null;
+let currentNotesData = {};      // live notes for the open activity, keyed by noteId
+let editingExistingPhotos = []; // [{ key, url }] already-saved media on the note being edited
 let isShareView = false;
 let shareCheckDone = false;
 let autoOpenDone = false;
@@ -2088,6 +2099,7 @@ let tripWeatherByDay = {};
 
 const BOOKING_STATUSES = [
   { key: 'booked',          emoji: '📆',   label: 'Booked' },
+  { key: 'paid',            emoji: '💲',   label: 'Paid' },
   { key: 'not_booked',      emoji: '🗓️',  label: 'Not booked' },
   { key: 'no_reservations', emoji: '🚫',   label: 'No reservations' },
   { key: 'walking_in',      emoji: '🚶🏼', label: 'Walking in' },
@@ -2355,9 +2367,7 @@ window.lockApp = async function() {
 
 function goBackFromNotes() {
   if (notesUnsubscribe) { notesUnsubscribe(); notesUnsubscribe = null; }
-  editingNoteId = null;
-  const btn = document.getElementById('saveNoteBtn');
-  if (btn) btn.textContent = 'Save Memory';
+  exitNoteEditMode();
   if (currentTripId && allTrips[currentTripId]) {
     renderTripItinerary(allTrips[currentTripId]);
   }
@@ -3924,12 +3934,10 @@ window.generateTripJournal = async function(tripId) {
 window.openNotes = function(dayId, actKey, actText) {
   currentDayKey = dayId;
   currentActivityKey = actKey;
-  editingNoteId = null;
+  currentNotesData = {};
   document.getElementById('notesScreenTitle').textContent = actText.length>30 ? actText.slice(0,30)+'…' : actText;
   document.getElementById('notesActivityTitle').textContent = actText;
-  document.getElementById('noteText').value = '';
-  document.getElementById('saveNoteBtn').textContent = 'Save Memory';
-  clearPhotos();
+  exitNoteEditMode();
   // Show add form only if user can edit this trip
   document.getElementById('addNoteForm').style.display = canEditCurrentTrip() ? '' : 'none';
   // Recommend checkbox — admin only, not for day-level memories
@@ -3967,18 +3975,32 @@ function isVideoUrl(url) {
   } catch { return false; }
 }
 
+// A note's media as [{ key, url }], oldest first. Handles the legacy single-photo
+// `photoUrl` field and sorts pN keys numerically so p10 lands after p9, not p1.
+function notePhotoEntries(n) {
+  if (n && n.photoUrls) {
+    return Object.keys(n.photoUrls)
+      .sort((a,b) => (parseInt(a.slice(1),10)||0) - (parseInt(b.slice(1),10)||0))
+      .map(k => ({ key: k, url: n.photoUrls[k] }));
+  }
+  return (n && n.photoUrl) ? [{ key: 'p0', url: n.photoUrl }] : [];
+}
+
 function renderNotesList(dayId, actKey) {
   const list = document.getElementById('notesList');
   list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0;">Loading…</div>';
 
   function renderNotesData(notes) {
+    // Keep the live snapshot around so editNote/saveNote work off what's actually
+    // on screen rather than the (possibly stale) allTrips cache.
+    currentNotesData = notes;
     const entries = Object.entries(notes).sort((a,b)=>(a[1].ts||0)-(b[1].ts||0));
     if (entries.length === 0) {
       list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet${canEditCurrentTrip() ? ' — be the first to add one!' : '.'}</div>`;
       return;
     }
     list.innerHTML = entries.map(([noteId, n]) => {
-      const photos = n.photoUrls ? Object.values(n.photoUrls) : (n.photoUrl ? [n.photoUrl] : []);
+      const photos = notePhotoEntries(n).map(e => e.url);
       const count = photos.length;
       const gridClass = count===1?'count-1':count===2?'count-2':count===3?'count-3':'count-many';
       const photosEscaped = escHtml(JSON.stringify(photos));
@@ -3995,7 +4017,7 @@ function renderNotesList(dayId, actKey) {
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
               <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-              ${canEditCurrentTrip() ? `<div style="display:flex;gap:4px;">${n.text ? `<button data-noteid="${noteId}" data-notetext="${escAttr(n.text)}" onclick="editNote(this.dataset.noteid,this.dataset.notetext)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button>` : ''}<button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
+              ${canEditCurrentTrip() ? `<div style="display:flex;gap:4px;"><button data-noteid="${noteId}" onclick="editNote(this.dataset.noteid)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button><button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
             </div>
           </div>
         </div>`;
@@ -4021,6 +4043,7 @@ window.deleteNote = async function(noteId) {
   try {
     const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}/${noteId}`;
     await window._remove(window._ref(window._db, notePath));
+    if (editingNoteId === noteId) exitNoteEditMode();
     showToast('Memory deleted');
   } catch(e) {
     showToast('Error deleting — try again');
@@ -4028,15 +4051,39 @@ window.deleteNote = async function(noteId) {
   }
 };
 
-window.editNote = function(noteId, text) {
-  editingNoteId = noteId;
+window.editNote = function(noteId) {
+  const n = currentNotesData[noteId];
+  if (!n) { showToast('Memory not found — try refreshing'); return; }
   clearPhotos(); // discard any in-progress new-memory photos before entering edit mode
+  editingNoteId = noteId;
+  editingExistingPhotos = notePhotoEntries(n);
   const textarea = document.getElementById('noteText');
-  const btn = document.getElementById('saveNoteBtn');
-  textarea.value = text;
-  btn.textContent = 'Update Memory';
+  textarea.value = n.text || '';
+  document.getElementById('addNoteLabel').textContent = 'Edit Memory';
+  document.getElementById('saveNoteBtn').textContent = 'Update Memory';
+  document.getElementById('cancelNoteEditBtn').style.display = '';
+  renderPhotoPreviews();
   document.getElementById('addNoteForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   textarea.focus();
+};
+
+// Leave edit mode and put the form back into "add a new memory" state. Any staged
+// photo removals are discarded — nothing is written until Update Memory is pressed.
+function exitNoteEditMode() {
+  editingNoteId = null;
+  clearPhotos();
+  const textarea = document.getElementById('noteText');
+  if (textarea) textarea.value = '';
+  const label = document.getElementById('addNoteLabel');
+  if (label) label.textContent = 'Add a Memory';
+  const btn = document.getElementById('saveNoteBtn');
+  if (btn) btn.textContent = 'Save Memory';
+  const cancel = document.getElementById('cancelNoteEditBtn');
+  if (cancel) cancel.style.display = 'none';
+}
+
+window.cancelNoteEdit = function() {
+  exitNoteEditMode();
 };
 
 // ── Image compression ──
@@ -4062,7 +4109,18 @@ function compressImage(file, maxPx, quality) {
 
 window.saveNote = async function() {
   const text = document.getElementById('noteText').value.trim();
-  if (!text && selectedPhotoFiles.length === 0) { showToast('Add a note or photo first'); return; }
+  if (!text && selectedPhotoFiles.length === 0) {
+    // In edit mode the memory can still be carrying photos that weren't removed.
+    if (editingNoteId && editingExistingPhotos.length > 0) {
+      // fine — the kept photos are the memory
+    } else if (editingNoteId) {
+      showToast('Memory would be empty — use Delete instead');
+      return;
+    } else {
+      showToast('Add a note or photo first');
+      return;
+    }
+  }
 
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true;
@@ -4073,19 +4131,13 @@ window.saveNote = async function() {
 
   try {
 
-    // Edit mode: update existing note's text and optionally add more photos
+    // Edit mode: update the existing note's text, drop any photos removed in the
+    // preview grid, and upload anything newly picked.
     if (editingNoteId) {
       const notePath = `trips/${currentTripId}/days/${currentDayKey}/notes/${currentActivityKey}/${editingNoteId}`;
 
-      // Merge new photos into existing ones (if any selected)
-      const existingNote = allTrips[currentTripId]?.days?.[currentDayKey]
-                            ?.notes?.[currentActivityKey]?.[editingNoteId];
-      const existingPhotoUrls = existingNote?.photoUrls || {};
-      const existingNums = Object.keys(existingPhotoUrls)
-        .map(k => parseInt(k.slice(1))).filter(n => !isNaN(n));
-      const nextIdx = existingNums.length ? Math.max(...existingNums) + 1 : 0;
-
-      const mergedPhotoUrls = { ...existingPhotoUrls };
+      // Kept photos, in the order shown, then the new uploads after them.
+      const finalUrls = editingExistingPhotos.map(p => p.url);
       if (selectedPhotoFiles.length > 0 && !_isOffline) {
         for (let i = 0; i < selectedPhotoFiles.length; i++) {
           const file = selectedPhotoFiles[i];
@@ -4093,26 +4145,29 @@ window.saveNote = async function() {
           if (file.type.startsWith('video/')) {
             uploadBlob = file;
             const ext = file.name.split('.').pop() || 'mov';
-            storePath = `trips/${currentTripId}/notes/${Date.now()}_${nextIdx + i}.${ext}`;
+            storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.${ext}`;
           } else {
             uploadBlob = await compressImage(file, 1200, 0.8);
-            storePath = `trips/${currentTripId}/notes/${Date.now()}_${nextIdx + i}.jpg`;
+            storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
           }
           const storageRef = window._sRef(window._storage, storePath);
           const snap = await window._uploadBytes(storageRef, uploadBlob);
-          mergedPhotoUrls[`p${nextIdx + i}`] = await window._getDownloadURL(snap.ref);
+          finalUrls.push(await window._getDownloadURL(snap.ref));
         }
       }
 
+      // Renumber p0…pN so the keys always match display order.
+      const mergedPhotoUrls = {};
+      finalUrls.forEach((url, i) => { mergedPhotoUrls[`p${i}`] = url; });
+
       await window._update(window._ref(window._db, notePath), {
         text: text || null,
-        photoUrls: Object.keys(mergedPhotoUrls).length ? mergedPhotoUrls : null,
+        photoUrls: finalUrls.length ? mergedPhotoUrls : null,
+        // Clear the legacy single-photo field so a removed legacy photo doesn't come back.
+        photoUrl: null,
       });
 
-      editingNoteId = null;
-      clearPhotos();
-      btn.textContent = 'Save Memory';
-      document.getElementById('noteText').value = '';
+      exitNoteEditMode();
       showToast('Memory updated! ✓');
       btn.disabled = false;
       return;
@@ -4158,47 +4213,72 @@ window.saveNote = async function() {
   }
 
   btn.disabled = false;
-  btn.innerHTML = 'Save Memory';
+  // A failed edit stays in edit mode, so keep the label matching the form state.
+  btn.innerHTML = editingNoteId ? 'Update Memory' : 'Save Memory';
 };
 
 window.handlePhotoSelect = function(e) {
   const files = Array.from(e.target.files);
   if (!files.length) return;
   files.forEach(file => {
-    if (selectedPhotoFiles.length >= 10) { showToast('Max 10 photos/videos per memory'); return; }
+    // The cap covers media already on the memory plus anything just picked.
+    if (editingExistingPhotos.length + selectedPhotoFiles.length >= 10) { showToast('Max 10 photos/videos per memory'); return; }
     selectedPhotoFiles.push(file);
-    const capturedIndex = selectedPhotoFiles.length - 1;
-    addPhotoPreview(URL.createObjectURL(file), capturedIndex, file.type.startsWith('video/'));
   });
   e.target.value = '';
+  renderPhotoPreviews();
 };
 
-function addPhotoPreview(src, index, isVideo) {
+// One object URL per File, so re-rendering the grid doesn't leak a new blob URL each time.
+const _photoObjectUrls = new WeakMap();
+function fileObjectUrl(file) {
+  if (!_photoObjectUrls.has(file)) _photoObjectUrls.set(file, URL.createObjectURL(file));
+  return _photoObjectUrls.get(file);
+}
+
+// Draws the memory's already-saved media first, then anything newly picked. In edit
+// mode both are removable; removals of saved media are staged until Update Memory.
+function renderPhotoPreviews() {
+  const grid = document.getElementById('photoPreviewGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  if (editingExistingPhotos.length === 0 && selectedPhotoFiles.length === 0) {
+    grid.style.display = 'none';
+    return;
+  }
+  editingExistingPhotos.forEach((p, i) => addPhotoPreview(p.url, i, isVideoUrl(p.url), 'existing'));
+  selectedPhotoFiles.forEach((file, i) => addPhotoPreview(fileObjectUrl(file), i, file.type.startsWith('video/'), 'new'));
+}
+
+function addPhotoPreview(src, index, isVideo, kind) {
   const grid = document.getElementById('photoPreviewGrid');
   grid.style.display = '';
   if (!grid.classList.contains('photo-preview-grid')) grid.className = 'photo-preview-grid';
   const item = document.createElement('div');
   item.className = 'photo-preview-item';
   item.dataset.index = index;
+  item.dataset.kind = kind || 'new';
   const mediaEl = isVideo
-    ? `<video src="${src}" muted playsinline autoplay loop style="width:100%;height:100%;object-fit:cover;"></video>`
-    : `<img src="${src}" alt="">`;
-  item.innerHTML = `${mediaEl}<button class="photo-remove" onclick="removePhoto(${index})">×</button>`;
+    ? `<video src="${escHtml(src)}" muted playsinline autoplay loop style="width:100%;height:100%;object-fit:cover;"></video>`
+    : `<img src="${escHtml(src)}" alt="">`;
+  const remover = kind === 'existing' ? `removeExistingPhoto(${index})` : `removePhoto(${index})`;
+  item.innerHTML = `${mediaEl}<button class="photo-remove" onclick="${remover}">×</button>`;
   grid.appendChild(item);
 }
 
 window.removePhoto = function(index) {
   selectedPhotoFiles.splice(index, 1);
-  const grid = document.getElementById('photoPreviewGrid');
-  grid.innerHTML = '';
-  if (selectedPhotoFiles.length === 0) { grid.style.display = 'none'; return; }
-  selectedPhotoFiles.forEach((file, i) => {
-    addPhotoPreview(URL.createObjectURL(file), i, file.type.startsWith('video/'));
-  });
+  renderPhotoPreviews();
+};
+
+window.removeExistingPhoto = function(index) {
+  editingExistingPhotos.splice(index, 1);
+  renderPhotoPreviews();
 };
 
 function clearPhotos() {
   selectedPhotoFiles = [];
+  editingExistingPhotos = [];
   const grid = document.getElementById('photoPreviewGrid');
   grid.innerHTML = '';
   grid.style.display = 'none';
