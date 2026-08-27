@@ -2546,7 +2546,27 @@ async function renderHome() {
   empty.style.display = 'none';
   list.innerHTML = '';
 
-  remainingKeys.forEach(k => list.appendChild(buildTripCard(k)));
+  // Past trips get their own collapsed section below the active/upcoming cards.
+  const isPastTrip = k => !allTrips[k].status || allTrips[k].status === 'past';
+  const currentKeys = remainingKeys.filter(k => !isPastTrip(k));
+  const pastKeys    = remainingKeys.filter(isPastTrip);
+
+  currentKeys.forEach(k => list.appendChild(buildTripCard(k)));
+
+  if (pastKeys.length) {
+    const section = document.createElement('div');
+    section.className = 'admin-trip-group';
+    section.style.margin = '4px 16px 12px';
+    section.innerHTML =
+      '<div class="admin-trip-group-header" onclick="toggleTripGroup(\'homeTripGroupPast\')">' +
+        '<span class="admin-trip-group-label">Past Trips<span class="admin-trip-group-count">(' + pastKeys.length + ')</span></span>' +
+        '<span id="homeTripGroupPastChev" class="admin-collapsible-chev">\u203a</span>' +
+      '</div>' +
+      '<div id="homeTripGroupPastBody" class="admin-trip-group-body" style="display:none;padding:0;"></div>';
+    list.appendChild(section);
+    const body = section.querySelector('#homeTripGroupPastBody');
+    pastKeys.forEach(k => body.appendChild(buildTripCard(k)));
+  }
 
   Object.keys(byUserOwner)
     .sort((a, b) => userOwnerNames[a].localeCompare(userOwnerNames[b]))
