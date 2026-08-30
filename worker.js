@@ -20,6 +20,11 @@ export default {
       return handleWidgetDriving(env, request);
     }
 
+    // Upcoming widget — next few trips with countdowns + outstanding travel bookings
+    if (url.pathname === '/widget-upcoming') {
+      return handleWidgetUpcoming(env, request);
+    }
+
     // All other routes expect a JSON POST body
     const body = await request.json();
 
@@ -186,6 +191,110 @@ async function handleWidgetData(env, request) {
   }
 
   return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
+}
+
+async function handleWidgetUpcoming(env, request) {
+  const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
+  if (!env.FIREBASE_URL) {
+    return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
+  }
+
+  const limitParam = parseInt(new URL(request.url).searchParams.get('limit'), 10);
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 10) : 3;
+
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  let trips, tracker;
+  try {
+    [trips, tracker] = await Promise.all([
+      fetch(env.FIREBASE_URL + '/trips.json'         + auth).then(r => r.ok ? r.json() : null),
+      fetch(env.FIREBASE_URL + '/travelTracker.json' + auth).then(r => r.ok ? r.json() : null),
+    ]);
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
+  }
+
+  const now      = new Date();
+  const todayMs  = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const todayISO = new Date(todayMs).toISOString().slice(0, 10);
+
+  // Trips still ahead of (or currently under way) — soonest first
+  const upcoming = Object.values(trips || {})
+    .filter(t => t && (t.status === 'upcoming' || t.status === 'active'))
+    .map(t => ({ t, startISO: wTripStartISO(t) }))
+    .filter(x => x.startISO)
+    .sort((a, b) => a.startISO.localeCompare(b.startISO))
+    .slice(0, limit)
+    .map(({ t, startISO }) => ({
+      name:         t.name || 'Untitled trip',
+      emoji:        t.emoji || '✈️',
+      status:       t.status,
+      dates:        t.dates || '',
+      startDateISO: startISO,
+      daysUntil:    Math.max(0, Math.round((Date.parse(startISO + 'T00:00:00Z') - todayMs) / 86400000)),
+    }));
+
+  // Travel-tracker trips departing in the next 6 months that still need a booking.
+  // Mirrors computeOutstandingBookings() in the app so the widget and the
+  // "Outstanding Travel Bookings" popup always agree.
+  const windowEndMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 6, now.getUTCDate());
+  const pending = [];
+  Object.keys(tracker || {}).forEach(yStr => {
+    const year = parseInt(yStr, 10);
+    if (isNaN(year)) return;
+    const yearTrips = (tracker[yStr] && tracker[yStr].trips) || {};
+    Object.values(yearTrips).forEach(t => {
+      if (!t) return;
+      const dk = wParseTripDateSort(t.dates);
+      if (dk.m === 99) return; // TBD or unparseable — can't place it in the window
+      const tripMs = Date.UTC(year, dk.m, dk.d);
+      if (tripMs < todayMs || tripMs > windowEndMs) return;
+      const missing = W_BOOKING_FIELDS.filter(f => {
+        const v = t[f] || '';
+        return v !== 'booked' && v !== 'na';
+      });
+      if (missing.length) pending.push({ tripMs, name: t.name || 'Untitled trip', dates: t.dates || '', missing });
+    });
+  });
+  pending.sort((a, b) => a.tripMs - b.tripMs);
+
+  return new Response(JSON.stringify({
+    todayISO,
+    trips: upcoming,
+    outstanding: pending.map(({ name, dates, missing }) => ({ name, dates, missing })),
+  }), { headers: CORS });
+}
+
+const W_BOOKING_FIELDS = ['flights', 'hotel', 'car'];
+
+// Trip start date: explicit startDateISO, else the earliest day on the itinerary
+function wTripStartISO(t) {
+  if (t.startDateISO) return t.startDateISO;
+  if (t.days) {
+    const dates = Object.values(t.days)
+      .map(d => d.dateISO || dayDateISO(d, t.year))
+      .filter(Boolean)
+      .sort();
+    if (dates.length) return dates[0];
+  }
+  return '';
+}
+
+// Parse a travel-tracker `dates` string ("8/6/26", "Jan 5-8") into {m, d}.
+// {m: 99} means TBD/unparseable. Mirrors parseTripDateSort() in the app.
+function wParseTripDateSort(dates) {
+  if (!dates) return { m: 99, d: 99 };
+  const s = String(dates).trim();
+  if (s.toLowerCase() === 'tbd') return { m: 99, d: 99 };
+  const num = s.match(/^(\d{1,2})\/(\d{1,2})\//);
+  if (num) return { m: parseInt(num[1], 10) - 1, d: parseInt(num[2], 10) };
+  const NAMED = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+  const name = s.toLowerCase().match(/^([a-z]{3})/);
+  if (name && NAMED[name[1]] !== undefined) {
+    const day = s.match(/(\d+)/);
+    return { m: NAMED[name[1]], d: day ? parseInt(day[1], 10) : 0 };
+  }
+  return { m: 99, d: 99 };
 }
 
 async function handleWidgetDriving(env, request) {
