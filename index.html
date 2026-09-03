@@ -1991,7 +1991,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 281 };
+window.BUILD_INFO = { prNumber: 282 };
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -3034,51 +3034,75 @@ async function onBellClick(e) {
   }
 }
 
+// Copies `url` to the clipboard, falling back to a selectable prompt so the
+// link is always obtainable even when the clipboard API is unavailable.
+async function copyShareUrl(url, btn) {
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    copied = true;
+  } catch {
+    try {
+      const el = document.createElement('textarea');
+      el.value = url;
+      el.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
+      document.body.appendChild(el);
+      el.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(el);
+    } catch {}
+  }
+  if (copied && btn) {
+    btn.disabled = false;
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => {
+      const live = document.getElementById('shareItineraryBtn') || btn;
+      live.disabled = false;
+      live.textContent = '🔗 Share';
+    }, 2500);
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 Share'; }
+    window.prompt('Copy this link:', url);
+  }
+}
+
 async function shareTrip() {
   const btn = document.getElementById('shareItineraryBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Generating…';
-  try {
-    await ensureDaySummaries(currentTripId);
-  } catch(e) { /* proceed even if AI fails */ }
-
-  // Re-fetch button: Firebase write in ensureDaySummaries triggers a re-render
-  // that replaces the DOM node, making the original `btn` reference stale.
-  const liveBtn = document.getElementById('shareItineraryBtn') || btn;
-
-  const url = `${window.location.origin}${window.location.pathname}?trip=${currentTripId}`;
-  const trip = allTrips[currentTripId];
-
-  if (navigator.share) {
-    liveBtn.disabled = false;
-    liveBtn.textContent = '🔗 Share';
-    await navigator.share({ title: trip.name || 'Trip Itinerary', url });
-  } else {
-    // Desktop fallback: copy to clipboard
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(url);
-      copied = true;
-    } catch {
-      try {
-        const el = document.createElement('textarea');
-        el.value = url;
-        el.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
-        document.body.appendChild(el);
-        el.select();
-        copied = document.execCommand('copy');
-        document.body.removeChild(el);
-      } catch {}
-    }
-    if (copied) {
-      liveBtn.textContent = '✅ Copied!';
-      setTimeout(() => { liveBtn.disabled = false; liveBtn.textContent = '🔗 Share'; }, 2500);
-    } else {
-      liveBtn.disabled = false;
-      liveBtn.textContent = '🔗 Share';
-      window.prompt('Copy this link:', url);
-    }
+  const tripId = currentTripId;
+  const trip = tripId ? allTrips[tripId] : null;
+  if (!trip) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 Share'; }
+    alert("Couldn't build a share link — reopen the trip and try again.");
+    return;
   }
+
+  const url = `${window.location.origin}${window.location.pathname}?trip=${tripId}`;
+
+  // Hand the link over first. This used to await ensureDaySummaries() — several
+  // seconds of AI call plus a Firebase write — before calling navigator.share(),
+  // which outlives the click's user activation: the share sheet was then rejected
+  // (NotAllowedError) and, since nothing caught it, the tap silently produced no
+  // link at all. Slow or hung summary generation left the button stuck on
+  // "⏳ Generating…" for the same reason. Nothing here depends on who owns the
+  // trip, so admins get the link on every trip, including other users'.
+  let delivered = false;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: trip.name || 'Trip Itinerary', url });
+      delivered = true;
+    } catch(e) {
+      // AbortError means the sheet opened and the user dismissed it — done.
+      // Anything else (activation lost, share unsupported) falls back to copying.
+      if (e && e.name === 'AbortError') delivered = true;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 Share'; }
+  }
+  if (!delivered) await copyShareUrl(url, btn);
+
+  // Day recaps are a nice-to-have for the recipient, not a precondition for the
+  // link: upcoming days show their real itinerary items, and the share view
+  // refreshes stale recaps itself. Generate them in the background.
+  ensureDaySummaries(tripId).catch(e => console.warn('Day summary refresh failed:', e));
 }
 window.shareTrip = shareTrip;
 
