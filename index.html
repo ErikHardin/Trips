@@ -1991,7 +1991,10 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 282 };
+window.BUILD_INFO = { prNumber: 283 };
+// CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
+const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
+const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
 (function() { const el = document.getElementById('buildPrNumber'); if (el) el.textContent = window.BUILD_INFO.prNumber; })();
 
 // ════════════════════════════════════════
@@ -4820,7 +4823,7 @@ window.generateTripPDF = async function(tripId) {
       var points = ${JSON.stringify(cityPoints)};
       if (!points.length) { document.getElementById('pdfMapWrap').style.display='none'; return; }
       var map = L.map('pdfMap', { zoomControl: false, attributionControl: false, scrollWheelZoom: false });
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(map);
+      L.tileLayer(${JSON.stringify(CARTO_TILE_URL)}, { maxZoom: 14, subdomains: 'abcd' }).addTo(map);
       var bounds = [];
       points.forEach(function(p, i) {
         var isEnd = i === 0 || i === points.length - 1;
@@ -9457,7 +9460,7 @@ async function initTripMap(trip) {
     attributionControl: false,
     scrollWheelZoom: false
   });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(tripMapInstance);
+  L.tileLayer(CARTO_TILE_URL, { maxZoom: 14, subdomains: 'abcd' }).addTo(tripMapInstance);
 
   // invalidateSize ensures tiles load correctly when container was hidden during init
   tripMapInstance.invalidateSize();
@@ -9568,7 +9571,7 @@ async function initWorldMap() {
   if (!points.length) return;
 
   worldMapInstance = L.map(el, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 14 }).addTo(worldMapInstance);
+  L.tileLayer(CARTO_TILE_URL, { maxZoom: 14, subdomains: 'abcd' }).addTo(worldMapInstance);
 
   points.forEach(p => {
     const icon = L.divIcon({ className: '',
