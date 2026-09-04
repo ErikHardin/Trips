@@ -1991,7 +1991,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 283 };
+window.BUILD_INFO = { prNumber: 284 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2098,6 +2098,8 @@ let isShareView = false;
 let shareCheckDone = false;
 let autoOpenDone = false;
 let autoOpenNavigated = false;
+let userOwnerEmails = null;        // Set of 'user'-role account emails; null until loaded
+let userOwnerEmailsPromise = null; // in-flight /access read backing the Set above
 let tripWeatherByDay = {};
 
 const BOOKING_STATUSES = [
@@ -2134,6 +2136,7 @@ function setupAuth() {
   window._onAuthStateChanged(window._auth, async (user) => {
     if (!user) {
       currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+      userOwnerEmails = null; userOwnerEmailsPromise = null;
       outstandingBookingsCheckStarted = false;
       lastOutstandingPopupAt = null;
       const tripId = new URLSearchParams(window.location.search).get('trip');
@@ -2172,6 +2175,7 @@ function setupAuth() {
       adminUser = access.name || user.displayName || user.email;
       guestTripIds = access.trips ? Object.keys(access.trips) : [];
       lastOutstandingPopupAt = access.lastOutstandingPopupAt || null;
+      loadUserOwnerEmails(); // start the access read now so auto-open rarely has to wait
       try { await window._set(window._ref(window._db, `access/${emailKey}/lastLogin`), Date.now()); } catch(e) {}
       renderAppName();
       document.getElementById('lockBtn').style.display = '';
@@ -2243,10 +2247,48 @@ async function initUnauthenticatedShareView(tripId) {
   document.getElementById('loginSignOutBtn').style.display = 'none';
 }
 
+// Emails of 'user'-role accounts. A trip owned by one of these is that person's own
+// trip; a trip with no ownerId or an admin owner is part of the shared/family pool.
+// Only admins can read the whole access node, so everyone else gets an empty set —
+// they already only see their own and granted trips.
+function loadUserOwnerEmails() {
+  if (userOwnerEmailsPromise) return userOwnerEmailsPromise;
+  if (userRole !== 'admin') {
+    userOwnerEmails = new Set();
+    userOwnerEmailsPromise = Promise.resolve();
+    return userOwnerEmailsPromise;
+  }
+  userOwnerEmailsPromise = window._get(window._ref(window._db, 'access'))
+    .then(snap => {
+      userOwnerEmails = new Set(
+        Object.values(snap.val() || {})
+          .filter(u => u && u.role === 'user' && u.email)
+          .map(u => u.email)
+      );
+    })
+    .catch(() => { userOwnerEmails = new Set(); }); // on failure, behave as before
+  return userOwnerEmailsPromise;
+}
+
+// Auto-open is a personal convenience: it should only fire for a trip that is actually
+// yours. A trip owned by a 'user'-role account belongs to that person — everyone else,
+// the admin included, opens it by hand. Shared trips (no ownerId, or an admin owner)
+// still auto-open for anyone who can see them.
+function canAutoOpenTrip(tripId) {
+  if (!hasTripAccess(tripId)) return false;
+  if (isTripOwner(tripId) || guestTripIds.includes(tripId)) return true;
+  const ownerId = allTrips[tripId] && allTrips[tripId].ownerId;
+  return !(ownerId && userOwnerEmails && userOwnerEmails.has(ownerId));
+}
+
 function autoOpenActiveTrip() {
   if (autoOpenDone || isShareView) return;
+  // Admins need the access list to tell a personal trip from a shared one. It is
+  // normally already loaded (kicked off at sign-in); if not, retry once it lands.
+  if (userOwnerEmails === null) { loadUserOwnerEmails().then(autoOpenActiveTrip); return; }
   autoOpenDone = true;
-  const activeEntry = Object.entries(allTrips).find(([, t]) => t.status === 'active');
+  const activeEntry = Object.entries(allTrips)
+    .find(([id, t]) => t.status === 'active' && canAutoOpenTrip(id));
   if (activeEntry) {
     autoOpenNavigated = true;
     openTrip(activeEntry[0], 'itinerary');
@@ -2351,6 +2393,7 @@ window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function() {
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+  userOwnerEmails = null; userOwnerEmailsPromise = null;
   outstandingBookingsCheckStarted = false;
   lastOutstandingPopupAt = null;
   document.getElementById('adminNavBtn').style.display = 'none';
