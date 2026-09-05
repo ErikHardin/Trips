@@ -8809,13 +8809,14 @@ function injectOverviewWeatherChip(dayId, wx, coords, city) {
 // every tick so DST transitions are always right, including ones that happen
 // mid-session.
 
-const TZ_STORE_KEY  = 'hardinTripsTZ.v1';
+const TZ_STORE_KEY  = 'hardinTripsTZ.v2'; // v2: resolve via day city, not region name
 const TZ_TTL_MS     = 90 * 24 * 3600 * 1000; // resolved zone: political changes are rare
 const TZ_TTL_NEG_MS =  7 * 24 * 3600 * 1000; // "no such place": retry in a week
 const _tzMem       = new Map();  // slug -> IANA zone | null (survives re-renders)
 const _tzInFlight  = new Map();  // slug -> Promise (getCityCoords has no dedupe of its own)
 const _tzFailUntil = new Map();  // slug -> epoch ms; backoff after a NETWORK error only
 const _tzFmt       = new Map();  // cache Intl formatters — constructing them is expensive
+const _tzVia       = new Map();  // slug -> the place name the zone actually came from
 
 function regionSlug(name) {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -8826,15 +8827,21 @@ function _tzDiskRead() {
   catch(e) { return {}; }
 }
 
-function _tzDiskWrite(slug, tz) {
+function _tzDiskWrite(slug, tz, via) {
   try {
     const all = _tzDiskRead();
-    all[slug] = { tz: tz, ts: Date.now() };
+    all[slug] = { tz: tz, via: via || null, ts: Date.now() };
     localStorage.setItem(TZ_STORE_KEY, JSON.stringify(all));
   } catch(e) { /* private mode / quota — memory cache still does the job */ }
 }
 
-async function resolveRegionTimezone(regionName, fallbackCity) {
+// How many distinct cities in one region we're willing to try before giving up
+// and falling back to the region name. Bounds the worst case: each miss can cost
+// a full Mapbox/Photon/Overpass/Nominatim waterfall the first time it's seen.
+const TZ_MAX_CITY_TRIES = 4;
+
+// `cities` are the region's day cities in itinerary order.
+async function resolveRegionTimezone(regionName, cities) {
   const slug = regionSlug(regionName);
   if (!slug) return null;
   if (_tzMem.has(slug)) return _tzMem.get(slug);
@@ -8843,6 +8850,7 @@ async function resolveRegionTimezone(regionName, fallbackCity) {
   const disk = _tzDiskRead()[slug];
   if (disk && Date.now() - (disk.ts || 0) < (disk.tz ? TZ_TTL_MS : TZ_TTL_NEG_MS)) {
     _tzMem.set(slug, disk.tz || null);
+    if (disk.via) _tzVia.set(slug, disk.via);
     return disk.tz || null;
   }
   // Disk cache is consulted first, so known regions keep ticking offline.
@@ -8851,14 +8859,28 @@ async function resolveRegionTimezone(regionName, fallbackCity) {
 
   const p = (async () => {
     try {
-      // No biasCoords: region-level names have no anchor, and getCityCoords'
-      // proximity rejection would fight them.
-      let coords = await getCityCoords(regionName);
-      if (!coords && fallbackCity) coords = await getCityCoords(fallbackCity);
+      // Day cities FIRST, region name only as a last resort. A region is often
+      // just a grouper — "Wine Country", "Week 2", "The Coast" — and geocoders
+      // answer those with a real place that can be on the wrong continent
+      // ("Wine Country" -> Napa). getCityCoords also substring-matches its
+      // curated table both ways, so a short or generic region name can collide
+      // with an unrelated entry. A day's city is an actual place, so it is the
+      // far better signal for which clock this region is on.
+      let coords = null, via = null;
+      for (const c of (cities || []).slice(0, TZ_MAX_CITY_TRIES)) {
+        coords = await getCityCoords(c);
+        if (coords) { via = c; break; }
+      }
+      if (!coords) {
+        // No usable city (all blank, or all travel placeholders like "In
+        // Flight") — the region name is the only signal left.
+        coords = await getCityCoords(regionName);
+        if (coords) via = regionName;
+      }
       if (!coords) {
         // Negative-cache, or a region like "Transit" re-runs the whole
         // Mapbox/Photon/Overpass/Nominatim waterfall on every single render.
-        _tzMem.set(slug, null); _tzDiskWrite(slug, null);
+        _tzMem.set(slug, null); _tzDiskWrite(slug, null, null);
         return null;
       }
       const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + coords[0] +
@@ -8868,7 +8890,7 @@ async function resolveRegionTimezone(regionName, fallbackCity) {
       const tz = data && typeof data.timezone === 'string' ? data.timezone : null;
       if (!tz || tz === 'GMT') return null;   // 'GMT' means auto-resolution failed
       new Intl.DateTimeFormat('en-US', { timeZone: tz }); // throws on a bad zone
-      _tzMem.set(slug, tz); _tzDiskWrite(slug, tz);
+      _tzMem.set(slug, tz); _tzVia.set(slug, via); _tzDiskWrite(slug, tz, via);
       return tz;
     } catch(e) {
       // A network failure is not a "no such place" — don't poison the cache.
@@ -8925,18 +8947,23 @@ function _tzTimeString(tz, date) {
 }
 
 async function injectRegionClocks(days) {
-  // One lookup per unique region name, not per day.
+  // One lookup per unique region, not per day. `days` arrives sorted by
+  // sortOrder, so each region's cities are collected in itinerary order and the
+  // first one that geocodes wins.
   const jobs = new Map();
   days.forEach(([, d]) => {
     if (!d.region) return;
     const slug = regionSlug(d.region);
-    if (!slug || jobs.has(slug)) return;
-    jobs.set(slug, { region: d.region, city: (d.city || '').replace(/[🛬🚗✈️🏠]/g, '').trim() });
+    if (!slug) return;
+    if (!jobs.has(slug)) jobs.set(slug, { region: d.region, cities: [] });
+    const city = (d.city || '').replace(/[🛬🚗✈️🏠]/g, '').trim();
+    const cities = jobs.get(slug).cities;
+    if (city && !cities.includes(city)) cities.push(city);
   });
 
   for (const [slug, job] of jobs) {
     let tz = null;
-    try { tz = await resolveRegionTimezone(job.region, job.city); } catch(e) {}
+    try { tz = await resolveRegionTimezone(job.region, job.cities); } catch(e) {}
     if (!tz) continue;
     // slug is [a-z0-9_] by construction, so no CSS.escape needed. Scoping to
     // #tripItineraryPanel keeps the share view and PDF export untouched.
@@ -8950,7 +8977,8 @@ async function injectRegionClocks(days) {
       const pill = document.createElement('span');
       pill.className = 'region-clock';
       pill.dataset.tz = tz;
-      pill.title = tz;
+      const via = _tzVia.get(slug);
+      pill.title = via && regionSlug(via) !== slug ? tz + ' — from ' + via : tz;
       pill.innerHTML = '<span class="rc-time"></span><span class="rc-off"></span>';
       nameEl.insertAdjacentElement('afterend', pill);
     });
