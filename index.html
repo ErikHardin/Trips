@@ -262,8 +262,14 @@ body {
 /* Region headers */
 .region-header { padding: 22px 16px 8px; display: flex; align-items: center; gap: 10px; }
 .region-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.region-name-text { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-style: italic; color: var(--ink); }
-.region-nights { font-size: 11px; color: var(--muted); margin-left: auto; }
+/* min-width:0 lets a long region name ellipsize instead of shoving the clock
+   pill and the date range off a 320px screen */
+.region-name-text { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-style: italic; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.region-nights { font-size: 11px; color: var(--muted); margin-left: auto; flex-shrink: 0; }
+/* Current local time in the region. tabular-nums keeps the pill from jittering
+   in width as the digits change each minute. */
+.region-clock { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--gold); background: var(--gold-light); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.region-clock .rc-off { color: var(--muted); font-size: 10px; }
 
 /* Day cards */
 .day-card {
@@ -2382,6 +2388,7 @@ window.goBackFromEdit = function() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  if (id !== 'screen-trip') stopRegionClocks();
   if (id === 'screen-admin') {
     const isAdmin = userRole === 'admin';
     document.querySelectorAll('#screen-admin .admin-only-section').forEach(el => {
@@ -2673,6 +2680,9 @@ function switchTripTab(name, btn) {
   document.getElementById('tripChangesPanel').classList.toggle('active', name==='changes');
   document.getElementById('tripWishlistPanel').classList.toggle('active', name==='wishlist');
   if(btn) btn.classList.add('active');
+  // switchTripTab does not re-render the itinerary, so coming back to it after a
+  // while finds stale pills sitting in the DOM — repaint them immediately.
+  if (name === 'itinerary') startRegionClocks(); else stopRegionClocks();
   if (name === 'overview' && currentTripId && allTrips[currentTripId]) {
     setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
   }
@@ -2783,9 +2793,9 @@ function renderTripItinerary(trip) {
       const _rd = _regionDatesMap[day.region];
       const _rdStr = _rd ? _sdFormatRegionDates(_rd.first, _rd.last) : '';
       panel.innerHTML += `
-        <div class="region-header">
+        <div class="region-header" data-tzkey="${regionSlug(day.region)}">
           <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
-          <div class="region-name-text">${day.region}</div>
+          <div class="region-name-text">${escHtml(day.region)}</div>
           <div class="region-nights">${_rdStr}</div>
         </div>`;
     }
@@ -2952,6 +2962,8 @@ function renderTripItinerary(trip) {
     }, 2000);
   }
 
+  // Region clocks first so their geocodes warm localGeoCache before weather runs
+  setTimeout(() => injectRegionClocks(days), 60);
   // Fetch weather for all trips; drive times for upcoming/active only
   setTimeout(() => fetchTripWeather(days, trip.year), 100);
   if (trip.status === 'upcoming' || trip.status === 'active') {
@@ -8785,6 +8797,221 @@ function injectOverviewWeatherChip(dayId, wx, coords, city) {
   const info = header.querySelector('.ov-day-info');
   if (info) info.appendChild(chip);
 }
+
+// ════════════════════════════════════════
+//  REGION CLOCKS — current local time per region on the itinerary
+// ════════════════════════════════════════
+// Regions have no stored location: `day.region` is a free-text string. So a
+// region name is geocoded through getCityCoords (falling back to the region's
+// first city), and those coordinates are turned into an IANA zone by a bare
+// Open-Meteo metadata call — no weather variables, ~180 bytes of response.
+// We cache the ZONE NAME, never a numeric offset: the offset is recomputed on
+// every tick so DST transitions are always right, including ones that happen
+// mid-session.
+
+const TZ_STORE_KEY  = 'hardinTripsTZ.v1';
+const TZ_TTL_MS     = 90 * 24 * 3600 * 1000; // resolved zone: political changes are rare
+const TZ_TTL_NEG_MS =  7 * 24 * 3600 * 1000; // "no such place": retry in a week
+const _tzMem       = new Map();  // slug -> IANA zone | null (survives re-renders)
+const _tzInFlight  = new Map();  // slug -> Promise (getCityCoords has no dedupe of its own)
+const _tzFailUntil = new Map();  // slug -> epoch ms; backoff after a NETWORK error only
+const _tzFmt       = new Map();  // cache Intl formatters — constructing them is expensive
+
+function regionSlug(name) {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function _tzDiskRead() {
+  try { return JSON.parse(localStorage.getItem(TZ_STORE_KEY) || '{}') || {}; }
+  catch(e) { return {}; }
+}
+
+function _tzDiskWrite(slug, tz) {
+  try {
+    const all = _tzDiskRead();
+    all[slug] = { tz: tz, ts: Date.now() };
+    localStorage.setItem(TZ_STORE_KEY, JSON.stringify(all));
+  } catch(e) { /* private mode / quota — memory cache still does the job */ }
+}
+
+async function resolveRegionTimezone(regionName, fallbackCity) {
+  const slug = regionSlug(regionName);
+  if (!slug) return null;
+  if (_tzMem.has(slug)) return _tzMem.get(slug);
+  if (_tzInFlight.has(slug)) return _tzInFlight.get(slug);
+
+  const disk = _tzDiskRead()[slug];
+  if (disk && Date.now() - (disk.ts || 0) < (disk.tz ? TZ_TTL_MS : TZ_TTL_NEG_MS)) {
+    _tzMem.set(slug, disk.tz || null);
+    return disk.tz || null;
+  }
+  // Disk cache is consulted first, so known regions keep ticking offline.
+  if (_isOffline || !navigator.onLine) return null;
+  if ((_tzFailUntil.get(slug) || 0) > Date.now()) return null;
+
+  const p = (async () => {
+    try {
+      // No biasCoords: region-level names have no anchor, and getCityCoords'
+      // proximity rejection would fight them.
+      let coords = await getCityCoords(regionName);
+      if (!coords && fallbackCity) coords = await getCityCoords(fallbackCity);
+      if (!coords) {
+        // Negative-cache, or a region like "Transit" re-runs the whole
+        // Mapbox/Photon/Overpass/Nominatim waterfall on every single render.
+        _tzMem.set(slug, null); _tzDiskWrite(slug, null);
+        return null;
+      }
+      const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + coords[0] +
+                              '&longitude=' + coords[1] + '&timezone=auto');
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      const tz = data && typeof data.timezone === 'string' ? data.timezone : null;
+      if (!tz || tz === 'GMT') return null;   // 'GMT' means auto-resolution failed
+      new Intl.DateTimeFormat('en-US', { timeZone: tz }); // throws on a bad zone
+      _tzMem.set(slug, tz); _tzDiskWrite(slug, tz);
+      return tz;
+    } catch(e) {
+      // A network failure is not a "no such place" — don't poison the cache.
+      _tzFailUntil.set(slug, Date.now() + 60000);
+      return null;
+    } finally {
+      _tzInFlight.delete(slug);
+    }
+  })();
+  _tzInFlight.set(slug, p);
+  return p;
+}
+
+// Offset of `tz` from UTC, in minutes, at the instant `date`.
+// Format the instant as if it were in the target zone, then read those
+// wall-clock digits back through Date.UTC as though they were UTC; the gap is
+// the offset. 'en-US' is hardcoded on purpose — the device locale can hand back
+// Eastern-Arabic digits (parses as NaN) or a non-Gregorian calendar.
+function _tzOffsetMinutes(tz, date) {
+  let dtf = _tzFmt.get('P|' + tz);
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat('en-US-u-ca-gregory-nu-latn', {
+      timeZone: tz, hourCycle: 'h23',           // not hour12:false — some ICU builds emit "24"
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    _tzFmt.set('P|' + tz, dtf);
+  }
+  const p = {};
+  for (const part of dtf.formatToParts(date)) p[part.type] = part.value;
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day,
+                         p.hour === '24' ? 0 : +p.hour, +p.minute, +p.second);
+  // formatToParts drops sub-second precision, so floor the source to whole
+  // seconds or the subtraction is off by the millisecond remainder.
+  return Math.round((asUTC - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+}
+
+// Signed delta vs the viewer: "+9h", "-3h", "+5:30", "+5:45". Empty when zero.
+function _formatTzOffset(mins) {
+  if (!mins) return '';
+  const sign = mins < 0 ? '-' : '+';
+  const abs = Math.abs(mins), h = Math.floor(abs / 60), m = abs % 60;
+  return m ? sign + h + ':' + String(m).padStart(2, '0') : sign + h + 'h';
+}
+
+// Device locale here is correct — a European viewer should see 24-hour time.
+function _tzTimeString(tz, date) {
+  let f = _tzFmt.get('T|' + tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat([], { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+    _tzFmt.set('T|' + tz, f);
+  }
+  return f.format(date);
+}
+
+async function injectRegionClocks(days) {
+  // One lookup per unique region name, not per day.
+  const jobs = new Map();
+  days.forEach(([, d]) => {
+    if (!d.region) return;
+    const slug = regionSlug(d.region);
+    if (!slug || jobs.has(slug)) return;
+    jobs.set(slug, { region: d.region, city: (d.city || '').replace(/[🛬🚗✈️🏠]/g, '').trim() });
+  });
+
+  for (const [slug, job] of jobs) {
+    let tz = null;
+    try { tz = await resolveRegionTimezone(job.region, job.city); } catch(e) {}
+    if (!tz) continue;
+    // slug is [a-z0-9_] by construction, so no CSS.escape needed. Scoping to
+    // #tripItineraryPanel keeps the share view and PDF export untouched.
+    const headers = document.querySelectorAll('#tripItineraryPanel .region-header[data-tzkey="' + slug + '"]');
+    if (!headers.length) continue;   // re-rendered underneath us
+    headers.forEach(h => {
+      const old = h.querySelector('.region-clock');
+      if (old) old.remove();
+      const nameEl = h.querySelector('.region-name-text');
+      if (!nameEl) return;
+      const pill = document.createElement('span');
+      pill.className = 'region-clock';
+      pill.dataset.tz = tz;
+      pill.title = tz;
+      pill.innerHTML = '<span class="rc-time"></span><span class="rc-off"></span>';
+      nameEl.insertAdjacentElement('afterend', pill);
+    });
+    startRegionClocks();   // paint this pill now and re-arm the single timer
+  }
+}
+
+let _regionClockTimer = null;
+
+function _regionClocksLive() {
+  const p = document.getElementById('tripItineraryPanel');
+  return !!(p && p.classList.contains('active') && p.querySelector('.region-clock[data-tz]'));
+}
+
+function stopRegionClocks() {
+  if (_regionClockTimer) { clearTimeout(_regionClockTimer); _regionClockTimer = null; }
+}
+
+function tickRegionClocks() {
+  if (!_regionClocksLive()) { stopRegionClocks(); return; }
+  const now = new Date();
+  const viewer = -now.getTimezoneOffset();  // JS reports minutes WEST of UTC
+  document.querySelectorAll('#tripItineraryPanel .region-clock[data-tz]').forEach(pill => {
+    const tz = pill.dataset.tz;
+    try {
+      pill.querySelector('.rc-time').textContent = _tzTimeString(tz, now);
+      const offEl = pill.querySelector('.rc-off');
+      const txt = _formatTzOffset(_tzOffsetMinutes(tz, now) - viewer);
+      offEl.textContent = txt;
+      // Hidden rather than removed, so a DST change can re-show it live.
+      offEl.style.display = txt ? '' : 'none';
+    } catch(e) { pill.remove(); }
+  });
+}
+
+function _scheduleRegionClockTick() {
+  // Re-align to the next wall-clock minute each time: no drift over a long
+  // session, and it self-corrects after iOS suspends timers in the background.
+  // The +250ms lands just past the flip so we never paint 4:59 at 05:00.001.
+  _regionClockTimer = setTimeout(() => {
+    _regionClockTimer = null;
+    tickRegionClocks();
+    if (_regionClocksLive()) _scheduleRegionClockTick();
+  }, 60000 - (Date.now() % 60000) + 250);
+}
+
+// Safe to call as often as you like — clearing first is what guarantees the
+// six renderTripItinerary call sites can never stack duplicate timers.
+function startRegionClocks() {
+  stopRegionClocks();
+  tickRegionClocks();          // paint now, even if backgrounded, so no pill is ever blank
+  if (document.hidden) return; // ...but don't hold a timer we know won't fire on time
+  if (_regionClocksLive()) _scheduleRegionClockTick();
+}
+
+// iOS suspends timers when backgrounded; without this you unlock the phone to a
+// clock frozen at whatever minute you locked it.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopRegionClocks(); else startRegionClocks();
+});
+
 
 function injectOverviewTranslationChip(dayId, city, countryCode, activityTexts) {
   const card = document.getElementById('ov-dc-' + dayId);
