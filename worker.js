@@ -231,11 +231,12 @@ async function handleWidgetUpcoming(env, request) {
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 10) : 3;
 
   const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
-  let trips, tracker;
+  let trips, tracker, access;
   try {
-    [trips, tracker] = await Promise.all([
+    [trips, tracker, access] = await Promise.all([
       wFetchJson(env.FIREBASE_URL + '/trips.json'         + auth),
       wFetchJson(env.FIREBASE_URL + '/travelTracker.json' + auth),
+      wFetchJson(env.FIREBASE_URL + '/access.json'        + auth),
     ]);
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
@@ -245,19 +246,32 @@ async function handleWidgetUpcoming(env, request) {
   const todayMs  = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayISO = new Date(todayMs).toISOString().slice(0, 10);
 
+  // Trips owned by a role:'user' account belong to that person, not the family
+  // pool. Mirrors groupTripsByUserOwner() in the app: no ownerId, or an admin
+  // owner, means the trip is shared and belongs on the widget.
+  const userOwnerEmails = new Set();
+  Object.values(access || {}).forEach(u => {
+    if (u && u.role === 'user' && u.email) userOwnerEmails.add(u.email);
+  });
+
   // Trips still ahead of (or currently under way) — soonest first
   const upcoming = Object.values(trips || {})
     .filter(t => t && (t.status === 'upcoming' || t.status === 'active'))
-    .map(t => ({ t, startISO: wTripStartISO(t) }))
+    .filter(t => !(t.ownerId && userOwnerEmails.has(t.ownerId)))
+    .map(t => ({ t, startISO: wTripStartISO(t), endISO: wTripEndISO(t) }))
     .filter(x => x.startISO)
+    // A trip whose last day has passed is over whatever its status still says.
+    // Statuses are set by hand and go stale once a trip ends.
+    .filter(x => x.endISO >= todayISO)
     .sort((a, b) => a.startISO.localeCompare(b.startISO))
     .slice(0, limit)
-    .map(({ t, startISO }) => ({
+    .map(({ t, startISO, endISO }) => ({
       name:         t.name || 'Untitled trip',
       emoji:        t.emoji || '✈️',
       status:       t.status,
       dates:        t.dates || '',
       startDateISO: startISO,
+      endDateISO:   endISO,
       daysUntil:    Math.max(0, Math.round((Date.parse(startISO + 'T00:00:00Z') - todayMs) / 86400000)),
     }));
 
@@ -296,7 +310,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-06.2';
+const WORKER_VERSION = '2026-09-06.3';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -374,6 +388,18 @@ function wTripStartISO(t) {
     if (dates.length) return dates[0];
   }
   return '';
+}
+
+// Last day of the trip: the latest day on the itinerary, else the start date
+function wTripEndISO(t) {
+  if (t.days) {
+    const dates = Object.values(t.days)
+      .map(d => d.dateISO || dayDateISO(d, t.year))
+      .filter(Boolean)
+      .sort();
+    if (dates.length) return dates[dates.length - 1];
+  }
+  return wTripStartISO(t);
 }
 
 // Parse a travel-tracker `dates` string ("8/6/26", "Jan 5-8") into {m, d}.

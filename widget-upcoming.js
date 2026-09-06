@@ -44,7 +44,7 @@ if (!data || data.error) {
 } else if (!trips.length && !outstanding.length) {
   centerMessage(widget, "✈️  No upcoming trips");
 } else {
-  // No header on the trip list — an emoji and a day count read as a trip on
+  // No header on the trip list — a name and a day count read as a trip on
   // sight, and the smallest small widget (141pt) has no room for a spare label
   trips.slice(0, TRIP_COUNT).forEach((trip, i) => {
     if (i) widget.addSpacer(2);
@@ -75,22 +75,21 @@ Script.complete();
 
 // ── Rows ──────────────────────────────────────────────────────────────────────
 
-// "🇫🇷  France          13d"
+// "France                     13d"
+//
+// No trip emoji: the field often holds several ("🇩🇰🛳️🇬🇧"), which wrapped onto
+// a second line, inflated the row and squeezed the name into an ellipsis. The
+// name is what identifies the trip, so it gets the whole row.
 function addTripRow(w, trip) {
   const row = w.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
 
-  const emojiTxt = row.addText(trip.emoji || "✈️");
-  emojiTxt.font = Font.systemFont(11);
-
-  row.addSpacer(5);
-
   const nameTxt = row.addText(trip.name || "Trip");
-  nameTxt.font = Font.boldSystemFont(11);
+  nameTxt.font = Font.boldSystemFont(12);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
-  nameTxt.minimumScaleFactor = 0.8;
+  nameTxt.minimumScaleFactor = 0.7;
 
   row.addSpacer();
 
