@@ -44,8 +44,7 @@ if (!data || data.error) {
 } else if (!trips.length && !outstanding.length) {
   centerMessage(widget, "✈️  No upcoming trips");
 } else {
-  // No header on the trip list — a name and a day count read as a trip on
-  // sight, and the smallest small widget (141pt) has no room for a spare label
+  if (trips.length) addSectionLabel(widget, "TRIP COUNTDOWN");
   trips.slice(0, TRIP_COUNT).forEach((trip, i) => {
     if (i) widget.addSpacer(2);
     addTripRow(widget, trip);
@@ -57,7 +56,7 @@ if (!data || data.error) {
     const shown = outstanding.slice(0, bookRows);
     const extra = outstanding.length - shown.length;
 
-    widget.addSpacer(trips.length ? 6 : 0);
+    widget.addSpacer(trips.length ? 4 : 0);
     // The overflow count rides on the section label rather than its own row —
     // a small widget has no height to spare
     addSectionLabel(widget, extra > 0 ? `TO BOOK  ·  +${extra}` : "TO BOOK");
@@ -137,7 +136,7 @@ function addSectionLabel(w, text) {
   const txt = w.addText(text);
   txt.font = Font.boldSystemFont(9);
   txt.textColor = MUTED;
-  w.addSpacer(4);
+  w.addSpacer(3);
 }
 
 function centerMessage(w, text) {
