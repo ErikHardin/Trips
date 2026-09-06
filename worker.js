@@ -26,8 +26,22 @@ export default {
       return handleVersion(env);
     }
 
-    // All other routes expect a JSON POST body
-    const body = await request.json();
+    // Everything below is a JSON POST. A GET to an unrouted path used to reach
+    // request.json() and throw, surfacing as an opaque Cloudflare 1101 rather
+    // than "no such route" — which made a stale deploy and a real bug look alike.
+    const CORS_JSON = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+    if (request.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'Not found', path: url.pathname, routes: WORKER_ROUTES }), {
+        status: 404, headers: CORS_JSON
+      });
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'Expected a JSON body' }), { status: 400, headers: CORS_JSON });
+    }
 
     // PIN verification
     if (url.pathname === '/verify-pin') {
@@ -282,7 +296,20 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-06';
+const WORKER_VERSION = '2026-09-06.2';
+
+// Presence of these is reported by /version. Names only, never values — and
+// they are already visible in this file, so nothing is disclosed by listing them.
+const WORKER_ENV_KEYS = [
+  'ANTHROPIC_KEY',
+  'FIREBASE_URL',
+  'FIREBASE_SECRET',
+  'AERODATABOX_KEY',
+  'NTFY_TOPIC',
+  'NTFY_TOKEN',
+  'ADMIN_PIN',
+  'ADMIN_PIN_2',
+];
 
 const WORKER_ROUTES = [
   '/version',
@@ -315,9 +342,13 @@ async function handleVersion(env) {
     }
   }
 
+  const configured = {};
+  for (const k of WORKER_ENV_KEYS) configured[k] = !!env[k];
+
   return new Response(JSON.stringify({
     version: WORKER_VERSION,
     routes:  WORKER_ROUTES,
+    env:     configured,
     firebase,
   }), { headers: CORS });
 }

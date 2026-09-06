@@ -17,6 +17,12 @@ workers_dev = true
 # behaviour change on the first automated deploy.
 compatibility_date = "2026-05-01"
 
+# Keep plain-text variables that were set in the dashboard. Without this a
+# deploy silently deletes any dashboard variable not declared below, and the
+# endpoint that reads it starts failing with no obvious cause. Encrypted secrets
+# are never deleted by a deploy either way.
+keep_vars = true
+
 # ── Environment ───────────────────────────────────────────────────────────────
 # Encrypted secrets are NOT declared here and must not be — they are managed in
 # the dashboard (or `wrangler secret put`) and survive a deploy untouched.
