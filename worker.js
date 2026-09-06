@@ -227,8 +227,13 @@ async function handleWidgetUpcoming(env, request) {
     return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
   }
 
-  const limitParam = parseInt(new URL(request.url).searchParams.get('limit'), 10);
+  const params = new URL(request.url).searchParams;
+  const limitParam = parseInt(params.get('limit'), 10);
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 10) : 3;
+  // How far ahead to look for outstanding bookings. 6 months matches the app's
+  // "Outstanding Travel Bookings" popup; the widget can ask for a wider window.
+  const monthsParam = parseInt(params.get('months'), 10);
+  const months = Number.isFinite(monthsParam) && monthsParam > 0 ? Math.min(monthsParam, 36) : 6;
 
   const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
   let trips, tracker, access;
@@ -278,7 +283,7 @@ async function handleWidgetUpcoming(env, request) {
   // Travel-tracker trips departing in the next 6 months that still need a booking.
   // Mirrors computeOutstandingBookings() in the app so the widget and the
   // "Outstanding Travel Bookings" popup always agree.
-  const windowEndMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 6, now.getUTCDate());
+  const windowEndMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + months, now.getUTCDate());
   const pending = [];
   Object.keys(tracker || {}).forEach(yStr => {
     const year = parseInt(yStr, 10);
@@ -301,6 +306,7 @@ async function handleWidgetUpcoming(env, request) {
 
   return new Response(JSON.stringify({
     todayISO,
+    bookingWindowMonths: months,
     trips: upcoming,
     outstanding: pending.map(({ name, dates, missing }) => ({ name, dates, missing })),
   }), { headers: CORS });
@@ -310,7 +316,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-06.3';
+const WORKER_VERSION = '2026-09-06.4';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
