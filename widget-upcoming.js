@@ -7,31 +7,23 @@
 // your home screen and select this script. A Small widget still works and falls
 // back to a single column with fewer rows.
 //
-// Tapping the widget: iOS hands any https:// URL to the browser, so it can't
-// open the home screen Hardin Trips web app directly. Going through Shortcuts
-// can. One-time setup on the phone:
-//   1. Shortcuts app -> + -> add an "Open App" action -> pick "Hardin Trips"
-//      (home screen web apps show up in that picker on iOS 16.4+).
-//   2. Name the shortcut exactly "Hardin Trips", matching SHORTCUT_NAME below.
-//   3. Tap the widget — it opens the PWA. iOS may flash a brief banner the
-//      first time it runs the shortcut.
-// If "Open App" doesn't list Hardin Trips on this iOS version, set
-// OPEN_TARGET = "safari" below to go back to opening the site in the browser.
+// Tapping the widget runs the "Hardin Trips" shortcut, which opens the
+// installed PWA. iOS hands any https:// URL to the browser, so going through
+// Shortcuts is what keeps the tap out of Safari — the shortcut has to exist on
+// the phone under exactly the name in SHORTCUT_NAME.
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-upcoming";
-const APP_URL    = "https://erikhardin.github.io/Trips/";
-const OPEN_TARGET   = "shortcut";      // "shortcut" opens the PWA, "safari" opens APP_URL
 const SHORTCUT_NAME = "Hardin Trips";  // must match the shortcut's name exactly
 const TRIP_COUNT     = 4;   // upcoming trips to show
 const BOOK_COUNT     = 3;   // outstanding-booking rows to show
-const BOOKING_MONTHS = 6;   // how far ahead to look for outstanding bookings
-                            // 6 matches the app's Outstanding Travel Bookings popup
+const BOOKING_MONTHS = 12;  // how far ahead to look for outstanding bookings
+                            // the app's popup uses 6; the widget looks further out
 
 // Column widths for the medium layout. A medium widget is about 305pt of usable
 // width on a current iPhone; the gap between the columns is flexible, so these
 // stay put and the slack goes down the middle.
-const COL_TRIPS = 178;
+const COL_TRIPS = 200;
 const COL_BOOK  = 115;
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -55,9 +47,7 @@ try {
 const widget = new ListWidget();
 widget.backgroundColor = BG;
 widget.setPadding(10, 12, 10, 12);
-widget.url = OPEN_TARGET === "shortcut"
-  ? `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}`
-  : APP_URL;
+widget.url = `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}`;
 
 const trips       = data?.trips || [];
 const outstanding = data?.outstanding || [];
@@ -147,19 +137,42 @@ function addTripRow(w, trip) {
 }
 
 // "Aspen                ✈️🏨"
+// "Jan 5-8"
+//
+// The dates go under the name rather than beside it: the column is only
+// COL_BOOK wide, and a second field on the same line would scale both down to
+// where neither reads. The box grows taller to fit, so its vertical padding is
+// wider than the name-only row it replaced, and the icons center against the
+// whole block instead of riding the first line.
+//
+// entry.dates is whatever the travel tracker holds ("8/6/26", "Jan 5-8"), shown
+// as-is so the widget and the tracker never disagree. The worker only sends
+// bookings whose dates it could parse, so this is set in practice; the guard is
+// for that shape changing upstream.
 function addBookingRow(w, entry) {
   const row = w.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
   row.backgroundColor = SAND;
   row.cornerRadius = 6;
-  row.setPadding(2, 6, 2, 6);
+  row.setPadding(4, 6, 4, 6);
 
-  const nameTxt = row.addText(entry.name || "Trip");
+  const text = row.addStack();
+  text.layoutVertically();
+
+  const nameTxt = text.addText(entry.name || "Trip");
   nameTxt.font = Font.mediumSystemFont(10);
   nameTxt.textColor = INK;
   nameTxt.lineLimit = 1;
   nameTxt.minimumScaleFactor = 0.8;
+
+  if (entry.dates) {
+    const dateTxt = text.addText(entry.dates);
+    dateTxt.font = Font.systemFont(9);
+    dateTxt.textColor = MUTED;
+    dateTxt.lineLimit = 1;
+    dateTxt.minimumScaleFactor = 0.8;
+  }
 
   row.addSpacer();
 
