@@ -1,84 +1,69 @@
 # Deploying
 
-The app (`index.html`) is a static page served by GitHub Pages — pushing to
-`main` publishes it.
+**The app** (`index.html`) is a static page on GitHub Pages — pushing to `main`
+publishes it.
 
-The Cloudflare Worker (`worker.js`) is separate, and has historically been
-deployed by pasting the file into the Cloudflare dashboard. That drifts: at one
-point the deployed Worker served a `/verify-pin` route that had never been
-committed, so the repo copy would have silently deleted it. Connecting the
-Worker to GitHub removes that whole class of problem — `main` becomes the
-deployed build by definition.
+**The Worker** (`worker.js`) deploys to Cloudflare via **Workers Builds**, its
+native GitHub integration. Pushing to `main` redeploys it.
 
-`wrangler.toml` in the repo root is what makes either option below work.
+That means `main` *is* the deployed Worker. It used to be pasted into the
+Cloudflare dashboard by hand, which drifted: at one point production served a
+`/verify-pin` route that had never been committed, so the repo copy would have
+silently deleted it. Don't go back to pasting — see "After setup" below.
 
-## Before the first automated deploy
+`wrangler.toml` in the repo root is what makes this work.
 
-Open the Worker in the Cloudflare dashboard → **Settings → Variables and
-Secrets**, and check whether each entry is an encrypted **Secret** or a
-plain-text **Variable**.
+---
+
+## One-time setup
+
+### 1. Check the variables first
+
+This is the step that breaks things if skipped.
+
+Cloudflare dashboard → the `hardin-trips-ai` Worker → **Settings → Variables and
+Secrets**. Each entry is either an encrypted **Secret** or a plain-text
+**Variable**:
 
 - **Encrypted secrets survive a deploy untouched.** Nothing to do.
 - **Plain-text variables do not.** `wrangler.toml` is authoritative for them, so
-  any plain-text variable not listed in a `[vars]` block is removed on deploy.
+  any plain-text variable not declared in a `[vars]` block is *removed* on
+  deploy.
 
-`FIREBASE_URL` is the likely candidate. If it shows as a plain Variable,
-uncomment the `[vars]` block at the bottom of `wrangler.toml` before deploying.
-Getting this wrong makes every widget endpoint return
-`FIREBASE_URL not configured`.
+`FIREBASE_URL` is the likely candidate — its value isn't sensitive, so it may
+well have been set as a plain Variable. If so, uncomment the `[vars]` block at
+the bottom of `wrangler.toml` before the first build. Getting this wrong makes
+every widget endpoint return `FIREBASE_URL not configured`.
 
-Also note the **compatibility date** (Settings → Runtime) and match it in
-`wrangler.toml` if it differs.
+While you're on that screen, note the **compatibility date** (Settings →
+Runtime) and match it in `wrangler.toml` if it differs from what's there.
 
-## Option A — Workers Builds (recommended)
+The Worker reads: `ANTHROPIC_KEY`, `FIREBASE_URL`, `FIREBASE_SECRET`,
+`AERODATABOX_KEY`, `NTFY_TOPIC`, `NTFY_TOKEN`, `ADMIN_PIN`, `ADMIN_PIN_2`.
 
-Cloudflare's built-in GitHub integration. No API tokens to manage, no workflow
-file.
+### 2. Connect the repo
 
-1. Cloudflare dashboard → **Workers & Pages** → `hardin-trips-ai` → **Settings**
-   → **Build**.
-2. **Connect** to GitHub, authorise the `ErikHardin/Trips` repository.
-3. Branch: `main`. Root directory: repo root.
-4. Build command: leave empty. Deploy command: `npx wrangler deploy`.
+Dashboard → **Workers & Pages** → `hardin-trips-ai` → **Settings** → **Build**.
 
-Every push to `main` that touches the Worker redeploys it. Build watch paths can
-be narrowed to `worker.js` and `wrangler.toml` so unrelated `index.html` pushes
-don't trigger a build.
+- **Connect** to GitHub and authorise `ErikHardin/Trips`.
+- Branch: `main`
+- Root directory: repo root
+- Build command: *leave empty*
+- Deploy command: `npx wrangler@4 deploy`
 
-## Option B — GitHub Actions
+The major version is pinned so a future wrangler release can't change deploy
+behaviour without an explicit bump here.
 
-Use this instead if you'd rather keep deploys in the repo. Requires a Cloudflare
-API token with the **Edit Cloudflare Workers** template, stored as the
-`CLOUDFLARE_API_TOKEN` repository secret (plus `CLOUDFLARE_ACCOUNT_ID`).
+### 3. Narrow the build triggers
 
-```yaml
-# .github/workflows/deploy-worker.yml
-name: Deploy Worker
-on:
-  push:
-    branches: [main]
-    paths: ['worker.js', 'wrangler.toml']
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-```
+Set build watch paths to `worker.js` and `wrangler.toml`. Most pushes to this
+repo only touch `index.html`, and without this every one of them starts a build.
 
-**Pick one.** Enabling both deploys the Worker twice on every push.
-
-## Confirming a deploy landed
+### 4. Confirm the first deploy
 
 ```
 curl https://hardin-trips-ai.erikchardin.workers.dev/version
 ```
-
-Returns the build marker, the routes the deployed build serves, and whether the
-Firebase credential still works:
 
 ```json
 {
@@ -89,6 +74,27 @@ Firebase credential still works:
 }
 ```
 
-A route you expect but don't see means the deployed Worker is stale.
-`firebase.ok: false` means the credential is rejected — the widgets will come
-back empty or error regardless of which build is deployed.
+- `/version` responding at all means the build landed.
+- A route you expect but don't see means the deployed build is stale.
+- `firebase.ok: false` means the credential is rejected — widgets will error or
+  come back empty no matter which build is deployed.
+
+---
+
+## After setup
+
+**Don't edit the Worker in the Cloudflare dashboard again.** Dashboard edits are
+overwritten by the next push and reintroduce exactly the drift this replaces.
+Change `worker.js`, push to `main`, let the build run.
+
+Rolling back is a `git revert` and a push, or a previous version promoted from
+the Worker's **Deployments** tab.
+
+Bump `WORKER_VERSION` in `worker.js` when you want the deployed build to be
+identifiable by more than its route list.
+
+## Not used here
+
+A `cloudflare/wrangler-action` GitHub Actions workflow is the alternative to
+Workers Builds. Don't add one alongside this — both connected means every push
+deploys the Worker twice.

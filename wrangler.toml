@@ -1,8 +1,8 @@
 # Cloudflare Worker config for hardin-trips-ai.
 #
-# With this file committed, the Worker can deploy from GitHub automatically
-# instead of being pasted into the dashboard by hand. See DEPLOY.md for the
-# one-time setup.
+# This Worker deploys via Cloudflare Workers Builds: pushing worker.js to main
+# redeploys it. See DEPLOY.md for the one-time setup, and don't edit the Worker
+# in the Cloudflare dashboard afterwards — those edits get overwritten.
 #
 # The name and the workers.dev subdomain must keep matching the URL the app and
 # the Scriptable widgets call: hardin-trips-ai.erikchardin.workers.dev
