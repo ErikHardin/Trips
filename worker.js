@@ -25,6 +25,12 @@ export default {
       return handleWidgetUpcoming(env, request);
     }
 
+    // Deployed-build probe — GET, so it can be checked from a browser or curl.
+    // Answers "is the Worker in Cloudflare current?" without reading its source.
+    if (url.pathname === '/version') {
+      return handleVersion(env);
+    }
+
     // All other routes expect a JSON POST body
     const body = await request.json();
 
@@ -219,8 +225,8 @@ async function handleWidgetUpcoming(env, request) {
   let trips, tracker;
   try {
     [trips, tracker] = await Promise.all([
-      fetch(env.FIREBASE_URL + '/trips.json'         + auth).then(r => r.ok ? r.json() : null),
-      fetch(env.FIREBASE_URL + '/travelTracker.json' + auth).then(r => r.ok ? r.json() : null),
+      wFetchJson(env.FIREBASE_URL + '/trips.json'         + auth),
+      wFetchJson(env.FIREBASE_URL + '/travelTracker.json' + auth),
     ]);
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
@@ -275,6 +281,59 @@ async function handleWidgetUpcoming(env, request) {
     trips: upcoming,
     outstanding: pending.map(({ name, dates, missing }) => ({ name, dates, missing })),
   }), { headers: CORS });
+}
+
+// Bump this whenever worker.js changes, so a deployed build can be identified
+// from outside Cloudflare. GET /version reports it alongside the routes this
+// build serves — if the list is missing a route you expect, the deployed Worker
+// is stale and needs re-pasting.
+const WORKER_VERSION = '2026-09-06';
+
+const WORKER_ROUTES = [
+  '/version',
+  '/widget-data',
+  '/widget-driving',
+  '/widget-upcoming',
+  '/verify-pin',
+  '/flight-lookup',
+  '/ntfy-config',
+];
+
+async function handleVersion(env) {
+  const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
+  // A shallow read is the cheapest call that still exercises the Firebase
+  // credential, so a revoked secret shows up here instead of as empty widgets
+  const firebase = {
+    urlConfigured:    !!env.FIREBASE_URL,
+    secretConfigured: !!env.FIREBASE_SECRET,
+    status:           null,
+    ok:               false,
+  };
+  if (env.FIREBASE_URL) {
+    try {
+      const auth = env.FIREBASE_SECRET ? '&auth=' + env.FIREBASE_SECRET : '';
+      const r = await fetch(env.FIREBASE_URL + '/trips.json?shallow=true' + auth);
+      firebase.status = r.status;
+      firebase.ok     = r.ok;
+    } catch (e) {
+      firebase.error = e.message;
+    }
+  }
+
+  return new Response(JSON.stringify({
+    version: WORKER_VERSION,
+    routes:  WORKER_ROUTES,
+    firebase,
+  }), { headers: CORS });
+}
+
+// Throws on a non-OK response so a rejected credential surfaces as an error.
+// An empty trip list and a 401 must not look the same to the widget.
+async function wFetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('status ' + r.status);
+  return r.json();
 }
 
 const W_BOOKING_FIELDS = ['flights', 'hotel', 'car'];
