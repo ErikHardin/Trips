@@ -1,0 +1,46 @@
+# Cloudflare Worker config for hardin-trips-ai.
+#
+# This Worker deploys via Cloudflare Workers Builds: pushing worker.js to main
+# redeploys it. See DEPLOY.md for the one-time setup, and don't edit the Worker
+# in the Cloudflare dashboard afterwards — those edits get overwritten.
+#
+# The name and the workers.dev subdomain must keep matching the URL the app and
+# the Scriptable widgets call: hardin-trips-ai.erikchardin.workers.dev
+
+name = "hardin-trips-ai"
+main = "worker.js"
+workers_dev = true
+
+# Set this to whatever the Worker's current compatibility date is in the
+# Cloudflare dashboard (Settings → Runtime). worker.js only uses fetch, Request,
+# Response and URL, so it isn't sensitive to this, but matching avoids any
+# behaviour change on the first automated deploy.
+compatibility_date = "2026-05-01"
+
+# ── Environment ───────────────────────────────────────────────────────────────
+# Encrypted secrets are NOT declared here and must not be — they are managed in
+# the dashboard (or `wrangler secret put`) and survive a deploy untouched.
+#
+# worker.js reads these:
+#   ANTHROPIC_KEY     AI proxy
+#   FIREBASE_URL      Realtime Database base URL      (see note below)
+#   FIREBASE_SECRET   Realtime Database auth token
+#   AERODATABOX_KEY   /flight-lookup
+#   NTFY_TOPIC        /ntfy-config
+#   NTFY_TOKEN        /ntfy-config (optional)
+#   ADMIN_PIN         /verify-pin
+#   ADMIN_PIN_2       /verify-pin
+#
+# IMPORTANT — check this before the first automated deploy. In the dashboard,
+# each of the above is either an encrypted "Secret" or a plain-text "Variable".
+# Encrypted secrets persist across deploys. Plain-text variables do NOT: this
+# file is authoritative for them, so any plain-text variable missing from a
+# [vars] block below is dropped on deploy, and the endpoint that reads it starts
+# failing.
+#
+# FIREBASE_URL is the likely one, since its value isn't sensitive (the same URL
+# is hard-coded in widget.js). If the dashboard shows it as a plain Variable
+# rather than an encrypted Secret, uncomment this block:
+#
+# [vars]
+# FIREBASE_URL = "https://hardin-trips-default-rtdb.firebaseio.com"
