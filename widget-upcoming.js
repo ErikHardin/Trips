@@ -6,10 +6,23 @@
 // Install: paste this into a new Scriptable script, then add a Medium widget to
 // your home screen and select this script. A Small widget still works and falls
 // back to a single column with fewer rows.
+//
+// Tapping the widget: iOS hands any https:// URL to the browser, so it can't
+// open the home screen Hardin Trips web app directly. Going through Shortcuts
+// can. One-time setup on the phone:
+//   1. Shortcuts app -> + -> add an "Open App" action -> pick "Hardin Trips"
+//      (home screen web apps show up in that picker on iOS 16.4+).
+//   2. Name the shortcut exactly "Hardin Trips", matching SHORTCUT_NAME below.
+//   3. Tap the widget — it opens the PWA. iOS may flash a brief banner the
+//      first time it runs the shortcut.
+// If "Open App" doesn't list Hardin Trips on this iOS version, set
+// OPEN_TARGET = "safari" below to go back to opening the site in the browser.
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-upcoming";
 const APP_URL    = "https://erikhardin.github.io/Trips/";
+const OPEN_TARGET   = "shortcut";      // "shortcut" opens the PWA, "safari" opens APP_URL
+const SHORTCUT_NAME = "Hardin Trips";  // must match the shortcut's name exactly
 const TRIP_COUNT     = 4;   // upcoming trips to show
 const BOOK_COUNT     = 3;   // outstanding-booking rows to show
 const BOOKING_MONTHS = 6;   // how far ahead to look for outstanding bookings
@@ -42,7 +55,9 @@ try {
 const widget = new ListWidget();
 widget.backgroundColor = BG;
 widget.setPadding(10, 12, 10, 12);
-widget.url = APP_URL;
+widget.url = OPEN_TARGET === "shortcut"
+  ? `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}`
+  : APP_URL;
 
 const trips       = data?.trips || [];
 const outstanding = data?.outstanding || [];
