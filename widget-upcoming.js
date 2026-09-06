@@ -1,16 +1,25 @@
-// Hardin Trips — Upcoming & To Book · Scriptable small (square) widget
+// Hardin Trips — Upcoming & To Book · Scriptable medium widget
 // Shows the next few trips with a day countdown, plus the travel-tracker trips
 // that still need flights/hotel/car booked — the same list the app's
 // "Outstanding Travel Bookings" popup shows.
 //
-// Install: paste this into a new Scriptable script, then add a Small widget to
-// your home screen and select this script.
+// Install: paste this into a new Scriptable script, then add a Medium widget to
+// your home screen and select this script. A Small widget still works and falls
+// back to a single column with fewer rows.
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const WORKER_URL = "https://hardin-trips-ai.erikchardin.workers.dev/widget-upcoming";
 const APP_URL    = "https://erikhardin.github.io/Trips/";
-const TRIP_COUNT = 3;   // upcoming trips to show
-const BOOK_COUNT = 2;   // outstanding-booking rows to show (grows when fewer trips)
+const TRIP_COUNT     = 4;   // upcoming trips to show
+const BOOK_COUNT     = 3;   // outstanding-booking rows to show
+const BOOKING_MONTHS = 6;   // how far ahead to look for outstanding bookings
+                            // 6 matches the app's Outstanding Travel Bookings popup
+
+// Column widths for the medium layout. A medium widget is about 305pt of usable
+// width on a current iPhone; the gap between the columns is flexible, so these
+// stay put and the slack goes down the middle.
+const COL_TRIPS = 178;
+const COL_BOOK  = 115;
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const BG         = new Color("#e8ddd0");
@@ -24,7 +33,7 @@ const BOOKING_ICONS = { flights: "✈️", hotel: "🏨", car: "🚗" };
 // ── Fetch data ────────────────────────────────────────────────────────────────
 let data = null;
 try {
-  data = await new Request(`${WORKER_URL}?limit=${TRIP_COUNT}`).loadJSON();
+  data = await new Request(`${WORKER_URL}?limit=${TRIP_COUNT}&months=${BOOKING_MONTHS}`).loadJSON();
 } catch (e) {
   data = null;
 }
@@ -43,28 +52,34 @@ if (!data || data.error) {
   centerMessage(widget, "⚠️  Can't reach trips");
 } else if (!trips.length && !outstanding.length) {
   centerMessage(widget, "✈️  No upcoming trips");
+} else if (config.widgetFamily === "small") {
+  // Single column: one section above the other, and only what fits
+  buildColumn(widget, "TRIP COUNTDOWN", trips.slice(0, 3), addTripRow);
+  if (trips.length && outstanding.length) widget.addSpacer(4);
+  buildColumn(widget, "TO BOOK", outstanding.slice(0, 2), addBookingRow, outstanding.length - 2);
+  widget.addSpacer();
 } else {
-  if (trips.length) addSectionLabel(widget, "TRIP COUNTDOWN");
-  trips.slice(0, TRIP_COUNT).forEach((trip, i) => {
-    if (i) widget.addSpacer(2);
-    addTripRow(widget, trip);
-  });
+  // Medium is the same height as small but twice as wide, so the two sections
+  // sit side by side instead of stacking — which is what makes room for four
+  // trips and three bookings at once.
+  const row = widget.addStack();
+  row.layoutHorizontally();
+  row.topAlignContent();
 
-  if (outstanding.length) {
-    // A short trip list frees up rows for bookings, keeping the widget evenly filled
-    const bookRows = Math.max(1, BOOK_COUNT + (TRIP_COUNT - trips.length));
-    const shown = outstanding.slice(0, bookRows);
-    const extra = outstanding.length - shown.length;
+  const left = row.addStack();
+  left.layoutVertically();
+  left.size = new Size(COL_TRIPS, 0);
+  buildColumn(left, "TRIP COUNTDOWN", trips.slice(0, TRIP_COUNT), addTripRow);
+  left.addSpacer();
 
-    widget.addSpacer(trips.length ? 4 : 0);
-    // The overflow count rides on the section label rather than its own row —
-    // a small widget has no height to spare
-    addSectionLabel(widget, extra > 0 ? `TO BOOK  ·  +${extra}` : "TO BOOK");
-    shown.forEach((entry, i) => {
-      if (i) widget.addSpacer(2);
-      addBookingRow(widget, entry);
-    });
-  }
+  row.addSpacer();
+
+  const right = row.addStack();
+  right.layoutVertically();
+  right.size = new Size(COL_BOOK, 0);
+  const shown = outstanding.slice(0, BOOK_COUNT);
+  buildColumn(right, "TO BOOK", shown, addBookingRow, outstanding.length - shown.length);
+  right.addSpacer();
 }
 
 widget.addSpacer();
@@ -72,17 +87,35 @@ widget.addSpacer();
 Script.setWidget(widget);
 Script.complete();
 
+// ── Columns and rows ──────────────────────────────────────────────────────────
+
+// A labelled section: heading, then one row per entry. `extra` puts an overflow
+// count on the heading rather than spending a row on it.
+function buildColumn(container, label, entries, addRow, extra = 0) {
+  if (!entries.length) return;
+  addSectionLabel(container, extra > 0 ? `${label}  ·  +${extra}` : label);
+  entries.forEach((entry, i) => {
+    if (i) container.addSpacer(2);
+    addRow(container, entry);
+  });
+}
+
 // ── Rows ──────────────────────────────────────────────────────────────────────
 
-// "France                     13d"
+// "🇫🇷 France            13d"
 //
-// No trip emoji: the field often holds several ("🇩🇰🛳️🇬🇧"), which wrapped onto
-// a second line, inflated the row and squeezed the name into an ellipsis. The
-// name is what identifies the trip, so it gets the whole row.
+// lineLimit on the emoji matters: the field often holds several ("🇩🇰🛳️🇬🇧"), and
+// left to wrap they take a second line and squash the name into an ellipsis.
 function addTripRow(w, trip) {
   const row = w.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
+
+  const emojiTxt = row.addText(trip.emoji || "✈️");
+  emojiTxt.font = Font.systemFont(11);
+  emojiTxt.lineLimit = 1;
+
+  row.addSpacer(4);
 
   const nameTxt = row.addText(trip.name || "Trip");
   nameTxt.font = Font.boldSystemFont(12);
