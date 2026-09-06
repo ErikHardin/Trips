@@ -83,7 +83,7 @@ Firebase credential still works:
 ```json
 {
   "version": "2026-09-06",
-  "routes": ["/version", "/widget-data", "/widget-driving", "/widget-upcoming",
+  "routes": ["/version", "/widget-data", "/widget-upcoming",
              "/verify-pin", "/flight-lookup", "/ntfy-config"],
   "firebase": { "urlConfigured": true, "secretConfigured": true, "status": 200, "ok": true }
 }
