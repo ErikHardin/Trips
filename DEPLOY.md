@@ -43,21 +43,41 @@ The Worker reads: `ANTHROPIC_KEY`, `FIREBASE_URL`, `FIREBASE_SECRET`,
 
 ### 2. Connect the repo
 
-Dashboard → **Workers & Pages** → `hardin-trips-ai` → **Settings** → **Build**.
+Dashboard → **Workers & Pages** → `hardin-trips-ai` → **Settings** tab → **Builds**
+in the right-hand sub-nav (alongside Observability, Runtime, Triggers, General).
 
-- **Connect** to GitHub and authorise `ErikHardin/Trips`.
-- Branch: `main`
-- Root directory: repo root
-- Build command: *leave empty*
-- Deploy command: `npx wrangler@4 deploy`
+Under **Git repository**, **Connect** and authorise the Cloudflare GitHub app for
+`ErikHardin/Trips`.
+
+**Build configuration:**
+
+| Field | Value |
+|---|---|
+| Build command | *empty* |
+| Deploy command | `npx wrangler@4 deploy` |
+| Version command | `npx wrangler@4 versions upload` |
+| Root directory | `/` |
 
 The major version is pinned so a future wrangler release can't change deploy
 behaviour without an explicit bump here.
 
+**Branch control:** production branch `main`.
+
+*Builds for non-production branches* controls whether pushes to other branches
+also build. When on, those run the **version command** — uploading a preview
+version rather than deploying to production, so it is safe, but it means every
+push to every branch consumes build minutes. Off is the quieter default; on is
+useful while first proving the connection works.
+
 ### 3. Narrow the build triggers
 
-Set build watch paths to `worker.js` and `wrangler.toml`. Most pushes to this
-repo only touch `index.html`, and without this every one of them starts a build.
+Under **Build watch paths**, set **Include paths** to `worker.js` and
+`wrangler.toml`. Most pushes to this repo only touch `index.html`, and without
+this every one of them starts a build.
+
+Set this *after* you've confirmed the first build runs — with watch paths in
+place, a docs-only commit won't trigger anything, which makes a broken
+connection harder to tell apart from a correctly skipped build.
 
 ### 4. Confirm the first deploy
 
@@ -80,6 +100,23 @@ curl https://hardin-trips-ai.erikchardin.workers.dev/version
   come back empty no matter which build is deployed.
 
 ---
+
+## "This project is disconnected from your Git account"
+
+A banner saying this can appear in the Builds section even when the repository
+is filled in and the setup looks complete. It has been reported against both
+Workers and Pages, sometimes as a stale warning that builds fine anyway, and
+sometimes as a genuinely broken link after a repository transfer or a lapsed
+authorisation.
+
+Don't guess which it is — push a commit and watch the Builds section. A build
+appearing is the answer.
+
+If no build starts, or it fails on repository access: **Git repository** →
+**Manage** → re-authorise the Cloudflare app for `ErikHardin/Trips` on GitHub.
+Check <https://github.com/settings/installations> and, for an org-owned
+repository, use **Switch settings context** to reach the org's copy of that
+page.
 
 ## After setup
 
