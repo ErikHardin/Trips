@@ -278,7 +278,21 @@ async function handleWidgetUpcoming(env, request) {
       startDateISO: startISO,
       endDateISO:   endISO,
       daysUntil:    Math.max(0, Math.round((Date.parse(startISO + 'T00:00:00Z') - todayMs) / 86400000)),
+      weatherCity:  wTripWeatherCity(t),
+      lat:          null,
+      lon:          null,
     }));
+
+  // Where each trip is going, as coordinates. The dashboard widget shows the
+  // weather there, and it can't work this out for itself: the trips node needs
+  // auth to read, so the day cities it would need aren't reachable from a
+  // widget. Resolved per trip and never fatal — a trip whose city doesn't
+  // geocode comes back with nulls and the widget drops that tile.
+  await Promise.all(upcoming.map(async trip => {
+    if (!trip.weatherCity) return;
+    const coords = await wCityCoords(trip.weatherCity, env);
+    if (coords) { trip.lat = coords.lat; trip.lon = coords.lon; }
+  }));
 
   // Travel-tracker trips departing in the next 6 months that still need a booking.
   // Mirrors computeOutstandingBookings() in the app so the widget and the
@@ -316,7 +330,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-06.4';
+const WORKER_VERSION = '2026-09-07.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -406,6 +420,80 @@ function wTripEndISO(t) {
     if (dates.length) return dates[dates.length - 1];
   }
   return wTripStartISO(t);
+}
+
+// A day's city field carries decoration the geocoder chokes on: leading travel
+// emoji ("🛬 Arrive Lyon") and a second place after a separator ("Lyon ·
+// Beaujolais", "Domaine Tempier, Bandol"). Keep the first place named.
+function wCleanCity(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/[🛬🚗✈️🏠]/g, '')
+    .split('·')[0]
+    .split(',')[0]
+    .trim();
+}
+
+// Travel and transition days name a state rather than a place. Same skip list
+// as getCityCoords() in index.html.
+function wIsNonPlace(city) {
+  const l = city.toLowerCase();
+  return !l || l === 'in flight' || l.startsWith('home') || l.startsWith('fly out');
+}
+
+// The destination to show weather for: the earliest day of the trip that names
+// a real place, so a trip that opens with a travel day still resolves to where
+// it's going. Falls back to the day's region, then description.
+function wTripWeatherCity(t) {
+  if (!t.days) return '';
+  const days = Object.values(t.days).sort((a, b) => {
+    const ai = a.dateISO || dayDateISO(a, t.year) || '';
+    const bi = b.dateISO || dayDateISO(b, t.year) || '';
+    if (ai && bi) return ai.localeCompare(bi);
+    return (a.sortOrder || 0) - (b.sortOrder || 0);
+  });
+  for (const d of days) {
+    for (const field of [d.city, d.region, d.description]) {
+      const city = wCleanCity(field);
+      if (city && !wIsNonPlace(city)) return city;
+    }
+  }
+  return '';
+}
+
+// The app geocodes every day card it renders and writes the result to Firebase
+// under geocache/<slug> (getCityCoords() in index.html), through a provider
+// chain far better than the free geocoder below — so the cache is both the
+// first source and the best one. The version stamp matches the app's: entries
+// below it were written by a geocoder with a known region-center bias bug.
+const W_GEO_V = 3;
+
+async function wCityCoords(city, env) {
+  const slug = city.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  try {
+    const c = await wFetchJson(env.FIREBASE_URL + '/geocache/' + slug + '.json' + auth);
+    if (c && !c.notFound && (c.v || 0) >= W_GEO_V && c.lat != null && c.lng != null) {
+      return { lat: c.lat, lon: c.lng };
+    }
+  } catch (e) {}
+
+  // Open-Meteo ranks by population and its top hit is sometimes an unrelated
+  // town that merely aliases the name — searching "Sonoma" returns Ennis, Texas
+  // first — so take several and prefer one that actually matches.
+  try {
+    const r = await wFetchJson(
+      'https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=' + encodeURIComponent(city)
+    );
+    const results = r.results || [];
+    if (!results.length) return null;
+    const exact = results.find(x => String(x.name || '').toLowerCase() === city.toLowerCase());
+    const hit = exact || results[0];
+    if (hit.latitude == null || hit.longitude == null) return null;
+    return { lat: hit.latitude, lon: hit.longitude };
+  } catch (e) {}
+
+  return null;
 }
 
 // Parse a travel-tracker `dates` string ("8/6/26", "Jan 5-8") into {m, d}.
