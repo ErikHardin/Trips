@@ -25,7 +25,7 @@
 // shows the two standing cities, which is also what it does at home.
 //
 // A Medium or Small widget falls back to the trip/booking columns alone —
-// there's no room for the weather tiles at those sizes.
+// there's no room for the weather rows at those sizes.
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const WORKER_URL     = "https://hardin-trips-ai.erikchardin.workers.dev/widget-upcoming";
@@ -50,6 +50,11 @@ const CITIES = [
 // the strip drops to two wider ones instead.
 const HERE_MIN_MILES = 25;
 
+// Days of forecast beside today. One more than this is requested, because
+// index 0 of the daily arrays is today, which each row already shows.
+const FORECAST_DAYS = 5;
+const FORECAST_DAYS_TIGHT = 3;   // three cities: less width to spend
+
 // Match the web app: JsBarcode encodes the code plus a trailing newline
 // (the kiosk scanner treats it as an Enter keypress).
 const APPEND_NEWLINE = true;
@@ -62,11 +67,6 @@ const COL_BOOK_LARGE  = 110;
 const COL_TRIPS_MED   = 200;
 const COL_BOOK_MED    = 115;
 
-// Tile width by how many tiles there are, so two fill the same strip three do:
-// on a 340pt-wide widget that's 316pt of content, and the flexible gaps between
-// them absorb the extra width of a 6.7" phone. Height is left to the content.
-const TILE_W = { 2: 152, 3: 100 };
-
 // The parcel band, laid out left to right: the text block, then whatever's
 // left goes to the barcode. 136pt puts about 1.2pt in a narrow bar — half the
 // stand-alone widget's, which is why the full-screen one stays a tap away.
@@ -76,6 +76,14 @@ const BARCODE_H     = 34;
 
 // The two fixed flanks of a trip row: four Apple flags at 11pt come to about
 // 52pt, and "172d" at 13pt bold to about 30pt.
+// A weather row spans the widget: 316pt of content, less 20pt of padding. The
+// left block is fixed so every row's forecast starts at the same x — a ragged
+// left edge there is what makes a stack of rows look accidental. What's left
+// divides into day columns, or into the wider two-line chips the away row uses.
+const ROW_LEFT_W = 112;
+const DAY_W      = 31;
+const CHIP_W     = 44;
+
 const EMOJI_W = 52;
 const COUNT_W = 34;
 
@@ -223,7 +231,7 @@ async function fetchWeather(points) {
     + "&longitude=" + points.map(p => p.lon).join(",")
     + "&current=temperature_2m,weather_code"
     + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
-    + "&temperature_unit=fahrenheit&timezone=auto&forecast_days=1";
+    + "&temperature_unit=fahrenheit&timezone=auto&forecast_days=" + (FORECAST_DAYS + 1);
 
   const fm = FileManager.local();
   const path = fm.joinPath(fm.cacheDirectory(), "trips-dashboard-weather.json");
@@ -252,8 +260,32 @@ async function fetchWeather(points) {
     const lo   = Math.round(w?.daily?.temperature_2m_min?.[0]);
     if (code == null || isNaN(now)) return { label: p.label, emoji: p.emoji, ok: false };
     const { emoji: sky, cond } = wxInfo(code);
-    return { label: p.label, emoji: p.emoji, ok: true, sky, cond, now, hi, lo };
+    return { label: p.label, emoji: p.emoji, ok: true, sky, cond, now, hi, lo, days: forecastDays(w) };
   });
+}
+
+// The days after today. Index 0 of the daily arrays is today, which every row
+// already carries as its own high/low, so the forecast starts at 1.
+function forecastDays(w) {
+  const time = w?.daily?.time || [];
+  const out = [];
+  for (let i = 1; i < time.length; i++) {
+    const hi   = Math.round(w.daily.temperature_2m_max?.[i]);
+    const lo   = Math.round(w.daily.temperature_2m_min?.[i]);
+    const code = w.daily.weather_code?.[i];
+    if (code == null || isNaN(hi) || isNaN(lo)) continue;
+    out.push({ dow: dowLabel(time[i]), sky: wxInfo(code).emoji, hi, lo });
+  }
+  return out;
+}
+
+// The API dates each day in the city's own timezone. Anchoring at noon UTC and
+// reading it back in UTC is what stops the label sliding a day either way when
+// the phone is somewhere else entirely.
+function dowLabel(iso) {
+  return new Date(iso + "T12:00:00Z")
+    .toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })
+    .toUpperCase();
 }
 
 // Icon and wording straight from wxInfo() in index.html, so a tile and the
@@ -462,78 +494,183 @@ function addBookingRow(w, entry) {
   iconTxt.lineLimit = 1;
 }
 
-// The weather strip. Two tiles or three, filling the same width either way —
-// with only two there's room for larger type, so it takes it.
+// The weather strip: one full-width row per city, today on the left and the
+// days ahead across the right. Three cities can't hold five days at a readable
+// size, so the away layout drops to a tighter row and three.
 function addWeatherSection(w, weather) {
   addSectionLabel(w, "WEATHER NOW");
+  const tight = weather.length > 2;
+  weather.forEach((wx, i) => {
+    if (i) w.addSpacer(6);
+    if (tight) addCityLine(w, wx);
+    else       addCityRow(w, wx);
+  });
+}
 
-  const wide = weather.length <= 2;
-  const size = {
-    label: wide ? 10 : 9,
-    icon:  wide ? 25 : 21,
-    temp:  wide ? 32 : 26,
-    range: wide ? 12 : 10,
-    cond:  wide ? 11 :  9,
-    pad:   wide ? 11 :  9,
-  };
-
+// "🏠 DENVER                TUE   WED   THU   FRI   SAT"
+// "☁️ 79°  93°/65°          🌦️    ☁️    ☁️    🌦️   🌦️"
+// "                         86/64 87/63 91/68 91/73 94/71"
+function addCityRow(w, wx) {
   const row = w.addStack();
   row.layoutHorizontally();
+  row.centerAlignContent();
+  row.backgroundColor = SAND;
+  row.cornerRadius = 10;
+  row.setPadding(10, 10, 10, 10);
   row.url = TRIPS_URL;
 
-  weather.forEach((wx, i) => {
-    if (i) row.addSpacer();
+  const left = row.addStack();
+  left.layoutVertically();
+  left.size = new Size(ROW_LEFT_W, 0);
 
-    const tile = row.addStack();
-    tile.layoutVertically();
-    tile.backgroundColor = SAND;
-    tile.cornerRadius = 10;
-    tile.setPadding(size.pad, size.pad, size.pad, size.pad);
-    tile.size = new Size(TILE_W[weather.length] || TILE_W[3], 0);
+  const label = left.addText(cityLabel(wx));
+  label.font = Font.semiboldSystemFont(10);
+  label.textColor = MUTED;
+  label.lineLimit = 1;
+  label.minimumScaleFactor = 0.7;
 
-    const label = tile.addText(wx.emoji ? wx.emoji + " " + wx.label.toUpperCase() : wx.label.toUpperCase());
-    label.font = Font.semiboldSystemFont(size.label);
-    label.textColor = MUTED;
-    label.lineLimit = 1;
-    label.minimumScaleFactor = 0.7;
+  left.addSpacer(3);
 
-    tile.addSpacer(4);
+  const now = left.addStack();
+  now.layoutHorizontally();
+  now.centerAlignContent();
 
-    const tempRow = tile.addStack();
-    tempRow.layoutHorizontally();
-    tempRow.centerAlignContent();
+  const icon = now.addText(wx.ok ? wx.sky : "—");
+  icon.font = Font.systemFont(18);
+  icon.lineLimit = 1;
 
-    const icon = tempRow.addText(wx.ok ? wx.sky : "—");
-    icon.font = Font.systemFont(size.icon);
-    icon.lineLimit = 1;
+  if (wx.ok) {
+    now.addSpacer(5);
+    const temp = now.addText(wx.now + "°");
+    temp.font = Font.boldSystemFont(24);
+    temp.textColor = INK;
+    temp.lineLimit = 1;
+    temp.minimumScaleFactor = 0.6;
 
-    if (wx.ok) {
-      tempRow.addSpacer(6);
-      const temp = tempRow.addText(wx.now + "°");
-      temp.font = Font.boldSystemFont(size.temp);
-      temp.textColor = INK;
-      temp.lineLimit = 1;
-      temp.minimumScaleFactor = 0.6;
-    }
-
-    tile.addSpacer(3);
-
-    const range = tile.addText(wx.ok && !isNaN(wx.hi) && !isNaN(wx.lo) ? `${wx.hi}° / ${wx.lo}°` : " ");
-    range.font = Font.systemFont(size.range);
-    range.textColor = INK;
+    now.addSpacer(6);
+    const range = now.addText(`${wx.hi}°/${wx.lo}°`);
+    range.font = Font.systemFont(10);
+    range.textColor = MUTED;
     range.lineLimit = 1;
-
-    if (wx.ok && wx.cond) {
-      tile.addSpacer(2);
-      const cond = tile.addText(wx.cond);
-      cond.font = Font.systemFont(size.cond);
-      cond.textColor = MUTED;
-      cond.lineLimit = 1;
-      cond.minimumScaleFactor = 0.7;
-    }
-  });
+    range.minimumScaleFactor = 0.7;
+  }
 
   row.addSpacer();
+
+  forecastSlots(wx, FORECAST_DAYS).forEach((d, i) => {
+    if (i) row.addSpacer(5);
+    const col = row.addStack();
+    col.layoutVertically();
+    col.size = new Size(DAY_W, 0);
+
+    const dow = col.addText(d ? d.dow : " ");
+    dow.font = Font.semiboldSystemFont(9);
+    dow.textColor = MUTED;
+    dow.lineLimit = 1;
+    dow.centerAlignText();
+    dow.minimumScaleFactor = 0.7;
+
+    col.addSpacer(2);
+
+    const sky = col.addText(d ? d.sky : "—");
+    sky.font = Font.systemFont(13);
+    sky.textColor = MUTED;
+    sky.lineLimit = 1;
+    sky.centerAlignText();
+
+    col.addSpacer(2);
+
+    const temps = col.addText(d ? `${d.hi}/${d.lo}` : " ");
+    temps.font = Font.systemFont(9);
+    temps.textColor = INK;
+    temps.lineLimit = 1;
+    temps.centerAlignText();
+    temps.minimumScaleFactor = 0.7;
+  });
+}
+
+// The away row: three cities, so today shrinks onto one line and the forecast
+// to three two-line chips.
+function addCityLine(w, wx) {
+  const row = w.addStack();
+  row.layoutHorizontally();
+  row.centerAlignContent();
+  row.backgroundColor = SAND;
+  row.cornerRadius = 8;
+  row.setPadding(7, 10, 7, 10);
+  row.url = TRIPS_URL;
+
+  const label = row.addText(cityLabel(wx));
+  label.font = Font.semiboldSystemFont(9);
+  label.textColor = MUTED;
+  label.lineLimit = 1;
+  label.minimumScaleFactor = 0.7;
+
+  row.addSpacer(6);
+
+  const icon = row.addText(wx.ok ? wx.sky : "—");
+  icon.font = Font.systemFont(15);
+  icon.textColor = MUTED;
+  icon.lineLimit = 1;
+
+  if (wx.ok) {
+    row.addSpacer(4);
+    const temp = row.addText(wx.now + "°");
+    temp.font = Font.boldSystemFont(16);
+    temp.textColor = INK;
+    temp.lineLimit = 1;
+
+    row.addSpacer(5);
+    const range = row.addText(`${wx.hi}/${wx.lo}`);
+    range.font = Font.systemFont(9);
+    range.textColor = MUTED;
+    range.lineLimit = 1;
+  }
+
+  row.addSpacer();
+
+  forecastSlots(wx, FORECAST_DAYS_TIGHT).forEach((d, i) => {
+    if (i) row.addSpacer(6);
+    const col = row.addStack();
+    col.layoutVertically();
+    col.size = new Size(CHIP_W, 0);
+
+    const dow = col.addText(d ? d.dow : " ");
+    dow.font = Font.semiboldSystemFont(8);
+    dow.textColor = MUTED;
+    dow.lineLimit = 1;
+    dow.centerAlignText();
+
+    const bottom = col.addStack();
+    bottom.layoutHorizontally();
+    bottom.centerAlignContent();
+
+    const sky = bottom.addText(d ? d.sky : "—");
+    sky.font = Font.systemFont(10);
+    sky.textColor = MUTED;
+    sky.lineLimit = 1;
+
+    bottom.addSpacer(3);
+
+    const temps = bottom.addText(d ? `${d.hi}/${d.lo}` : " ");
+    temps.font = Font.systemFont(9);
+    temps.textColor = INK;
+    temps.lineLimit = 1;
+    temps.minimumScaleFactor = 0.7;
+  });
+}
+
+// A row whose forecast didn't arrive keeps its columns and fills them with a
+// dash. Two rows of different heights read as broken; two rows of equal height
+// with a gap in one reads as "that bit didn't load", which is the truth.
+function forecastSlots(wx, count) {
+  const days = (wx.days || []).slice(0, count);
+  while (days.length < count) days.push(null);
+  return days;
+}
+
+function cityLabel(wx) {
+  return wx.emoji ? wx.emoji + " " + wx.label.toUpperCase() : wx.label.toUpperCase();
 }
 
 // "📦  1 package waiting        [||| ||| |||]  ›"
