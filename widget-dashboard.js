@@ -3,7 +3,7 @@
 // One Large home-screen widget carrying what used to take two: the trip
 // countdown and outstanding bookings from widget-upcoming.js, the pending
 // package count from parcelpending/scriptable-widget.js, and a weather strip
-// with Denver plus the destinations of the next trips on the countdown.
+// for Denver, Cleveland, and wherever the phone is when that's somewhere else.
 //
 // Install:
 //   1. Create a new Scriptable script and paste this file in. Name it
@@ -20,6 +20,10 @@
 //     menu the parcel widget has: show the barcode full screen, mark a parcel
 //     picked up, or open the web app.
 //
+// The "here" tile needs location access for Scriptable (Settings → Privacy →
+// Location Services → Scriptable → While Using). Without it the strip simply
+// shows the two standing cities, which is also what it does at home.
+//
 // A Medium or Small widget falls back to the trip/booking columns alone —
 // there's no room for the weather tiles at those sizes.
 
@@ -31,20 +35,20 @@ const SHORTCUT_NAME  = "Hardin Trips";  // must match the shortcut's name exactl
 
 const TRIP_COUNT     = 4;   // upcoming trips to show
 const BOOK_COUNT     = 3;   // outstanding-booking rows to show
-const WEATHER_TRIPS  = 2;   // trip destinations in the weather strip, after Denver
 const BOOKING_MONTHS = 12;  // how far ahead to look for outstanding bookings
                             // the app's popup uses 6; the widget looks further out
 
-// Home tile. Hard-coded rather than geocoded: it never changes, and it means
-// the weather strip still has something to show when everything else fails.
-const HOME = { label: "Denver", emoji: "🏠", lat: 39.7392, lon: -104.9903 };
+// The two standing weather tiles. Coordinates rather than names: these never
+// change, so there's nothing to geocode and nothing to get wrong.
+const CITIES = [
+  { label: "Denver",    emoji: "🏠", lat: 39.7392, lon: -104.9903 },
+  { label: "Cleveland",              lat: 41.4993, lon:  -81.6944 },
+];
 
-// Last word on which city a trip's weather tile uses, keyed by trip name.
-// The worker derives the city from the trip's first day, which is right almost
-// always; this is here for when it isn't — a trip with no itinerary yet, or a
-// place the geocoders disagree about — and takes effect without a redeploy.
-//   "Sonoma 2026": "Sonoma, California",
-const CITY_OVERRIDES = {};
+// A third tile for where you are now, added only when that's somewhere else —
+// within this many miles of a standing tile it would just be a duplicate, so
+// the strip drops to two wider ones instead.
+const HERE_MIN_MILES = 25;
 
 // Match the web app: JsBarcode encodes the code plus a trailing newline
 // (the kiosk scanner treats it as an Enter keypress).
@@ -58,10 +62,10 @@ const COL_BOOK_LARGE  = 110;
 const COL_TRIPS_MED   = 200;
 const COL_BOOK_MED    = 115;
 
-// Weather tiles are fixed-width with flexible gaps, so the extra width on a
-// 6.7" phone spreads between them instead of pooling at one edge. The height is
-// left to the content — every tile holds the same three lines, so they match.
-const TILE_W = 94;
+// Tile width by how many tiles there are, so two fill the same strip three do:
+// on a 340pt-wide widget that's 316pt of content, and the flexible gaps between
+// them absorb the extra width of a 6.7" phone. Height is left to the content.
+const TILE_W = { 2: 152, 3: 100 };
 
 // The two fixed flanks of a trip row: four Apple flags at 11pt come to about
 // 52pt, and "172d" at 13pt bold to about 30pt.
@@ -80,6 +84,9 @@ const MUTED      = new Color("#b0bcb3");
 // Only 1.3 against BG, which is deliberate: the cards should read as slightly
 // raised surfaces, not outlined boxes.
 const SAND       = new Color("#414d45");
+// The section rules, on the other hand, have to be seen — SAND is only 1.3
+// against BG, which is right for a card and useless for a hairline.
+const DIVIDER    = new Color("#5b6b60");
 
 const BOOKING_ICONS = { flights: "✈️", hotel: "🏨", car: "🚗" };
 
@@ -132,31 +139,72 @@ function pendingEntries(parcels) {
 
 // ── Weather ───────────────────────────────────────────────────────────────────
 
-// The city a trip's weather tile uses: a manual override, else the worker's
-// answer (the first day of the itinerary that names a real place), else the
-// trip name with its year and any second destination trimmed off — "Amsterdam
-// + Madrid" is Amsterdam, "Sonoma 2026" is Sonoma.
-function weatherCityFor(trip) {
-  if (CITY_OVERRIDES[trip.name]) return CITY_OVERRIDES[trip.name];
-  if (trip.weatherCity) return trip.weatherCity;
-  return String(trip.name || "").split("+")[0].replace(/\b(19|20)\d{2}\b/g, "").trim();
+// Denver and Cleveland always, plus wherever the phone is when that's somewhere
+// else. Two tiles is a normal state, not a degraded one: at home the third
+// would just repeat Denver, so the strip widens instead of padding itself out.
+async function weatherPoints() {
+  const points = CITIES.slice();
+  const here = await currentPoint();
+  if (here && CITIES.every(c => milesBetween(c, here) > HERE_MIN_MILES)) points.push(here);
+  return points;
 }
 
-// Denver first, then the next trips that resolve to somewhere.
-async function weatherPoints(trips) {
-  const points = [{ label: HOME.emoji + " " + HOME.label, lat: HOME.lat, lon: HOME.lon }];
-  for (const trip of trips.slice(0, WEATHER_TRIPS)) {
-    const city = weatherCityFor(trip);
-    if (!city) continue;
-    // The worker resolves coordinates through the app's own geocache, which is
-    // better than anything reachable from here — but an override has to win,
-    // and it names a different place than the coordinates do.
-    const coords = (!CITY_OVERRIDES[trip.name] && trip.lat != null && trip.lon != null)
-      ? [trip.lat, trip.lon]
-      : await geocode(city);
-    if (coords) points.push({ label: city, lat: coords[0], lon: coords[1] });
+// Where the phone is, as a tile. iOS hands a widget a location grudgingly —
+// permission may be off, and a refresh in the background can hang — so this
+// gives up after a few seconds and falls back to the last fix of the day. That
+// keeps the tile steady while travelling instead of flickering in and out.
+async function currentPoint() {
+  const fm    = FileManager.local();
+  const path  = fm.joinPath(fm.cacheDirectory(), "trips-dashboard-here.json");
+  const fresh = await withTimeout(locate(), 4000);
+
+  if (fresh) {
+    try { fm.writeString(path, JSON.stringify({ ...fresh, at: Date.now() })); } catch (e) {}
+    return fresh;
   }
-  return points;
+  if (fm.fileExists(path)) {
+    try {
+      const last = JSON.parse(fm.readString(path));
+      if (Date.now() - (last.at || 0) < 12 * 3600 * 1000) return last;
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function locate() {
+  try {
+    // Weather is a city-scale question; the coarse fix is faster and doesn't
+    // wake the GPS.
+    Location.setAccuracyToThreeKilometers();
+    const loc = await Location.current();
+    if (!loc) return null;
+    let label = "Here";
+    try {
+      const place = (await Location.reverseGeocode(loc.latitude, loc.longitude))[0];
+      label = place?.locality || place?.subAdministrativeArea || place?.administrativeArea || label;
+    } catch (e) {}
+    return { label, emoji: "📍", lat: loc.latitude, lon: loc.longitude };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Scriptable has no cancellable request, so the only way to bound a call that
+// may never come back is to stop waiting for it.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => Timer.schedule(ms, false, () => resolve(null))),
+  ]);
+}
+
+function milesBetween(a, b) {
+  const toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2
+          + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 7918 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 // One request covers every tile: Open-Meteo takes comma-separated coordinates
@@ -177,7 +225,7 @@ async function fetchWeather(points) {
     raw = await new Request(url).loadJSON();
     if (raw) fm.writeString(path, JSON.stringify({ url, raw }));
   } catch (e) {
-    // Only reuse the cache when it was built for these same cities — the tiles
+    // Only reuse the cache when it was built for these same places — the tiles
     // are labelled from `points`, so a stale payload would mislabel them.
     if (fm.fileExists(path)) {
       try {
@@ -186,7 +234,7 @@ async function fetchWeather(points) {
       } catch (e2) {}
     }
   }
-  if (!raw) return points.map(p => ({ label: p.label, ok: false }));
+  if (!raw) return points.map(p => ({ label: p.label, emoji: p.emoji, ok: false }));
 
   const list = Array.isArray(raw) ? raw : [raw];
   return points.map((p, i) => {
@@ -195,54 +243,26 @@ async function fetchWeather(points) {
     const now  = Math.round(w?.current?.temperature_2m);
     const hi   = Math.round(w?.daily?.temperature_2m_max?.[0]);
     const lo   = Math.round(w?.daily?.temperature_2m_min?.[0]);
-    if (code == null || isNaN(now)) return { label: p.label, ok: false };
-    return { label: p.label, ok: true, emoji: wxEmoji(code), now, hi, lo };
+    if (code == null || isNaN(now)) return { label: p.label, emoji: p.emoji, ok: false };
+    const { emoji: sky, cond } = wxInfo(code);
+    return { label: p.label, emoji: p.emoji, ok: true, sky, cond, now, hi, lo };
   });
 }
 
-// Open-Meteo's geocoder ranks by population and its top hit is sometimes an
-// unrelated town that merely aliases the name — a search for "Sonoma" answers
-// with Ennis, Texas — so take several and prefer one that actually matches.
-// Results are cached on disk: cities don't move, and this runs on every refresh.
-async function geocode(city) {
-  const fm    = FileManager.local();
-  const path  = fm.joinPath(fm.cacheDirectory(), "trips-dashboard-geo.json");
-  const key   = city.toLowerCase();
-  let store = {};
-  if (fm.fileExists(path)) {
-    try { store = JSON.parse(fm.readString(path)) || {}; } catch (e) {}
-  }
-  if (key in store) return store[key];
-
-  let coords = null;
-  try {
-    const resp = await new Request(
-      "https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=" + encodeURIComponent(city)
-    ).loadJSON();
-    const results = resp?.results || [];
-    const exact = results.find(r => String(r.name || "").toLowerCase() === key);
-    const hit   = exact || results[0];
-    if (hit?.latitude != null && hit?.longitude != null) coords = [hit.latitude, hit.longitude];
-  } catch (e) {
-    return null;  // a network failure isn't a "no such city" — don't cache it
-  }
-
-  store[key] = coords;
-  try { fm.writeString(path, JSON.stringify(store)); } catch (e) {}
-  return coords;
-}
-
-function wxEmoji(code) {
-  if (code === 0)  return "☀️";
-  if (code <= 2)   return "⛅";
-  if (code === 3)  return "☁️";
-  if (code <= 49)  return "🌫️";
-  if (code <= 57)  return "🌦️";
-  if (code <= 67)  return "🌧️";
-  if (code <= 77)  return "❄️";
-  if (code <= 82)  return "🌧️";
-  if (code <= 86)  return "🌨️";
-  return "⛈️";
+// Icon and wording straight from wxInfo() in index.html, so a tile and the
+// app's day cards never describe the same sky differently.
+function wxInfo(code) {
+  if (code === 0)  return { emoji: "☀️",  cond: "Clear" };
+  if (code <= 2)   return { emoji: "⛅",  cond: "Partly cloudy" };
+  if (code === 3)  return { emoji: "☁️",  cond: "Overcast" };
+  if (code <= 49)  return { emoji: "🌫️", cond: "Foggy" };
+  if (code <= 57)  return { emoji: "🌦️", cond: "Drizzle" };
+  if (code <= 67)  return { emoji: "🌧️", cond: "Rain" };
+  if (code <= 77)  return { emoji: "❄️",  cond: "Snow" };
+  if (code <= 82)  return { emoji: "🌧️", cond: "Showers" };
+  if (code <= 86)  return { emoji: "🌨️", cond: "Snow showers" };
+  if (code <= 99)  return { emoji: "⛈️",  cond: "Thunderstorm" };
+  return { emoji: "🌡️", cond: "" };
 }
 
 // ── Widget ────────────────────────────────────────────────────────────────────
@@ -267,7 +287,7 @@ async function buildWidget() {
 
   // Weather is the one section that needs a second round trip, so it only runs
   // where it's actually drawn.
-  const weather = isLarge ? await fetchWeather(await weatherPoints(trips)) : [];
+  const weather = isLarge ? await fetchWeather(await weatherPoints()) : [];
 
   if (!trips.length && !outstanding.length && !pendingEntries(parcels).length) {
     centerMessage(w, "✈️  No upcoming trips");
@@ -435,11 +455,20 @@ function addBookingRow(w, entry) {
   iconTxt.lineLimit = 1;
 }
 
-// Denver and the next destinations, side by side. A tile that couldn't be
-// resolved still draws, with a dash where the temperature goes — the row keeps
-// its shape rather than reflowing around a missing city.
+// The weather strip. Two tiles or three, filling the same width either way —
+// with only two there's room for larger type, so it takes it.
 function addWeatherSection(w, weather) {
   addSectionLabel(w, "WEATHER NOW");
+
+  const wide = weather.length <= 2;
+  const size = {
+    label: wide ? 11 : 10,
+    icon:  wide ? 30 : 24,
+    temp:  wide ? 38 : 30,
+    range: wide ? 13 : 11,
+    cond:  wide ? 12 : 10,
+    pad:   wide ? 12 : 10,
+  };
 
   const row = w.addStack();
   row.layoutHorizontally();
@@ -451,41 +480,50 @@ function addWeatherSection(w, weather) {
     const tile = row.addStack();
     tile.layoutVertically();
     tile.backgroundColor = SAND;
-    tile.cornerRadius = 8;
-    tile.setPadding(8, 8, 8, 8);
-    tile.size = new Size(TILE_W, 0);
+    tile.cornerRadius = 10;
+    tile.setPadding(size.pad, size.pad, size.pad, size.pad);
+    tile.size = new Size(TILE_W[weather.length] || TILE_W[3], 0);
 
-    const label = tile.addText(wx.label.toUpperCase());
-    label.font = Font.semiboldSystemFont(9);
+    const label = tile.addText(wx.emoji ? wx.emoji + " " + wx.label.toUpperCase() : wx.label.toUpperCase());
+    label.font = Font.semiboldSystemFont(size.label);
     label.textColor = MUTED;
     label.lineLimit = 1;
     label.minimumScaleFactor = 0.7;
 
-    tile.addSpacer(3);
+    tile.addSpacer(4);
 
     const tempRow = tile.addStack();
     tempRow.layoutHorizontally();
     tempRow.centerAlignContent();
 
-    const icon = tempRow.addText(wx.ok ? wx.emoji : "—");
-    icon.font = Font.systemFont(17);
+    const icon = tempRow.addText(wx.ok ? wx.sky : "—");
+    icon.font = Font.systemFont(size.icon);
     icon.lineLimit = 1;
 
     if (wx.ok) {
-      tempRow.addSpacer(4);
+      tempRow.addSpacer(6);
       const temp = tempRow.addText(wx.now + "°");
-      temp.font = Font.boldSystemFont(20);
+      temp.font = Font.boldSystemFont(size.temp);
       temp.textColor = INK;
       temp.lineLimit = 1;
-      temp.minimumScaleFactor = 0.7;
+      temp.minimumScaleFactor = 0.6;
     }
 
-    tile.addSpacer(2);
+    tile.addSpacer(3);
 
     const range = tile.addText(wx.ok && !isNaN(wx.hi) && !isNaN(wx.lo) ? `${wx.hi}° / ${wx.lo}°` : " ");
-    range.font = Font.systemFont(10);
-    range.textColor = MUTED;
+    range.font = Font.systemFont(size.range);
+    range.textColor = INK;
     range.lineLimit = 1;
+
+    if (wx.ok && wx.cond) {
+      tile.addSpacer(2);
+      const cond = tile.addText(wx.cond);
+      cond.font = Font.systemFont(size.cond);
+      cond.textColor = MUTED;
+      cond.lineLimit = 1;
+      cond.minimumScaleFactor = 0.7;
+    }
   });
 
   row.addSpacer();
@@ -560,13 +598,15 @@ function addSectionLabel(w, text) {
   w.addSpacer(3);
 }
 
-// A hairline between sections. A stack with no children and a fixed height is
-// the only rule Scriptable draws.
+// A hairline between sections. The spacer is what makes it visible: an empty
+// stack has no content to size itself against, so a fixed height alone draws a
+// rule of zero width — which is exactly nothing.
 function addDivider(w) {
   w.addSpacer();
   const line = w.addStack();
-  line.backgroundColor = SAND;
+  line.backgroundColor = DIVIDER;
   line.size = new Size(0, 1);
+  line.addSpacer();
   w.addSpacer();
 }
 
