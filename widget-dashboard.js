@@ -67,6 +67,13 @@ const COL_BOOK_MED    = 115;
 // them absorb the extra width of a 6.7" phone. Height is left to the content.
 const TILE_W = { 2: 152, 3: 100 };
 
+// The parcel band, laid out left to right: the text block, then whatever's
+// left goes to the barcode. 136pt puts about 1.2pt in a narrow bar — half the
+// stand-alone widget's, which is why the full-screen one stays a tap away.
+const PARCEL_TEXT_W = 118;
+const BARCODE_W     = 136;
+const BARCODE_H     = 34;
+
 // The two fixed flanks of a trip row: four Apple flags at 11pt come to about
 // 52pt, and "172d" at 13pt bold to about 30pt.
 const EMOJI_W = 52;
@@ -462,12 +469,12 @@ function addWeatherSection(w, weather) {
 
   const wide = weather.length <= 2;
   const size = {
-    label: wide ? 11 : 10,
-    icon:  wide ? 30 : 24,
-    temp:  wide ? 38 : 30,
-    range: wide ? 13 : 11,
-    cond:  wide ? 12 : 10,
-    pad:   wide ? 12 : 10,
+    label: wide ? 10 : 9,
+    icon:  wide ? 25 : 21,
+    temp:  wide ? 32 : 26,
+    range: wide ? 12 : 10,
+    cond:  wide ? 11 :  9,
+    pad:   wide ? 11 :  9,
   };
 
   const row = w.addStack();
@@ -529,10 +536,13 @@ function addWeatherSection(w, weather) {
   row.addSpacer();
 }
 
-// "📦  2 packages waiting              #12345 · +1 more  ›"
+// "📦  1 package waiting        [||| ||| |||]  ›"
+//     #79360010
 //
-// No barcode here — it costs a third of the strip's height, and the tap-through
-// menu shows it full screen, which is the size you actually scan from anyway.
+// The code moves under the count so the barcode gets the whole right-hand side
+// rather than the gap left over after it. At this width it reads at a glance
+// and scans at close range; the tap-through menu still shows it full screen,
+// which is the size to scan from when the kiosk is being difficult.
 function addParcelBand(w, parcels) {
   const pending = pendingEntries(parcels).map(([, p]) => p);
   const total   = pending.reduce((s, p) => s + (p.count || 1), 0);
@@ -542,12 +552,13 @@ function addParcelBand(w, parcels) {
   band.centerAlignContent();
   band.backgroundColor = SAND;
   band.cornerRadius = 8;
-  band.setPadding(7, 10, 7, 10);
+  band.setPadding(8, 10, 8, 10);
   band.url = PARCEL_URL;
 
   const icon = band.addText("📦");
-  icon.font = Font.systemFont(13);
-  band.addSpacer(7);
+  icon.font = Font.systemFont(14);
+  icon.lineLimit = 1;
+  band.addSpacer(8);
 
   if (!pending.length) {
     const msg = band.addText("All picked up 🎉");
@@ -558,22 +569,33 @@ function addParcelBand(w, parcels) {
     return;
   }
 
-  const count = band.addText(`${total} package${total !== 1 ? "s" : ""} waiting`);
+  // Fixed width, so a jump from "1 package" to "12 packages" moves nothing —
+  // the barcode beside it keeps the same geometry either way.
+  const text = band.addStack();
+  text.layoutVertically();
+  text.size = new Size(PARCEL_TEXT_W, 0);
+
+  const count = text.addText(`${total} package${total !== 1 ? "s" : ""} waiting`);
   count.font = Font.boldSystemFont(13);
   count.textColor = TERRACOTTA;
   count.lineLimit = 1;
-  count.minimumScaleFactor = 0.8;
-
-  band.addSpacer();
+  count.minimumScaleFactor = 0.7;
 
   const code = String(pending[0].code || "");
-  const label = band.addText("#" + code + (pending.length > 1 ? "  ·  +" + (pending.length - 1) + " more" : ""));
-  label.font = Font.regularMonospacedSystemFont(10);
+  const label = text.addText("#" + code + (pending.length > 1 ? "  ·  +" + (pending.length - 1) + " more" : ""));
+  label.font = Font.regularMonospacedSystemFont(9);
   label.textColor = MUTED;
   label.lineLimit = 1;
   label.minimumScaleFactor = 0.7;
 
-  band.addSpacer(6);
+  band.addSpacer();
+
+  const img = band.addImage(drawBarcode(barcodeText(code), BARCODE_W, BARCODE_H));
+  img.imageSize = new Size(BARCODE_W, BARCODE_H);
+  img.containerRelativeShape = false;
+  img.cornerRadius = 3;
+
+  band.addSpacer(8);
 
   const chevron = band.addText("›");
   chevron.font = Font.boldSystemFont(13);
