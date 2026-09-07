@@ -27,22 +27,25 @@ const COL_TRIPS = 200;
 const COL_BOOK  = 115;
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-// Cool charcoal: a neutral ground that leaves terracotta as the only warm note.
-// Every color the widget draws comes from these five, so the small layout and
-// the error/empty messages follow along without knowing about the theme.
+// Deep sage: a restrained green that reads as a dark neutral until you see it
+// next to grey. Every color the widget draws comes from these five, so the small
+// layout and the error/empty messages follow along without knowing about the
+// theme.
 //
-// Terracotta is lightened from the #c06a3d the app uses — that value goes muddy
-// on a dark ground. The pairs that carry text clear WCAG AA against whichever
-// surface they sit on: names 14.0 on BG and 11.5 on SAND, countdown 6.5,
-// section labels 5.8, booking dates 4.7.
-const BG         = new Color("#1b1c1f");
-const TERRACOTTA = new Color("#e2895a");
-const INK        = new Color("#e8e9ec");
-const MUTED      = new Color("#93969c");
-// Only 1.2 against BG, which is deliberate: the booking box should read as a
-// slightly raised surface, not an outlined card. The light palette it replaces
+// The ground replaces a near-black #1b1c1f that turned out to read as flatly
+// black on the home screen — this sits about 3.5x lighter. Terracotta is
+// lightened from the #c06a3d the app uses, which goes muddy on a dark ground.
+// Every pair that carries text clears WCAG AA against the surface it sits on:
+// names 9.8 on BG and 7.7 on SAND, section labels 5.5, countdown 4.7,
+// booking dates 4.5.
+const BG         = new Color("#333d37");
+const TERRACOTTA = new Color("#eb9163");
+const INK        = new Color("#eaf0ec");
+const MUTED      = new Color("#b0bcb3");
+// Only 1.3 against BG, which is deliberate: the booking box should read as a
+// slightly raised surface, not an outlined card. Both palettes before this one
 // separated by the same amount.
-const SAND       = new Color("#2a2c30");
+const SAND       = new Color("#414d45");
 
 const BOOKING_ICONS = { flights: "✈️", hotel: "🏨", car: "🚗" };
 
@@ -56,15 +59,13 @@ try {
 
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
-// A shallow top-to-bottom gradient rather than a flat fill, so the panel has
-// some depth against the wallpaper. It runs from a slight lift down to BG
-// itself, so the ground still moves with that one constant. The lift is small
-// enough that the text at the top of the widget keeps its contrast: names 13.0,
-// countdown 6.0, labels 5.3.
-const bgGradient = new LinearGradient();
-bgGradient.colors    = [new Color("#212328"), BG];
-bgGradient.locations = [0, 1];
-widget.backgroundGradient = bgGradient;
+// Flat, not a gradient. A gradient looked better on the near-black ground this
+// palette replaces, but it can't coexist with this accent: terracotta clears AA
+// at 4.70 on a flat BG and drops under against any lifted stop — 4.43 at even a
+// 0.015 lift — and the countdown numbers sit exactly where the lift would be.
+// Running the gradient the other way doesn't save it either; the fourth trip row
+// still lands at 4.37.
+widget.backgroundColor = BG;
 widget.setPadding(10, 12, 10, 12);
 widget.url = `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}`;
 
