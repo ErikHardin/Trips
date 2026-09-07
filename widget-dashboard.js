@@ -63,7 +63,7 @@ const APPEND_NEWLINE = true;
 // iPhone and the gap between the columns is flexible, so these stay put and the
 // slack goes down the middle. Medium is narrower per column but the same idea.
 const COL_TRIPS_LARGE = 196;
-const COL_BOOK_LARGE  = 110;
+const COL_BOOK_LARGE  = 120;
 const COL_TRIPS_MED   = 200;
 const COL_BOOK_MED    = 115;
 
