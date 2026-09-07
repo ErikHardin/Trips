@@ -27,11 +27,22 @@ const COL_TRIPS = 200;
 const COL_BOOK  = 115;
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-const BG         = new Color("#e8ddd0");
-const TERRACOTTA = new Color("#c06a3d");
-const INK        = new Color("#2a2520");
-const MUTED      = new Color("#8a7f76");
-const SAND       = new Color("#d9cbb8");
+// Cool charcoal: a neutral ground that leaves terracotta as the only warm note.
+// Every color the widget draws comes from these five, so the small layout and
+// the error/empty messages follow along without knowing about the theme.
+//
+// Terracotta is lightened from the #c06a3d the app uses — that value goes muddy
+// on a dark ground. The pairs that carry text clear WCAG AA against whichever
+// surface they sit on: names 14.0 on BG and 11.5 on SAND, countdown 6.5,
+// section labels 5.8, booking dates 4.7.
+const BG         = new Color("#1b1c1f");
+const TERRACOTTA = new Color("#e2895a");
+const INK        = new Color("#e8e9ec");
+const MUTED      = new Color("#93969c");
+// Only 1.2 against BG, which is deliberate: the booking box should read as a
+// slightly raised surface, not an outlined card. The light palette it replaces
+// separated by the same amount.
+const SAND       = new Color("#2a2c30");
 
 const BOOKING_ICONS = { flights: "✈️", hotel: "🏨", car: "🚗" };
 
@@ -45,7 +56,15 @@ try {
 
 // ── Build widget ──────────────────────────────────────────────────────────────
 const widget = new ListWidget();
-widget.backgroundColor = BG;
+// A shallow top-to-bottom gradient rather than a flat fill, so the panel has
+// some depth against the wallpaper. It runs from a slight lift down to BG
+// itself, so the ground still moves with that one constant. The lift is small
+// enough that the text at the top of the widget keeps its contrast: names 13.0,
+// countdown 6.0, labels 5.3.
+const bgGradient = new LinearGradient();
+bgGradient.colors    = [new Color("#212328"), BG];
+bgGradient.locations = [0, 1];
+widget.backgroundGradient = bgGradient;
 widget.setPadding(10, 12, 10, 12);
 widget.url = `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT_NAME)}`;
 
