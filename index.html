@@ -1997,7 +1997,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 302 };
+window.BUILD_INFO = { prNumber: 303 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3348,6 +3348,10 @@ async function renderTripOverview(trip) {
       });
 
       const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName||'').slice(0,3);
+      const memCity = day.city || '';
+      const memDesc = day.description || '';
+      const memTitle = memCity || memDesc;
+      const memSub = (memCity && memDesc && memDesc !== memCity) ? memDesc : '';
 
       memoriesHTML += `
         <div style="margin:0 16px 20px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-md);">
@@ -3359,7 +3363,8 @@ async function renderTripOverview(trip) {
             </div>
             <div style="width:1px;height:32px;background:var(--border);flex-shrink:0;"></div>
             <div>
-              <div style="font-size:14px;font-weight:500;">${day.description||day.city||''}</div>
+              ${memTitle?`<div style="font-size:14px;font-weight:500;">${escHtml(memTitle)}</div>`:''}
+              ${memSub?`<div style="font-size:12px;color:var(--muted);">${escHtml(memSub)}</div>`:''}
               <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
             </div>
           </div>
@@ -3618,6 +3623,10 @@ function renderShareHighlights(trip) {
     });
 
     const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName||'').slice(0,3);
+    const memCity = day.city || '';
+    const memDesc = day.description || '';
+    const memTitle = memCity || memDesc;
+    const memSub = (memCity && memDesc && memDesc !== memCity) ? memDesc : '';
 
     html += `
       <div style="margin:0 16px 20px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-md);">
@@ -3629,7 +3638,8 @@ function renderShareHighlights(trip) {
           </div>
           <div style="width:1px;height:32px;background:var(--border);flex-shrink:0;"></div>
           <div>
-            <div style="font-size:14px;font-weight:500;">${day.description||day.city||''}</div>
+            ${memTitle?`<div style="font-size:14px;font-weight:500;">${escHtml(memTitle)}</div>`:''}
+            ${memSub?`<div style="font-size:12px;color:var(--muted);">${escHtml(memSub)}</div>`:''}
             <div style="font-size:11px;color:var(--muted);">${allNotes.length} memor${allNotes.length===1?'y':'ies'}</div>
           </div>
         </div>
