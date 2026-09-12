@@ -80,12 +80,12 @@ const BARCODE_H     = 34;
 // left block is fixed so every row's forecast starts at the same x — a ragged
 // left edge there is what makes a stack of rows look accidental. What's left
 // divides into day columns, or into the wider two-line chips the away row uses.
-const ROW_LEFT_W = 112;
-const DAY_W      = 31;
+const ROW_LEFT_W = 122;
+const DAY_W      = 29;
 const CHIP_W     = 44;
 
 const EMOJI_W = 52;
-const COUNT_W = 34;
+const COUNT_W = 38;
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 // The deep sage palette from widget-upcoming.js, kept as the dashboard's single
@@ -230,7 +230,7 @@ async function fetchWeather(points) {
     + "?latitude="  + points.map(p => p.lat).join(",")
     + "&longitude=" + points.map(p => p.lon).join(",")
     + "&current=temperature_2m,weather_code"
-    + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+    + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"
     + "&temperature_unit=fahrenheit&timezone=auto&forecast_days=" + (FORECAST_DAYS + 1);
 
   const fm = FileManager.local();
@@ -260,8 +260,29 @@ async function fetchWeather(points) {
     const lo   = Math.round(w?.daily?.temperature_2m_min?.[0]);
     if (code == null || isNaN(now)) return { label: p.label, emoji: p.emoji, ok: false };
     const { emoji: sky, cond } = wxInfo(code);
-    return { label: p.label, emoji: p.emoji, ok: true, sky, cond, now, hi, lo, days: forecastDays(w) };
+    return { label: p.label, emoji: p.emoji, ok: true, sky, cond, now, hi, lo,
+             sun: sunLabel(w), days: forecastDays(w) };
   });
+}
+
+// "↑6:33  ↓7:21" for today. No am/pm: the arrows already say which is which,
+// and dropping it buys back the width that lets this share the label's line.
+// Empty inside the Arctic Circle in summer, where the API returns no sunrise
+// because there isn't one.
+function sunLabel(w) {
+  const rise = clockLabel(w?.daily?.sunrise?.[0]);
+  const set  = clockLabel(w?.daily?.sunset?.[0]);
+  return rise && set ? `↑${rise}  ↓${set}` : "";
+}
+
+// The times arrive as the city's own local time with no offset attached
+// ("2026-09-07T06:33"), so they're read as text. Handing that to `new Date()`
+// would re-read it in the phone's timezone and put Cleveland's sunrise two
+// hours out — the same trap dowLabel() sidesteps.
+function clockLabel(iso) {
+  const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
+  if (!m) return "";
+  return (parseInt(m[1], 10) % 12 || 12) + ":" + m[2];
 }
 
 // The days after today. Index 0 of the daily arrays is today, which every row
@@ -523,11 +544,28 @@ function addCityRow(w, wx) {
   left.layoutVertically();
   left.size = new Size(ROW_LEFT_W, 0);
 
-  const label = left.addText(cityLabel(wx));
+  // Sun times ride the label's line rather than taking one of their own: at the
+  // tallest this widget gets — three weather rows and a parcel waiting — there
+  // are only 28pt of slack left, and a third line in each row would spend all
+  // of it. The label was the one line with width going spare.
+  const head = left.addStack();
+  head.layoutHorizontally();
+  head.centerAlignContent();
+
+  const label = head.addText(cityLabel(wx));
   label.font = Font.semiboldSystemFont(10);
   label.textColor = MUTED;
   label.lineLimit = 1;
   label.minimumScaleFactor = 0.7;
+
+  if (wx.sun) {
+    head.addSpacer();
+    const sun = head.addText(wx.sun);
+    sun.font = Font.systemFont(8);
+    sun.textColor = MUTED;
+    sun.lineLimit = 1;
+    sun.minimumScaleFactor = 0.7;
+  }
 
   left.addSpacer(3);
 
@@ -600,11 +638,24 @@ function addCityLine(w, wx) {
   row.setPadding(7, 10, 7, 10);
   row.url = TRIPS_URL;
 
-  const label = row.addText(cityLabel(wx));
+  const head = row.addStack();
+  head.layoutVertically();
+
+  const label = head.addText(cityLabel(wx));
   label.font = Font.semiboldSystemFont(9);
   label.textColor = MUTED;
   label.lineLimit = 1;
   label.minimumScaleFactor = 0.7;
+
+  // Under the label here, not beside it: this row is one line of content and
+  // has about 11pt of width to spare, nowhere near enough for a second field.
+  if (wx.sun) {
+    const sun = head.addText(wx.sun);
+    sun.font = Font.systemFont(8);
+    sun.textColor = MUTED;
+    sun.lineLimit = 1;
+    sun.minimumScaleFactor = 0.7;
+  }
 
   row.addSpacer(6);
 
