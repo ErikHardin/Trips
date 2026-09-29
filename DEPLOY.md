@@ -89,7 +89,7 @@ curl https://hardin-trips-ai.erikchardin.workers.dev/version
 {
   "version": "2026-09-06",
   "routes": ["/version", "/widget-data", "/widget-upcoming",
-             "/verify-pin", "/flight-lookup", "/ntfy-config"],
+             "/verify-pin", "/flight-lookup", "/ntfy-config", "/booking-parse"],
   "firebase": { "urlConfigured": true, "secretConfigured": true, "status": 200, "ok": true }
 }
 ```
@@ -100,6 +100,48 @@ curl https://hardin-trips-ai.erikchardin.workers.dev/version
   come back empty no matter which build is deployed.
 
 ---
+
+## Booking inbox (email-in)
+
+Forwarding a flight, hotel or rental-car confirmation to an inbox address
+queues it in the app under **Admin → Booking Inbox**. From there you pick the
+trip it belongs to. The Worker's `email()` handler receives the mail, reads it
+with Claude (`ANTHROPIC_KEY`) and writes it to `bookingInbox/` in Firebase
+(`FIREBASE_URL` / `FIREBASE_SECRET`). Nothing new goes in `wrangler.toml`: the
+routing is set up in the dashboard, once.
+
+Email Routing needs a domain whose DNS is on Cloudflare. A `workers.dev`
+address can't receive mail.
+
+1. Dashboard → your domain → **Email → Email Routing** → **Enable**. Let it add
+   the MX and TXT records it offers.
+2. **Routing rules → Custom addresses → Create address**, e.g.
+   `trips@yourdomain.com`. For **Action**, choose **Send to a Worker** and pick
+   `hardin-trips-ai`.
+3. In the app, open **Admin → Booking Inbox** and enter that address in
+   **Inbox address**. It is only shown there as a reminder.
+4. Deploy `database.rules.json` to the Realtime Database. It adds the
+   admin-only `bookingInbox` rule, and the Worker's secret bypasses it.
+
+**Who can send:** mail is accepted only from an address in User Access with the
+`admin` or `user` role. It checks the envelope sender, the `From` header, and
+the account Gmail names in `X-Forwarded-For` when auto-forwarding. Anything
+else is bounced with "Sender not allowed". This keeps junk out of the queue but
+isn't strong authentication, so keep the address to yourselves.
+
+**Using it:** forward the confirmation email as is. It lands in the inbox
+within a few seconds, with a trip already suggested from its dates. If
+`NTFY_TOPIC` is set, a push notification is sent too. **Add to Trip** writes
+the booking into the trip:
+
+- **Flights** go into the outbound, return or in-trip flight lists that Edit
+  Trip shows.
+- **Hotels** go onto each night's hotel, plus a check-in activity.
+- **Rental cars** become pick-up and return activities.
+
+Each booking also becomes a checked line, with its confirmation number, on the
+trip's Logistics booking checklist. **Paste a confirmation instead** does the
+same thing for a booking that only exists in an app.
 
 ## "This project is disconnected from your Git account"
 
