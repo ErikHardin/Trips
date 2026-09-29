@@ -602,6 +602,17 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .inbox-recent-row { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--muted); padding: 6px 2px; border-bottom: 1px solid var(--border); }
 .inbox-recent-row:last-child { border-bottom: none; }
 .inbox-recent-row span:first-child { flex: 1; color: var(--ink); }
+#bookingInboxAddress:disabled { opacity: 0.6; }
+.inbox-item-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+.inbox-link-btn { background: none; border: none; padding: 0; font-family: 'DM Sans', sans-serif; font-size: 12.5px; font-weight: 500; color: var(--terracotta); cursor: pointer; }
+.inbox-edit-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 10px 0 6px; }
+.inbox-edit-row { position: relative; border: 1px solid var(--border); border-radius: 10px; padding: 10px 10px 8px; margin-bottom: 8px; background: var(--cream); }
+.inbox-edit-remove { position: absolute; top: 6px; right: 10px; color: var(--muted); font-size: 14px; }
+.inbox-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 4px; }
+.inbox-edit-field { display: flex; flex-direction: column; min-width: 0; }
+.inbox-edit-field.wide { grid-column: 1 / -1; }
+.inbox-edit-field span { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.inbox-edit-grid .form-input { margin: 0; padding: 7px 9px; font-size: 13px; background: var(--warm-white); min-width: 0; }
 .csv-instructions {
   font-size: 12px; color: var(--muted); line-height: 1.6;
   background: var(--cream); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
@@ -1383,7 +1394,10 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
           <div class="inbox-howto">
             Forward flight, hotel and rental-car confirmations to the inbox address. Each one is read automatically and waits here until you pick its trip.
             <label class="form-label" style="margin-top:10px;">Inbox address</label>
-            <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" onchange="saveBookingInboxAddress()">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+              <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" disabled style="margin:0;flex:1;">
+              <button class="form-btn secondary" id="bookingInboxAddressBtn" style="width:auto;padding:10px 16px;" onclick="toggleBookingInboxAddressEdit()">Edit</button>
+            </div>
             <details>
               <summary>Paste a confirmation instead</summary>
               <textarea id="bookingPasteInput" class="form-input" style="min-height:90px;resize:vertical;margin-top:8px;" placeholder="Paste the confirmation email text"></textarea>
@@ -2049,7 +2063,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 306 };
+window.BUILD_INFO = { prNumber: 307 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -8284,6 +8298,10 @@ function renderBookingInbox() {
     const details = _inboxDetailLines(it);
     const assignable = it.status === 'pending' && it.kind !== 'other' && details.length;
     const sel = chosen[id] !== undefined ? chosen[id] : _suggestTripForItem(it);
+    if (_inboxEdits[id]) {
+      html += _inboxEditorHtml(id, it);
+      return;
+    }
     html += '<div class="inbox-item">' +
       '<div class="inbox-item-head">' +
         '<div class="inbox-item-icon">' + (INBOX_KIND_ICON[it.kind] || '📩') + '</div>' +
@@ -8310,6 +8328,9 @@ function renderBookingInbox() {
             (it.bodyExcerpt ? '<button class="form-btn" onclick="retryInboxParse(\'' + id + '\', this)">Read Again</button>' : '') +
             '<button class="form-btn secondary" onclick="dismissInboxItem(\'' + id + '\')">Dismiss</button>' +
           '</div>') +
+      '<div class="inbox-item-links">' +
+        '<button class="inbox-link-btn" onclick="startInboxEdit(\'' + id + '\')">✏️ Edit booking</button>' +
+      '</div>' +
       (it.bodyExcerpt ? '<details><summary>View email</summary><pre>' + escHtml(String(it.bodyExcerpt)) + '</pre></details>' : '') +
     '</div>';
   });
@@ -8333,21 +8354,194 @@ function renderBookingInbox() {
   list.innerHTML = html;
 }
 
+// ── Editing a parsed booking before it's added to a trip ──
+// The parse can miss or garble a segment, so each card can be opened as a form.
+// Edits live in a working copy (_inboxEdits) updated on every keystroke, so a
+// live re-render from another item arriving never loses what's been typed.
+let _inboxEdits = {};
+const INBOX_EDIT_FIELDS = {
+  flights: [
+    ['flightNumber', 'Flight #', 'text', 'UA100'], ['dateISO', 'Date', 'date'],
+    ['from', 'From', 'text', 'DEN'], ['to', 'To', 'text', 'LIS'],
+    ['depTime', 'Departs', 'text', '8:05am'], ['arrTime', 'Arrives', 'text', '10:40pm'],
+    ['travelers', 'Travelers', 'text', 'Erik Hardin, Megan Hardin'], ['arrDayOffset', 'Lands (+days)', 'number', '0'],
+    ['confirmation', 'Confirmation', 'text'],
+  ],
+  hotels: [
+    ['name', 'Hotel', 'text'], ['city', 'City', 'text'],
+    ['checkInISO', 'Check-in', 'date'], ['checkOutISO', 'Check-out', 'date'],
+    ['checkInTime', 'Check-in time', 'text', '3pm'], ['confirmation', 'Confirmation', 'text'],
+  ],
+  cars: [
+    ['company', 'Company', 'text', 'Hertz'], ['confirmation', 'Confirmation', 'text'],
+    ['pickupLocation', 'Pick up at', 'text'], ['dropoffLocation', 'Return to', 'text'],
+    ['pickupISO', 'Pick-up date', 'date'], ['dropoffISO', 'Return date', 'date'],
+    ['pickupTime', 'Pick-up time', 'text', '10am'], ['dropoffTime', 'Return time', 'text', '9am'],
+  ],
+};
+const INBOX_EDIT_TITLES = { flights: '✈️ Flights', hotels: '🏨 Hotels', cars: '🚗 Rental cars' };
+
+function _inboxEditorHtml(id, it) {
+  const ed = _inboxEdits[id];
+  let html = '<div class="inbox-item">' +
+    '<div class="inbox-item-summary" style="margin-bottom:4px;">Edit booking</div>' +
+    '<div class="inbox-item-meta" style="margin-bottom:8px;">' + escHtml(String(it.summary || it.subject || '')) + '</div>';
+  Object.keys(INBOX_EDIT_FIELDS).forEach(list => {
+    if (!ed[list].length) return;
+    html += '<div class="inbox-edit-title">' + INBOX_EDIT_TITLES[list] + '</div>';
+    ed[list].forEach((row, i) => {
+      html += '<div class="inbox-edit-row">' +
+        '<button class="inbox-link-btn inbox-edit-remove" onclick="removeInboxEditRow(\'' + id + '\',\'' + list + '\',' + i + ')" title="Remove">✕</button>' +
+        '<div class="inbox-edit-grid">' +
+        INBOX_EDIT_FIELDS[list].map(([key, label, type, ph]) =>
+          '<label class="inbox-edit-field' + (key === 'travelers' ? ' wide' : '') + '"><span>' + label + '</span>' +
+            '<input class="form-input" type="' + type + '" value="' + escHtml(String(row[key] == null ? '' : row[key])) + '"' +
+            (ph ? ' placeholder="' + escHtml(ph) + '"' : '') +
+            ' oninput="inboxEditField(\'' + id + '\',\'' + list + '\',' + i + ',\'' + key + '\',this.value)"></label>'
+        ).join('') +
+        '</div></div>';
+    });
+  });
+  html += '<div class="inbox-item-links" style="margin:6px 0 12px;">' +
+      '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'flights\')">+ Flight</button>' +
+      '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'hotels\')">+ Hotel</button>' +
+      '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'cars\')">+ Car</button>' +
+    '</div>' +
+    '<div class="inbox-item-actions">' +
+      '<button class="form-btn" onclick="saveInboxEdit(\'' + id + '\', this)">Save</button>' +
+      '<button class="form-btn secondary" onclick="cancelInboxEdit(\'' + id + '\')">Cancel</button>' +
+    '</div>' +
+    (it.bodyExcerpt ? '<details><summary>View email</summary><pre>' + escHtml(String(it.bodyExcerpt)) + '</pre></details>' : '') +
+  '</div>';
+  return html;
+}
+
+window.startInboxEdit = function(id) {
+  const it = bookingInbox[id];
+  if (!it) return;
+  const p = JSON.parse(JSON.stringify(it.parsed || {}));
+  const rows = v => (Array.isArray(v) ? v : Object.values(v || {})).filter(Boolean);
+  _inboxEdits[id] = {
+    flights: rows(p.flights).map(f => Object.assign({}, f, { travelers: (Array.isArray(f.travelers) ? f.travelers : []).join(', ') })),
+    hotels: rows(p.hotels),
+    cars: rows(p.cars),
+  };
+  renderBookingInbox();
+};
+
+window.inboxEditField = function(id, list, i, key, value) {
+  const ed = _inboxEdits[id];
+  if (ed && ed[list] && ed[list][i]) ed[list][i][key] = value;
+};
+
+window.addInboxEditRow = function(id, list) {
+  const ed = _inboxEdits[id];
+  if (!ed) return;
+  ed[list].push({});
+  renderBookingInbox();
+};
+
+window.removeInboxEditRow = function(id, list, i) {
+  const ed = _inboxEdits[id];
+  if (!ed) return;
+  ed[list].splice(i, 1);
+  renderBookingInbox();
+};
+
+window.cancelInboxEdit = function(id) {
+  delete _inboxEdits[id];
+  renderBookingInbox();
+};
+
+// A one-line label rebuilt from edited bookings, same style the parser writes
+function _inboxSummaryFromParsed(p) {
+  const range = (a, b) => [_inboxShortDate(a), _inboxShortDate(b)].filter(Boolean).join(' – ');
+  if (p.flights.length) {
+    const f = p.flights[0], last = p.flights[p.flights.length - 1];
+    return p.flights.map(x => x.flightNumber).join(', ') + ' ' + (f.from || '') + ' → ' + (last.to || '') +
+      (f.dateISO ? ' · ' + _inboxShortDate(f.dateISO) : '');
+  }
+  if (p.hotels.length) {
+    const h = p.hotels[0];
+    return [h.name, h.city].filter(Boolean).join(', ') + (h.checkInISO ? ' · ' + range(h.checkInISO, h.checkOutISO) : '');
+  }
+  if (p.cars.length) {
+    const c = p.cars[0];
+    return [c.company || 'Rental car', c.pickupLocation].filter(Boolean).join(' · ') + (c.pickupISO ? ' · ' + range(c.pickupISO, c.dropoffISO) : '');
+  }
+  return '';
+}
+
+window.saveInboxEdit = async function(id, btn) {
+  const ed = _inboxEdits[id];
+  const it = bookingInbox[id];
+  if (!ed || !it) return;
+  const clean = row => {
+    const o = {};
+    Object.entries(row).forEach(([k, v]) => { o[k] = typeof v === 'string' ? v.trim() : v; });
+    return o;
+  };
+  const parsed = {
+    flights: ed.flights.map(clean).filter(f => f.flightNumber || f.dateISO).map(f => Object.assign(f, {
+      flightNumber: String(f.flightNumber || '').replace(/\s+/g, '').toUpperCase(),
+      from: String(f.from || '').toUpperCase(),
+      to: String(f.to || '').toUpperCase(),
+      travelers: String(f.travelers || '').split(',').map(s => s.trim()).filter(Boolean),
+      arrDayOffset: parseInt(f.arrDayOffset, 10) > 0 ? parseInt(f.arrDayOffset, 10) : 0,
+    // A segment added by hand goes at the end of the form; keep the itinerary in order
+    })).sort((a, b) => (a.dateISO || '').localeCompare(b.dateISO || '') ||
+      (parseActivityStartMinutes(a.depTime) ?? 0) - (parseActivityStartMinutes(b.depTime) ?? 0)),
+    hotels: ed.hotels.map(clean).filter(h => h.name || h.checkInISO),
+    cars: ed.cars.map(clean).filter(c => c.company || c.pickupISO || c.dropoffISO),
+  };
+  const kind = parsed.flights.length ? 'flight' : parsed.hotels.length ? 'hotel' : parsed.cars.length ? 'car' : 'other';
+  if (btn) btn.disabled = true;
+  try {
+    await window._update(window._ref(window._db, 'bookingInbox/' + id), {
+      parsed, kind,
+      summary: _inboxSummaryFromParsed(parsed) || it.summary || it.subject || 'Booking',
+      status: 'pending', error: null, edited: true,
+    });
+    delete _inboxEdits[id];
+    renderBookingInbox();
+    showToast('Booking updated ✓');
+  } catch(e) {
+    showToast('Save failed — check connection');
+    console.error(e);
+    if (btn) btn.disabled = false;
+  }
+};
+
 async function loadBookingInboxAddress() {
   const input = document.getElementById('bookingInboxAddress');
-  if (!input || document.activeElement === input) return;
+  // Mid-edit, don't overwrite what's being typed
+  if (!input || !input.disabled) return;
   try {
     const snap = await window._get(window._ref(window._db, 'config/bookingInboxAddress'));
     input.value = snap.val() || '';
   } catch(e) { console.warn('Could not load inbox address', e); }
 }
 
-window.saveBookingInboxAddress = async function() {
-  const value = (document.getElementById('bookingInboxAddress').value || '').trim();
+// The address is locked (greyed) until Edit is tapped; the same button saves
+window.toggleBookingInboxAddressEdit = async function() {
+  const input = document.getElementById('bookingInboxAddress');
+  const btn = document.getElementById('bookingInboxAddressBtn');
+  if (input.disabled) {
+    input.disabled = false;
+    btn.textContent = 'Save';
+    input.focus();
+    return;
+  }
+  const value = (input.value || '').trim();
+  btn.disabled = true;
   try {
     await window._set(window._ref(window._db, 'config/bookingInboxAddress'), value || null);
+    input.value = value;
+    input.disabled = true;
+    btn.textContent = 'Edit';
     showToast('Inbox address saved ✓');
   } catch(e) { showToast('Save failed — check connection'); console.error(e); }
+  btn.disabled = false;
 };
 
 async function _callBookingParse(subject, text) {
