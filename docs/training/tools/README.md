@@ -13,6 +13,10 @@ cd docs/training/tools
 npm install --no-save playwright-core
 node shoot.js            # all screenshots
 node shoot.js 09         # only files whose name starts with "09"
+
+# rebuild the PDF from ../README.md and the screenshots
+npm install --no-save marked marked-gfm-heading-id
+node build-pdf.js
 ```
 
 Environment overrides:
@@ -24,5 +28,6 @@ Environment overrides:
 
 - `seed.js`: the sample trips, users and settings shown in the screenshots. Edit this to change what appears.
 - `shoot.js`: the list of screens to capture and how to reach each one.
+- `build-pdf.js`: renders `../README.md` into `../Hardin-Trips-Training-Guide.pdf`, with a cover page and side-by-side screenshots.
 - `lib.js`: browser launch, request blocking, and fake-Firebase injection.
 - `fakefb.js`: the fake Firebase modules (database, auth, storage).

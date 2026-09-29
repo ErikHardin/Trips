@@ -45,4 +45,4 @@ async function launch({ user, seed, url = 'http://127.0.0.1:8901/index.html', w 
   await page.waitForTimeout(2500);
   return { browser, ctx, page, blocked };
 }
-module.exports = { launch, blocked };
+module.exports = { launch, blocked, curl, ALLOW };

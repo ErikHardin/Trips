@@ -2,6 +2,8 @@
 
 A walkthrough of the Trips app for the whole family: how to sign in, find your way around a trip, add memories, and (for admins) plan and manage trips.
 
+> 📄 **Printable version:** [Hardin-Trips-Training-Guide.pdf](Hardin-Trips-Training-Guide.pdf)
+>
 > The screenshots use made-up sample trips. Your own trips and names will be different. To regenerate the screenshots after the app changes, see [`tools/README.md`](tools/README.md).
 
 ## Contents
