@@ -129,6 +129,12 @@ the account Gmail names in `X-Forwarded-For` when auto-forwarding. Anything
 else is bounced with "Sender not allowed". This keeps junk out of the queue but
 isn't strong authentication, so keep the address to yourselves.
 
+**Confirmation reply:** once a forwarded booking is queued, the Worker replies
+in the same thread from the inbox address. The reply says the booking was added
+to the inbox and lists what was read. It is sent only when you forwarded the
+email yourself. On a Gmail auto-forward the sender is the airline or hotel, so
+no reply is sent. A failed reply never affects the queued booking.
+
 **Using it:** forward the confirmation email as is. It lands in the inbox
 within a few seconds, with a trip already suggested from its dates. If
 `NTFY_TOPIC` is set, a push notification is sent too. **Add to Trip** writes

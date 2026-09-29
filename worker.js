@@ -353,7 +353,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-29.1';
+const WORKER_VERSION = '2026-09-30.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -642,6 +642,95 @@ async function handleInboundEmail(message, env) {
   }
 
   await notifyBookingQueued(env, item);
+
+  // Confirm by email, but only to a person who forwarded it themselves. On a
+  // Gmail auto-forward the envelope sender is the airline or hotel, and a reply
+  // would go to them.
+  if ((message.from || '').toLowerCase() === sender) {
+    try {
+      await sendInboxReply(message, mail, item);
+    } catch (e) {
+      // The booking is already queued; a missing confirmation loses nothing
+      console.warn('Booking inbox reply failed: ' + e.message);
+    }
+  }
+}
+
+// A plain-text reply in the sender's thread: that the booking is in the inbox,
+// and what was read from it. Cloudflare only allows replying to the original
+// sender, from the routed address, with In-Reply-To set.
+async function sendInboxReply(message, mail, item) {
+  const inReplyTo = mail.headers['message-id'];
+  if (!inReplyTo || !message.to) return;
+  // Imported here rather than at the top so the module still loads outside the
+  // Workers runtime (local tests stub it)
+  const { EmailMessage } = await import('cloudflare:email');
+
+  const lines = bookingDetailLines(item.parsed || {});
+  const read = item.status !== 'error' && item.kind !== 'other' && lines.length;
+  const body = read
+    ? ['✓ Added to your Trips booking inbox:', item.summary, '', ...lines].join('\r\n')
+    : 'Added to your Trips booking inbox, but no flight, hotel or rental car details could be read from it.';
+  const subject = !item.subject ? 'Re: Your booking'
+    : /^re:/i.test(item.subject) ? item.subject : 'Re: ' + item.subject;
+  const domain = message.to.split('@')[1] || 'localhost';
+  const raw = [
+    'From: Hardin Trips <' + message.to + '>',
+    'To: ' + message.from,
+    'Subject: ' + encodeHeaderWords(subject),
+    'Message-ID: <' + crypto.randomUUID() + '@' + domain + '>',
+    'In-Reply-To: ' + inReplyTo,
+    'References: ' + (mail.headers['references'] ? mail.headers['references'] + ' ' : '') + inReplyTo,
+    'Date: ' + new Date().toUTCString(),
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    utf8Base64(body + '\r\n').replace(/(.{76})/g, '$1\r\n'),
+  ].join('\r\n');
+  await message.reply(new EmailMessage(message.to, message.from, raw));
+}
+
+// Same lines the app's inbox card shows (_inboxDetailLines in index.html)
+function bookingDetailLines(p) {
+  const list = v => Array.isArray(v) ? v.filter(Boolean) : [];
+  const d = iso => /^\d{4}-\d{2}-\d{2}$/.test(iso || '')
+    ? new Date(iso + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '';
+  const lines = [];
+  list(p.flights).forEach(f => {
+    const times = f.depTime && f.arrTime ? ' · ' + f.depTime + ' – ' + f.arrTime : '';
+    lines.push('✈️ ' + [d(f.dateISO), String(f.flightNumber || '').toUpperCase() + ' ' + (f.from || '') + ' → ' + (f.to || '') + times].filter(Boolean).join(' · ') +
+      (list(f.travelers).length ? ' · ' + list(f.travelers).join(', ') : ''));
+  });
+  list(p.hotels).forEach(h => lines.push('🏨 ' + [h.name, h.city].filter(Boolean).join(', ') +
+    (h.checkInISO ? ' · ' + [d(h.checkInISO), d(h.checkOutISO)].filter(Boolean).join(' – ') : '')));
+  list(p.cars).forEach(c => lines.push('🚗 ' + (c.company || 'Rental car') + ' · ' +
+    [d(c.pickupISO), c.pickupLocation].filter(Boolean).join(' ') + ' → ' +
+    [d(c.dropoffISO), c.dropoffLocation].filter(Boolean).join(' ')));
+  const confs = [...new Set([...list(p.flights), ...list(p.hotels), ...list(p.cars)].map(x => x.confirmation).filter(Boolean))];
+  if (confs.length) lines.push('Confirmation: ' + confs.join(', '));
+  return lines;
+}
+
+function utf8Base64(s) {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+// RFC 2047 for a non-ASCII header value, split so no encoded word runs past
+// the 75-character limit and no character is cut in half
+function encodeHeaderWords(s) {
+  if (/^[\x20-\x7e]*$/.test(s)) return s;
+  const words = [];
+  let chunk = '';
+  for (const ch of s) {
+    if (new TextEncoder().encode(chunk + ch).length > 45) { words.push(chunk); chunk = ''; }
+    chunk += ch;
+  }
+  if (chunk) words.push(chunk);
+  return words.map(w => '=?UTF-8?B?' + utf8Base64(w) + '?=').join('\r\n ');
 }
 
 // Lowercased addresses of everyone with an admin or user role. Access keys are
