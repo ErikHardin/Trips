@@ -573,6 +573,35 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .form-btn:active { opacity: 0.8; }
 .form-btn.secondary { background: var(--sand); color: var(--ink); }
 .form-btn:disabled { opacity: 0.5; }
+/* Booking inbox (admin) */
+#adminNavBtn { position: relative; }
+.inbox-nav-badge {
+  position: absolute; top: 0; right: -2px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--terracotta); color: white;
+  font-size: 10px; font-weight: 600; line-height: 16px; text-align: center; font-family: 'DM Sans', sans-serif;
+}
+.inbox-count {
+  display: inline-block; margin-left: 6px; min-width: 20px; padding: 1px 7px; border-radius: 10px;
+  background: var(--terracotta); color: white; font-family: 'DM Sans', sans-serif;
+  font-size: 11px; font-style: normal; font-weight: 600; vertical-align: middle; text-align: center;
+}
+.inbox-item { background: var(--warm-white); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow-sm); }
+.inbox-item-head { display: flex; gap: 10px; align-items: flex-start; }
+.inbox-item-icon { font-size: 22px; line-height: 1; }
+.inbox-item-summary { font-size: 14px; font-weight: 600; color: var(--ink); }
+.inbox-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-word; }
+.inbox-item-details { font-size: 12.5px; color: var(--ink); margin: 10px 0; line-height: 1.55; }
+.inbox-item-details div { padding: 2px 0; }
+.inbox-item-error { font-size: 12px; color: var(--terracotta); margin: 8px 0; }
+.inbox-item-actions { display: flex; gap: 8px; }
+.inbox-item-actions .form-btn { width: auto; flex: 1; padding: 10px; }
+.inbox-item details, .inbox-howto details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.inbox-item details summary, .inbox-howto details summary { cursor: pointer; }
+.inbox-item pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 11.5px; max-height: 260px; overflow-y: auto; background: var(--cream); border-radius: 8px; padding: 8px 10px; margin: 6px 0 0; }
+.inbox-howto { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.inbox-recent-row { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--muted); padding: 6px 2px; border-bottom: 1px solid var(--border); }
+.inbox-recent-row:last-child { border-bottom: none; }
+.inbox-recent-row span:first-child { flex: 1; color: var(--ink); }
 .csv-instructions {
   font-size: 12px; color: var(--muted); line-height: 1.6;
   background: var(--cream); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
@@ -1235,7 +1264,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
     <button class="header-action" onclick="showWorldMap()" title="World Map" style="font-size:22px;">🌏</button>
-    <button class="header-action" id="adminNavBtn" onclick="showScreen('screen-admin')" style="display:none;" title="Admin">⚙️</button>
+    <button class="header-action" id="adminNavBtn" onclick="showScreen('screen-admin')" style="display:none;" title="Admin">⚙️<span class="inbox-nav-badge" id="adminNavInboxBadge" style="display:none;"></span></button>
     <button class="header-action" id="lockBtn" onclick="lockApp()" style="display:none;font-size:15px;color:var(--muted);" title="Sign out">🔒</button>
   </div>
   <div class="scroll-content" id="homeContent">
@@ -1342,6 +1371,29 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 
     <!-- TRIPS GROUP -->
     <div class="admin-group-header">Trips</div>
+
+    <!-- BOOKING INBOX -->
+    <div class="admin-section admin-only-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="bookingInboxHeader" onclick="toggleAdminSection('bookingInbox')">
+          <div class="admin-section-title">Booking Inbox<span class="inbox-count" id="bookingInboxCount" style="display:none;"></span></div>
+          <span class="admin-panel-toggle" id="bookingInboxToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="bookingInboxBody" style="display:none;">
+          <div class="inbox-howto">
+            Forward flight, hotel and rental-car confirmations to the inbox address. Each one is read automatically and waits here until you pick its trip.
+            <label class="form-label" style="margin-top:10px;">Inbox address</label>
+            <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" onchange="saveBookingInboxAddress()">
+            <details>
+              <summary>Paste a confirmation instead</summary>
+              <textarea id="bookingPasteInput" class="form-input" style="min-height:90px;resize:vertical;margin-top:8px;" placeholder="Paste the confirmation email text"></textarea>
+              <button class="form-btn" id="bookingPasteBtn" onclick="parsePastedBooking()">✨ Read Booking</button>
+            </details>
+          </div>
+          <div id="bookingInboxList" style="margin-top:14px;"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- ADD NEW TRIP -->
     <div class="admin-section">
@@ -2145,6 +2197,7 @@ function setupAuth() {
       userOwnerEmails = null; userOwnerEmailsPromise = null;
       outstandingBookingsCheckStarted = false;
       lastOutstandingPopupAt = null;
+      stopBookingInboxListener();
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -2187,6 +2240,7 @@ function setupAuth() {
       document.getElementById('lockBtn').style.display = '';
       document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
       if (userRole === 'admin') checkOutstandingBookings();
+      if (userRole === 'admin') startBookingInboxListener();
       initApp();
     } catch(e) {
       console.error('Auth lookup failed:', e);
@@ -7266,7 +7320,7 @@ function showActivityDeleteDialog() {
   });
 }
 
-function showConfirmDialog(title, message) {
+function showConfirmDialog(title, message, yesLabel) {
   return new Promise(resolve => {
     const modal = document.createElement('div');
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
@@ -7275,7 +7329,7 @@ function showConfirmDialog(title, message) {
         <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;margin-bottom:8px;">${title}</div>
         <div style="font-size:14px;color:var(--muted);margin-bottom:24px;">${message}</div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <button id="confirmDialogYes" style="padding:14px;background:var(--terracotta);color:white;border:none;border-radius:14px;font-size:15px;font-weight:500;cursor:pointer;">Delete</button>
+          <button id="confirmDialogYes" style="padding:14px;background:var(--terracotta);color:white;border:none;border-radius:14px;font-size:15px;font-weight:500;cursor:pointer;">${yesLabel || 'Delete'}</button>
           <button id="confirmDialogNo" style="padding:14px;background:none;border:1px solid var(--border);border-radius:14px;font-size:15px;color:var(--muted);cursor:pointer;">Cancel</button>
         </div>
       </div>`;
@@ -8051,6 +8105,485 @@ window.addBookingSubItem = async function(tripId, key) {
   } catch(e) { showToast('Add error: ' + e.message); console.error(e); }
 };
 
+// ════════════════════════════════════════
+//  BOOKING INBOX
+// ════════════════════════════════════════
+// Confirmations forwarded to the inbox address reach the Worker's email()
+// handler, which reads them with Claude and queues them at bookingInbox/{id}
+// (see worker.js). Here an admin picks each one's trip, and assignInboxItem()
+// writes it into the structures the rest of the app already reads: trip-level
+// flight strings, day flightInfo, day hotels, activities, and a checked line on
+// the Logistics booking checklist.
+const BOOKING_WORKER_URL = 'https://hardin-trips-ai.erikchardin.workers.dev';
+const INBOX_KIND_ICON = { flight: '✈️', hotel: '🏨', car: '🚗', other: '📩' };
+let bookingInbox = {};
+let _bookingInboxUnsub = null;
+
+function startBookingInboxListener() {
+  if (_bookingInboxUnsub) return;
+  _bookingInboxUnsub = window._onValue(window._ref(window._db, 'bookingInbox'), snap => {
+    bookingInbox = snap.val() || {};
+    updateBookingInboxBadges();
+    const body = document.getElementById('bookingInboxBody');
+    if (body && body.style.display !== 'none') renderBookingInbox();
+  }, err => console.warn('Booking inbox listener failed', err));
+}
+
+function stopBookingInboxListener() {
+  if (_bookingInboxUnsub) { _bookingInboxUnsub(); _bookingInboxUnsub = null; }
+  bookingInbox = {};
+  updateBookingInboxBadges();
+}
+
+function _inboxOpenItems() {
+  return Object.entries(bookingInbox)
+    .filter(([, it]) => it && (it.status === 'pending' || it.status === 'error'))
+    .sort((a, b) => (b[1].receivedAt || 0) - (a[1].receivedAt || 0));
+}
+
+function updateBookingInboxBadges() {
+  const n = _inboxOpenItems().length;
+  ['adminNavInboxBadge', 'bookingInboxCount'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = n;
+    el.style.display = n ? '' : 'none';
+  });
+}
+
+function _isoFromDate(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function _addDaysISO(iso, n) {
+  const d = isoToDate(iso);
+  d.setDate(d.getDate() + n);
+  return _isoFromDate(d);
+}
+function _inboxShortDate(iso) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? isoToDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+}
+
+// [dayId, day, iso] for every day of a trip, in date order
+function _tripDayEntries(trip) {
+  return Object.entries(trip.days || {})
+    .map(([id, d]) => [id, d, dayISO(d, trip.year)])
+    .sort((a, b) => (a[2] || '').localeCompare(b[2] || '') || (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+}
+
+function _tripRangeISO(trip) {
+  const isos = _tripDayEntries(trip).map(e => e[2]).filter(Boolean);
+  const start = isos[0] || trip.startDateISO || '';
+  return { start, end: isos.length ? isos[isos.length - 1] : start };
+}
+
+// Same day match as _addFlightEntry: the ISO date, else day number + month for
+// legacy days with neither a dateISO nor a trip year.
+function _findTripDay(trip, iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
+  const days = Object.entries(trip.days || {});
+  let match = days.find(([, d]) => dayISO(d, trip.year) === iso);
+  if (!match) {
+    const f = dayFields(iso);
+    match = days.find(([, d]) => d.dateNum === f.dateNum && (d.dateMonth || '').slice(0, 3) === f.dateMonth);
+  }
+  return match || null;
+}
+
+function _inboxItemDates(it) {
+  const p = it.parsed || {};
+  const out = [];
+  (p.flights || []).forEach(f => out.push(f.dateISO));
+  (p.hotels || []).forEach(h => out.push(h.checkInISO, h.checkOutISO));
+  (p.cars || []).forEach(c => out.push(c.pickupISO, c.dropoffISO));
+  return out.filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s || '')).sort();
+}
+
+// Trips a booking can go to: everything not marked past, soonest first
+function _inboxTripOptions() {
+  return Object.entries(allTrips)
+    .filter(([, t]) => t && t.status !== 'past')
+    .map(([id, t]) => [id, t, _tripRangeISO(t)])
+    .sort((a, b) => (a[2].start || '9').localeCompare(b[2].start || '9'));
+}
+
+// The trip whose dates cover the booking, allowing two days either side for
+// the flight out and home
+function _suggestTripForItem(it) {
+  const dates = _inboxItemDates(it);
+  if (!dates.length) return '';
+  const first = dates[0], last = dates[dates.length - 1];
+  let best = '', bestScore = 0;
+  _inboxTripOptions().forEach(([id, , r]) => {
+    if (!r.start) return;
+    const s = _addDaysISO(r.start, -2), e = _addDaysISO(r.end, 2);
+    const score = (first >= s && first <= e ? 2 : 0) + (last >= s && last <= e ? 1 : 0);
+    if (score > bestScore) { bestScore = score; best = id; }
+  });
+  return best;
+}
+
+// "10am" / "10:05 AM" / "22:05" → "10:00am" / "10:05am" / "10:05pm", the form
+// /flight-lookup produces, so emailed flights read like looked-up ones
+function _fmtBookingTime(t) {
+  const m = String(t || '').trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m?\.?$/i) || String(t || '').trim().match(/^(\d{1,2}):(\d{2})()$/);
+  if (!m) return normalizeTimeLabel(t || '');
+  let h = parseInt(m[1], 10);
+  const min = m[2] || '00';
+  let ap = (m[3] || '').toLowerCase();
+  if (ap) ap += 'm';
+  else { ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; }
+  return h + ':' + min + ap;
+}
+
+function _formatInboxFlight(f) {
+  const num  = String(f.flightNumber || '').replace(/\s+/g, '').toUpperCase();
+  const from = String(f.from || '').toUpperCase();
+  const to   = String(f.to || '').toUpperCase();
+  const dep  = f.depTime ? _fmtBookingTime(f.depTime) : '';
+  const arr  = f.arrTime ? _fmtBookingTime(f.arrTime) : '';
+  return num + ' ' + from + ' → ' + to + (dep && arr ? ' · ' + dep + ' – ' + arr : '');
+}
+
+// Flight chips carry one traveler label; a shared booking gets "Erik & Megan"
+function _inboxTravelerLabel(f) {
+  return (Array.isArray(f.travelers) ? f.travelers : [])
+    .map(n => String(n || '').trim().split(/\s+/)[0]).filter(Boolean).join(' & ');
+}
+
+function _inboxDetailLines(it) {
+  const p = it.parsed || {};
+  const lines = [];
+  (p.flights || []).forEach(f => lines.push('✈️ ' + _inboxShortDate(f.dateISO) + ' · ' + _formatInboxFlight(f) +
+    (Array.isArray(f.travelers) && f.travelers.length ? ' · ' + f.travelers.join(', ') : '')));
+  (p.hotels || []).forEach(h => lines.push('🏨 ' + [h.name, h.city].filter(Boolean).join(', ') + ' · ' +
+    _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(h.checkOutISO)));
+  (p.cars || []).forEach(c => lines.push('🚗 ' + (c.company || 'Rental car') + ' · ' +
+    [_inboxShortDate(c.pickupISO), c.pickupLocation].filter(Boolean).join(' ') + ' → ' +
+    [_inboxShortDate(c.dropoffISO), c.dropoffLocation].filter(Boolean).join(' ')));
+  const confs = [...new Set([...(p.flights || []), ...(p.hotels || []), ...(p.cars || [])].map(x => x.confirmation).filter(Boolean))];
+  if (confs.length) lines.push('Confirmation: ' + confs.join(', '));
+  return lines;
+}
+
+function _inboxWhen(ts) {
+  return ts ? new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+}
+
+function renderBookingInbox() {
+  const list = document.getElementById('bookingInboxList');
+  if (!list) return;
+  // Keep trip picks made before a live update re-renders the list
+  const chosen = {};
+  list.querySelectorAll('select[data-inbox-id]').forEach(s => { chosen[s.dataset.inboxId] = s.value; });
+  const tripOpts = _inboxTripOptions();
+  const open = _inboxOpenItems();
+
+  let html = open.length ? '' :
+    '<div class="inbox-howto" style="text-align:center;padding:10px 0 14px;">Nothing waiting — forwarded bookings will appear here.</div>';
+  open.forEach(([id, it]) => {
+    const details = _inboxDetailLines(it);
+    const assignable = it.status === 'pending' && it.kind !== 'other' && details.length;
+    const sel = chosen[id] !== undefined ? chosen[id] : _suggestTripForItem(it);
+    html += '<div class="inbox-item">' +
+      '<div class="inbox-item-head">' +
+        '<div class="inbox-item-icon">' + (INBOX_KIND_ICON[it.kind] || '📩') + '</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="inbox-item-summary">' + escHtml(String(it.summary || it.subject || 'Booking')) + '</div>' +
+          '<div class="inbox-item-meta">' + escHtml([it.source === 'paste' ? 'Pasted' : it.from, _inboxWhen(it.receivedAt)].filter(Boolean).join(' · ')) +
+            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      (details.length ? '<div class="inbox-item-details">' + details.map(l => '<div>' + escHtml(l) + '</div>').join('') + '</div>' : '') +
+      (it.status === 'error' ? '<div class="inbox-item-error">Couldn’t read this email' + (it.error ? ': ' + escHtml(String(it.error)) : '') + '</div>'
+        : !assignable ? '<div class="inbox-item-error">No flight, hotel or rental car found in this email.</div>' : '') +
+      (assignable
+        ? '<select class="form-input" data-inbox-id="' + id + '">' +
+            '<option value="">— Choose a trip —</option>' +
+            tripOpts.map(([tid, t]) => '<option value="' + tid + '"' + (tid === sel ? ' selected' : '') + '>' +
+              escHtml((t.emoji ? t.emoji + ' ' : '') + (t.name || 'Untitled trip') + (t.dates ? ' · ' + t.dates : '')) + '</option>').join('') +
+          '</select>' +
+          '<div class="inbox-item-actions">' +
+            '<button class="form-btn" onclick="assignInboxItem(\'' + id + '\')">Add to Trip</button>' +
+            '<button class="form-btn secondary" onclick="dismissInboxItem(\'' + id + '\')">Dismiss</button>' +
+          '</div>'
+        : '<div class="inbox-item-actions">' +
+            (it.bodyExcerpt ? '<button class="form-btn" onclick="retryInboxParse(\'' + id + '\', this)">Read Again</button>' : '') +
+            '<button class="form-btn secondary" onclick="dismissInboxItem(\'' + id + '\')">Dismiss</button>' +
+          '</div>') +
+      (it.bodyExcerpt ? '<details><summary>View email</summary><pre>' + escHtml(String(it.bodyExcerpt)) + '</pre></details>' : '') +
+    '</div>';
+  });
+
+  const recent = Object.entries(bookingInbox)
+    .filter(([, it]) => it && (it.status === 'assigned' || it.status === 'dismissed'))
+    .sort((a, b) => ((b[1].assignedAt || b[1].dismissedAt || b[1].receivedAt || 0) - (a[1].assignedAt || a[1].dismissedAt || a[1].receivedAt || 0)))
+    .slice(0, 20);
+  if (recent.length) {
+    html += '<details class="inbox-howto"><summary>Recent (' + recent.length + ')</summary>' +
+      recent.map(([id, it]) => {
+        const trip = it.assignedTripId && allTrips[it.assignedTripId];
+        const where = it.status === 'assigned' ? '→ ' + (trip ? trip.name || 'trip' : 'deleted trip') : 'Dismissed';
+        return '<div class="inbox-recent-row"><span>' + (INBOX_KIND_ICON[it.kind] || '📩') + ' ' + escHtml(String(it.summary || it.subject || 'Booking')) + '</span>' +
+          '<span>' + escHtml(where) + '</span>' +
+          (it.status === 'dismissed' ? '<a href="#" onclick="restoreInboxItem(\'' + id + '\');return false;">Restore</a>' : '') +
+          '<a href="#" onclick="deleteInboxItem(\'' + id + '\');return false;" title="Remove from list">✕</a></div>';
+      }).join('') +
+    '</details>';
+  }
+  list.innerHTML = html;
+}
+
+async function loadBookingInboxAddress() {
+  const input = document.getElementById('bookingInboxAddress');
+  if (!input || document.activeElement === input) return;
+  try {
+    const snap = await window._get(window._ref(window._db, 'config/bookingInboxAddress'));
+    input.value = snap.val() || '';
+  } catch(e) { console.warn('Could not load inbox address', e); }
+}
+
+window.saveBookingInboxAddress = async function() {
+  const value = (document.getElementById('bookingInboxAddress').value || '').trim();
+  try {
+    await window._set(window._ref(window._db, 'config/bookingInboxAddress'), value || null);
+    showToast('Inbox address saved ✓');
+  } catch(e) { showToast('Save failed — check connection'); console.error(e); }
+};
+
+async function _callBookingParse(subject, text) {
+  const res = await fetch(BOOKING_WORKER_URL + '/booking-parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject: subject || '', text })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || ('status ' + res.status));
+  return data;
+}
+
+window.parsePastedBooking = async function() {
+  const input = document.getElementById('bookingPasteInput');
+  const btn = document.getElementById('bookingPasteBtn');
+  const text = (input.value || '').trim();
+  if (!text) { showToast('Paste a confirmation first'); return; }
+  btn.disabled = true;
+  btn.textContent = 'Reading…';
+  try {
+    const r = await _callBookingParse('', text);
+    const ref = window._push(window._ref(window._db, 'bookingInbox'));
+    await window._set(ref, {
+      receivedAt: Date.now(),
+      from: (currentUser && currentUser.email) || '',
+      subject: '',
+      source: 'paste',
+      status: 'pending',
+      kind: r.kind || 'other',
+      summary: r.summary || 'Pasted booking',
+      parsed: r.parsed || {},
+      bodyExcerpt: text.slice(0, 12000),
+    });
+    input.value = '';
+    showToast('Added to inbox ✓');
+  } catch(e) {
+    showToast('Couldn’t read booking: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ Read Booking';
+  }
+};
+
+window.retryInboxParse = async function(itemId, btn) {
+  const it = bookingInbox[itemId];
+  if (!it || !it.bodyExcerpt) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
+  try {
+    const r = await _callBookingParse(it.subject, it.bodyExcerpt);
+    await window._update(window._ref(window._db, 'bookingInbox/' + itemId), {
+      kind: r.kind || 'other', summary: r.summary || it.summary || '', parsed: r.parsed || {}, status: 'pending', error: null
+    });
+  } catch(e) {
+    showToast('Still couldn’t read it: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Read Again'; }
+  }
+};
+
+window.dismissInboxItem = async function(itemId) {
+  try {
+    await window._update(window._ref(window._db, 'bookingInbox/' + itemId), {
+      status: 'dismissed', dismissedAt: Date.now(), dismissedBy: adminUser || ''
+    });
+  } catch(e) { showToast('Dismiss failed — check connection'); console.error(e); }
+};
+
+window.restoreInboxItem = async function(itemId) {
+  try {
+    await window._update(window._ref(window._db, 'bookingInbox/' + itemId), { status: 'pending', dismissedAt: null, dismissedBy: null });
+  } catch(e) { showToast('Restore failed — check connection'); console.error(e); }
+};
+
+window.deleteInboxItem = async function(itemId) {
+  try { await window._remove(window._ref(window._db, 'bookingInbox/' + itemId)); }
+  catch(e) { showToast('Remove failed — check connection'); console.error(e); }
+};
+
+// Works out every write an assignment makes, as one multi-path update, so a
+// booking lands on the trip completely or not at all. Returns null when the
+// admin cancels a prompt; throws when nothing in the booking fits the trip.
+async function _planInboxAssignment(itemId, it, tripId, trip) {
+  const p = it.parsed || {};
+  const base = 'trips/' + tripId;
+  const updates = {};
+  const log = [];
+  const problems = [];
+  const range = _tripRangeISO(trip);
+
+  const toActs = v => (Array.isArray(v) ? v : Object.values(v || {})).filter(Boolean);
+  const dayActs = {};
+  const addActivity = (dayId, day, act) => {
+    const acts = dayActs[dayId] || (dayActs[dayId] = toActs(day.activities));
+    if (acts.some(a => (a && typeof a === 'object' ? a.text : a) === act.text)) return;
+    acts.push(act.time ? act : { emoji: act.emoji, text: act.text });
+  };
+
+  const subItems = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems);
+  const subTouched = {};
+  let subSeq = 0;
+  const addSub = (key, iso, text) => {
+    const label = (_inboxShortDate(iso) ? _inboxShortDate(iso) + ' — ' : '') + text;
+    if (subItems[key].some(s => s.label === label)) return;
+    subItems[key].push({ id: 'bi' + Date.now() + '_' + (subSeq++), label, checked: true });
+    subTouched[key] = true;
+  };
+  const confTag = x => x.confirmation ? ' · #' + x.confirmation : '';
+
+  // ── Flights: before or on the first day go out, on or after the last day go
+  // home, anything between goes on its day — the same three lists Edit Trip shows
+  const legList = (lines, names, offs, date) => {
+    const l = String(lines || '').split('\n').filter(Boolean);
+    return {
+      lines: l,
+      names: l.map((_, i) => (names && names[i]) || ''),
+      offs:  l.map((_, i) => (offs && offs[i] != null) ? offs[i] : null),
+      date:  date || '',
+      touched: false,
+    };
+  };
+  const out = legList(trip.flightOut, trip.flightOutNames, trip.flightOutDayOffsets, trip.flightOutDate);
+  const ret = legList(trip.flightReturn, trip.flightReturnNames, trip.flightReturnDayOffsets, trip.flightReturnDate);
+  const dayFlights = {};
+  (p.flights || []).forEach(f => {
+    if (!f.flightNumber || !/^\d{4}-\d{2}-\d{2}$/.test(f.dateISO || '')) { problems.push('a flight with no number or date'); return; }
+    const formatted = _formatInboxFlight(f);
+    const num = formatted.split(' ')[0];
+    const traveler = _inboxTravelerLabel(f);
+    const offset = f.arrDayOffset > 0 ? Number(f.arrDayOffset) : null;
+    const humanDate = _inboxShortDate(f.dateISO);
+    // A flight days away from the trip is almost always the wrong trip picked
+    if (range.start && (f.dateISO < _addDaysISO(range.start, -3) || f.dateISO > _addDaysISO(range.end, 3))) {
+      problems.push(num + ' on ' + humanDate + ' (outside this trip’s dates)');
+      return;
+    }
+    const leg = (!range.start || f.dateISO <= range.start) ? out : (f.dateISO >= range.end ? ret : null);
+    if (leg) {
+      const dup = leg.lines.some((l, i) => l.split(' ')[0] === num && (leg.names[i] || '') === traveler);
+      if (!dup) {
+        leg.lines.push(formatted); leg.names.push(traveler); leg.offs.push(offset);
+        if (!leg.date) leg.date = humanDate;
+        leg.touched = true;
+        log.push([(leg === out ? 'Outbound' : 'Return') + ' flight added from email', formatted]);
+      }
+    } else {
+      const match = _findTripDay(trip, f.dateISO);
+      if (!match) { problems.push('no trip day for the ' + num + ' flight on ' + humanDate); return; }
+      const [dayId, day] = match;
+      const infos = dayFlights[dayId] || (dayFlights[dayId] =
+        Array.isArray(day.flightInfo) ? day.flightInfo.slice() : (day.flightInfo ? [day.flightInfo] : []));
+      if (!infos.some(fi => (fi.formatted || '').split(' ')[0] === num && (fi.travelerName || '') === traveler)) {
+        infos.push({ formatted, date: humanDate, travelerName: traveler, dayOffset: offset });
+        log.push(['Flight added from email', formatted]);
+      }
+    }
+    addSub('flightsBooked', f.dateISO, formatted.split(' · ')[0] + (traveler ? ' (' + traveler + ')' : '') + confTag(f));
+  });
+  [['flightOut', out], ['flightReturn', ret]].forEach(([field, leg]) => {
+    if (!leg.touched) return;
+    updates[base + '/' + field] = leg.lines.join('\n');
+    updates[base + '/' + field + 'Names'] = leg.names;
+    updates[base + '/' + field + 'DayOffsets'] = leg.offs;
+    updates[base + '/' + field + 'Date'] = leg.date;
+  });
+  Object.entries(dayFlights).forEach(([dayId, infos]) => { updates[base + '/days/' + dayId + '/flightInfo'] = infos; });
+
+  // ── Hotels: the name on every night from check-in up to check-out
+  for (const h of (p.hotels || [])) {
+    if (!h.name || !/^\d{4}-\d{2}-\d{2}$/.test(h.checkInISO || '')) { problems.push('a hotel with no name or check-in date'); continue; }
+    const checkOut = (h.checkOutISO || '') > h.checkInISO ? h.checkOutISO : _addDaysISO(h.checkInISO, 1);
+    const nights = _tripDayEntries(trip).filter(([, , iso]) => iso && iso >= h.checkInISO && iso < checkOut);
+    if (!nights.length) { problems.push('no trip days for ' + h.name + ' (' + _inboxShortDate(h.checkInISO) + ')'); continue; }
+    const clashes = [...new Set(nights.map(([, d]) => d.hotel).filter(x => x && x !== h.name))];
+    if (clashes.length) {
+      const ok = await showConfirmDialog('Replace hotel?',
+        escHtml('Some of these nights already have ' + clashes.join(', ') + '. Replace with ' + h.name + '?'), 'Replace');
+      if (!ok) return null;
+    }
+    nights.forEach(([dayId]) => { updates[base + '/days/' + dayId + '/hotel'] = h.name; });
+    const ci = _findTripDay(trip, h.checkInISO);
+    if (ci) addActivity(ci[0], ci[1], { emoji: '🏨', text: 'Check in — ' + h.name, time: h.checkInTime ? normalizeTimeLabel(h.checkInTime) : '' });
+    const n = Math.round((isoToDate(checkOut) - isoToDate(h.checkInISO)) / 86400000);
+    addSub('hotelsBooked', h.checkInISO, h.name + ' · ' + n + ' night' + (n === 1 ? '' : 's') + confTag(h));
+    log.push(['Hotel added from email', h.name + ' · ' + _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(checkOut)]);
+  }
+
+  // ── Rental cars: pick-up and return activities on their days
+  (p.cars || []).forEach(c => {
+    const pu = _findTripDay(trip, c.pickupISO), dr = _findTripDay(trip, c.dropoffISO);
+    const company = c.company || 'Rental car';
+    if (!pu && !dr) { problems.push('no trip days for the ' + company + ' rental'); return; }
+    if (pu) addActivity(pu[0], pu[1], { emoji: '🚗', text: 'Pick up rental car' + (c.company || c.pickupLocation ? ' — ' + [c.company, c.pickupLocation].filter(Boolean).join(', ') : ''), time: c.pickupTime ? normalizeTimeLabel(c.pickupTime) : '' });
+    if (dr) addActivity(dr[0], dr[1], { emoji: '🚗', text: 'Return rental car' + (c.company || c.dropoffLocation ? ' — ' + [c.company, c.dropoffLocation].filter(Boolean).join(', ') : ''), time: c.dropoffTime ? normalizeTimeLabel(c.dropoffTime) : '' });
+    addSub('carRentalBooked', c.pickupISO || c.dropoffISO, [company, c.pickupLocation].filter(Boolean).join(', ') +
+      (c.dropoffISO ? ' → ' + _inboxShortDate(c.dropoffISO) : '') + confTag(c));
+    log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO)]);
+  });
+
+  Object.entries(dayActs).forEach(([dayId, acts]) => { updates[base + '/days/' + dayId + '/activities'] = acts; });
+  Object.keys(subTouched).forEach(key => { updates[base + '/logistics/bookingSubItems/' + key] = subItems[key]; });
+
+  const tripWrites = Object.keys(updates).length;
+  if (problems.length) {
+    if (!tripWrites && !log.length) throw new Error('Doesn’t fit this trip — ' + problems.join('; '));
+    const ok = await showConfirmDialog('Add the rest?', escHtml('Couldn’t place ' + problems.join('; ') + '. Add everything else?'), 'Add');
+    if (!ok) return null;
+  }
+
+  updates['bookingInbox/' + itemId + '/status'] = 'assigned';
+  updates['bookingInbox/' + itemId + '/assignedTripId'] = tripId;
+  updates['bookingInbox/' + itemId + '/assignedAt'] = Date.now();
+  updates['bookingInbox/' + itemId + '/assignedBy'] = adminUser || '';
+  return { updates, log, tripWrites };
+}
+
+window.assignInboxItem = async function(itemId) {
+  const it = bookingInbox[itemId];
+  if (!it) return;
+  const sel = document.querySelector('select[data-inbox-id="' + itemId + '"]');
+  const tripId = sel && sel.value;
+  if (!tripId) { showToast('Choose a trip first'); return; }
+  const trip = allTrips[tripId];
+  if (!trip) { showToast('Trip not found'); return; }
+  let plan;
+  try {
+    plan = await _planInboxAssignment(itemId, it, tripId, trip);
+  } catch(e) { showToast(e.message); return; }
+  if (!plan) return;
+  try {
+    await window._update(window._ref(window._db), plan.updates);
+  } catch(e) { showToast('Couldn’t add booking: ' + e.message); console.error(e); return; }
+  plan.log.forEach(([action, detail]) => logChange(tripId, action, detail));
+  showToast(plan.log.length ? 'Added to ' + (trip.name || 'trip') + ' ✓' : 'Already on ' + (trip.name || 'trip') + ' ✓');
+};
+
 function refreshPackingPct(packingList) {
   if (!packingList) return;
   for (const personObj of packingList) {
@@ -8088,6 +8621,10 @@ window.toggleAdminSection = function(sectionId) {
   }
   if (sectionId === 'travelTracker' && opening) {
     initTravelTracker();
+  }
+  if (sectionId === 'bookingInbox' && opening) {
+    loadBookingInboxAddress();
+    renderBookingInbox();
   }
 };
 

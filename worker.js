@@ -112,6 +112,22 @@ export default {
       });
     }
 
+    // Parse pasted booking text — the same parser the email handler uses. It
+    // only parses: the app is signed in and writes the result to bookingInbox
+    // itself, so this route can't be used to put anything in the database.
+    if (url.pathname === '/booking-parse') {
+      const text = String(body.text || '').slice(0, BOOKING_TEXT_LIMIT);
+      if (!text.trim()) {
+        return new Response(JSON.stringify({ error: 'Missing text' }), { status: 400, headers: CORS_JSON });
+      }
+      try {
+        const parsed = await parseBookingText(env, String(body.subject || ''), text);
+        return new Response(JSON.stringify(parsed), { headers: CORS_JSON });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'Parse failed: ' + e.message }), { status: 502, headers: CORS_JSON });
+      }
+    }
+
     // AI proxy (unchanged)
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -127,6 +143,13 @@ export default {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*'
     }});
+  },
+
+  // Inbound mail from Cloudflare Email Routing (see DEPLOY.md). A forwarded
+  // flight, hotel or rental-car confirmation is parsed and queued under
+  // bookingInbox/ for the app to assign to a trip.
+  async email(message, env, ctx) {
+    return handleInboundEmail(message, env);
   }
 }
 
@@ -330,7 +353,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-07.1';
+const WORKER_VERSION = '2026-09-29.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -352,6 +375,7 @@ const WORKER_ROUTES = [
   '/verify-pin',
   '/flight-lookup',
   '/ntfy-config',
+  '/booking-parse',
 ];
 
 async function handleVersion(env) {
@@ -533,4 +557,324 @@ function parseTimeTo24h(time) {
   if (ampm === 'pm' && h !== 12) h += 12;
   if (ampm === 'am' && h === 12) h = 0;
   return String(h).padStart(2, '0') + ':' + min;
+}
+
+// ── Booking inbox ─────────────────────────────────────────────────────────────
+// Forward a flight, hotel or rental-car confirmation to the address routed to
+// this Worker (Cloudflare Email Routing — see DEPLOY.md). It is decoded, parsed
+// by Claude into structured bookings and queued at bookingInbox/{pushId}, where
+// the app's admin "Booking Inbox" assigns it to a trip.
+
+// Decoded text sent to the model. Confirmations run long on boilerplate; the
+// booking itself is near the top, and this keeps a parse inside one call.
+const BOOKING_TEXT_LIMIT = 30000;
+// Kept on the inbox item so the app can show the email and retry a parse.
+const BOOKING_EXCERPT_LIMIT = 12000;
+// Raw MIME size above which mail is refused rather than read into memory.
+const BOOKING_RAW_LIMIT = 15 * 1024 * 1024;
+const BOOKING_MODEL = 'claude-sonnet-4-6';
+
+async function handleInboundEmail(message, env) {
+  if (!env.FIREBASE_URL) {
+    message.setReject('Booking inbox is not configured');
+    return;
+  }
+  if (message.rawSize > BOOKING_RAW_LIMIT) {
+    message.setReject('Message too large');
+    return;
+  }
+
+  const raw = await new Response(message.raw).text();
+  const mail = parseMime(raw);
+
+  // Only people with app access (admins and users, not guests) may send. A
+  // manual forward arrives from them directly; a Gmail auto-forward keeps the
+  // airline as sender but names the forwarding account in X-Forwarded-For.
+  const senders = [
+    message.from,
+    extractAddress(mail.headers['from']),
+    extractAddress((mail.headers['x-forwarded-for'] || '').split(/\s+/)[0]),
+  ].map(a => (a || '').toLowerCase()).filter(Boolean);
+  let allowed;
+  try {
+    allowed = await bookingAllowedSenders(env);
+  } catch (e) {
+    // Can't check — refuse with a reason that tells the sender to retry,
+    // rather than let them assume it was queued.
+    message.setReject('Booking inbox unavailable, try again later');
+    return;
+  }
+  const sender = senders.find(a => allowed.has(a));
+  if (!sender) {
+    message.setReject('Sender not allowed');
+    return;
+  }
+
+  const subject = decodeEncodedWords(mail.headers['subject'] || '');
+  const text = mailText(mail);
+  const item = {
+    receivedAt: Date.now(),
+    from: sender,
+    subject,
+    source: 'email',
+    status: 'pending',
+    bodyExcerpt: text.slice(0, BOOKING_EXCERPT_LIMIT),
+  };
+  try {
+    Object.assign(item, await parseBookingText(env, subject, text));
+  } catch (e) {
+    // Keep the email so nothing forwarded is lost; the app can retry the parse.
+    item.status = 'error';
+    item.error = e.message;
+    item.kind = 'other';
+    item.summary = subject || 'Unparsed email';
+  }
+
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  const r = await fetch(env.FIREBASE_URL + '/bookingInbox.json' + auth, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item),
+  });
+  if (!r.ok) {
+    message.setReject('Booking inbox unavailable, try again later');
+    return;
+  }
+
+  await notifyBookingQueued(env, item);
+}
+
+// Lowercased addresses of everyone with an admin or user role. Access keys are
+// the email with '.' replaced by ',' — decoded too, for records missing email.
+async function bookingAllowedSenders(env) {
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  const access = await wFetchJson(env.FIREBASE_URL + '/access.json' + auth);
+  const set = new Set();
+  Object.entries(access || {}).forEach(([key, u]) => {
+    if (!u || (u.role !== 'admin' && u.role !== 'user')) return;
+    set.add(key.replace(/,/g, '.').toLowerCase());
+    if (u.email) set.add(String(u.email).toLowerCase());
+  });
+  return set;
+}
+
+async function notifyBookingQueued(env, item) {
+  if (!env.NTFY_TOPIC) return;
+  // Header values must be plain ASCII; the emoji-bearing summary goes in the body
+  const headers = { 'Title': 'New booking in inbox', 'Tags': 'inbox_tray', 'Content-Type': 'text/plain' };
+  if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
+  try {
+    await fetch('https://ntfy.sh/' + env.NTFY_TOPIC, {
+      method: 'POST',
+      headers,
+      body: (item.status === 'error' ? 'Could not read: ' : '') + (item.summary || item.subject || 'Booking'),
+    });
+  } catch (e) { /* a missed push never loses the booking */ }
+}
+
+// Ask Claude for structured bookings. Returns { kind, summary, parsed }.
+async function parseBookingText(env, subject, text) {
+  if (!env.ANTHROPIC_KEY) throw new Error('ANTHROPIC_KEY not configured');
+  const today = new Date().toISOString().slice(0, 10);
+  const system = [
+    'You extract travel bookings from confirmation emails (often forwarded). Today is ' + today + '.',
+    'Reply with ONLY a JSON object, no prose and no code fences, in exactly this shape:',
+    '{"kind":"flight|hotel|car|other","summary":"...","flights":[...],"hotels":[...],"cars":[...]}',
+    'flights items: {"flightNumber":"UA100","dateISO":"YYYY-MM-DD","from":"DEN","to":"LIS","depTime":"8:05am","arrTime":"10:40pm","arrDayOffset":0,"travelers":["First Last"],"confirmation":"ABC123"}',
+    'hotels items: {"name":"Hotel name","city":"City","address":"...","checkInISO":"YYYY-MM-DD","checkOutISO":"YYYY-MM-DD","checkInTime":"3pm","confirmation":"..."}',
+    'cars items: {"company":"Hertz","pickupLocation":"...","pickupISO":"YYYY-MM-DD","pickupTime":"10am","dropoffLocation":"...","dropoffISO":"YYYY-MM-DD","dropoffTime":"9am","confirmation":"..."}',
+    'Rules:',
+    '- One flights item per flight segment (a connection is two segments). Include every segment of the itinerary.',
+    '- flightNumber is airline IATA code + number, no spaces. from/to are 3-letter IATA airport codes.',
+    '- Times are local, ALWAYS 12-hour with am/pm like "7:30pm" or "10am". Never 24-hour. Use "" when unknown.',
+    '- arrDayOffset is how many days after dateISO the flight lands (0 same day, 1 overnight).',
+    '- Dates are YYYY-MM-DD. If the email omits the year, choose the next occurrence after today.',
+    '- travelers: passenger names as "First Last" in normal capitalization. [] if not given.',
+    '- Use "" for unknown strings and [] for empty lists; keep every key.',
+    '- A cancellation is not a booking: kind "other", and say it is a cancellation in summary.',
+    '- kind is the main booking type; "other" if there is no flight, hotel or car booking.',
+    '- summary: one short line, e.g. "UA100 DEN → LIS · Oct 12", "Hôtel Martinez, Cannes · Jun 3–5", "Hertz · Lyon Airport · Jun 1–8".',
+  ].join('\n');
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': env.ANTHROPIC_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: BOOKING_MODEL,
+      max_tokens: 4000,
+      system,
+      messages: [{ role: 'user', content: 'Subject: ' + subject + '\n\n' + text.slice(0, BOOKING_TEXT_LIMIT) }],
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error((data && data.error && data.error.message) || ('Anthropic status ' + r.status));
+  const out = ((data.content && data.content[0] && data.content[0].text) || '')
+    .replace(/```json|```/g, '').trim();
+  const start = out.indexOf('{');
+  const end = out.lastIndexOf('}');
+  if (start < 0 || end < start) throw new Error('No JSON in model reply');
+  const j = JSON.parse(out.slice(start, end + 1));
+
+  const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === 'object') : [];
+  const parsed = { flights: arr(j.flights), hotels: arr(j.hotels), cars: arr(j.cars) };
+  let kind = ['flight', 'hotel', 'car', 'other'].includes(j.kind) ? j.kind : 'other';
+  if (kind === 'other' && !/cancel/i.test(j.summary || '')) {
+    if (parsed.flights.length) kind = 'flight';
+    else if (parsed.hotels.length) kind = 'hotel';
+    else if (parsed.cars.length) kind = 'car';
+  }
+  return { kind, summary: String(j.summary || subject || 'Booking'), parsed };
+}
+
+// ── Minimal MIME decoding ─────────────────────────────────────────────────────
+// Enough for confirmation emails: nested multiparts, base64 and
+// quoted-printable bodies, charsets, forwarded message/rfc822 parts. Written
+// inline because this Worker deploys with no build step (see DEPLOY.md).
+
+function parseMime(raw) {
+  const m = raw.match(/\r?\n\r?\n/);
+  const headText = m ? raw.slice(0, m.index) : raw;
+  const body = m ? raw.slice(m.index + m[0].length) : '';
+  const headers = {};
+  headText.replace(/\r?\n[ \t]+/g, ' ').split(/\r?\n/).forEach(line => {
+    const i = line.indexOf(':');
+    if (i <= 0) return;
+    const name = line.slice(0, i).trim().toLowerCase();
+    if (!(name in headers)) headers[name] = line.slice(i + 1).trim();
+  });
+  return { headers, body };
+}
+
+function mimeParam(value, name) {
+  const m = (value || '').match(new RegExp('(?:^|;)\\s*' + name + '\\s*=\\s*(?:"([^"]*)"|([^;\\s]+))', 'i'));
+  return m ? (m[1] !== undefined ? m[1] : m[2]) : '';
+}
+
+// Every text/plain and text/html part that isn't an attachment, in order.
+function collectTextParts(entity, out, depth) {
+  if (depth > 10) return out;
+  const ctype = entity.headers['content-type'] || 'text/plain';
+  const type = ctype.split(';')[0].trim().toLowerCase();
+  if (type.startsWith('multipart/')) {
+    const boundary = mimeParam(ctype, 'boundary');
+    if (!boundary) return out;
+    const sections = entity.body.split('--' + boundary);
+    // sections[0] is the preamble; the closing delimiter is "--boundary--"
+    for (let i = 1; i < sections.length; i++) {
+      const sec = sections[i];
+      if (sec.startsWith('--')) break;
+      collectTextParts(parseMime(sec.replace(/^[ \t]*\r?\n/, '')), out, depth + 1);
+    }
+    return out;
+  }
+  if (type === 'message/rfc822') {
+    const inner = parseMime(decodeTransfer(entity.body, entity.headers['content-transfer-encoding'], 'utf-8'));
+    collectTextParts(inner, out, depth + 1);
+    return out;
+  }
+  if (type !== 'text/plain' && type !== 'text/html') return out;
+  if (/^\s*attachment/i.test(entity.headers['content-disposition'] || '')) return out;
+  const charset = mimeParam(ctype, 'charset') || 'utf-8';
+  out.push({ type, text: decodeTransfer(entity.body, entity.headers['content-transfer-encoding'], charset) });
+  return out;
+}
+
+function decodeBytes(bytes, charset) {
+  try { return new TextDecoder(charset || 'utf-8').decode(bytes); }
+  catch (e) { return new TextDecoder('utf-8').decode(bytes); }
+}
+
+function base64Bytes(s) {
+  const bin = atob(s.replace(/[^A-Za-z0-9+/=]/g, ''));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function decodeTransfer(body, encoding, charset) {
+  const enc = (encoding || '').trim().toLowerCase();
+  if (enc === 'base64') {
+    try { return decodeBytes(base64Bytes(body), charset); }
+    catch (e) { return body; }
+  }
+  if (enc === 'quoted-printable') {
+    return decodeBytes(qpBytes(body.replace(/=\r?\n/g, ''), false), charset);
+  }
+  // 7bit / 8bit / binary: the raw message was already read as UTF-8
+  return body;
+}
+
+// Quoted-printable (or RFC 2047 "Q", where _ is a space) to bytes
+function qpBytes(s, underscoreIsSpace) {
+  const enc = new TextEncoder();
+  const bytes = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '=' && /^[0-9A-Fa-f]{2}$/.test(s.substr(i + 1, 2))) {
+      bytes.push(parseInt(s.substr(i + 1, 2), 16));
+      i += 2;
+    } else if (c === '_' && underscoreIsSpace) {
+      bytes.push(32);
+    } else {
+      // Non-ASCII here arrived as 8bit text; put it back as UTF-8 bytes
+      for (const b of enc.encode(c)) bytes.push(b);
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+// RFC 2047 encoded words in headers: =?UTF-8?B?...?= and =?UTF-8?Q?...?=
+function decodeEncodedWords(s) {
+  return String(s)
+    .replace(/(\?=)\s+(=\?)/g, '$1$2')
+    .replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (all, charset, enc, data) => {
+      try {
+        return enc.toUpperCase() === 'B'
+          ? decodeBytes(base64Bytes(data), charset)
+          : decodeBytes(qpBytes(data, true), charset);
+      } catch (e) { return all; }
+    });
+}
+
+function extractAddress(s) {
+  if (!s) return '';
+  const m = String(s).match(/<([^>]+)>/) || String(s).match(/[^\s<>"',;]+@[^\s<>"',;]+/);
+  return m ? (m[1] || m[0]).trim() : '';
+}
+
+function htmlToText(html) {
+  const named = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", ndash: '–', mdash: '—', rarr: '→', middot: '·', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', hellip: '…' };
+  return html
+    .replace(/<(head|style|script|title)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6]|table|section)>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&([a-z]+);/gi, (m, n) => named[n.toLowerCase()] !== undefined ? named[n.toLowerCase()] : m);
+}
+
+function tidyText(s) {
+  return s
+    .replace(/\r/g, '')
+    .replace(/[ \t ]+/g, ' ')
+    .split('\n').map(l => l.trim()).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// The readable body of a parsed message: its plain-text parts, unless those
+// are missing or a stub ("view this email in a browser"), then the HTML as text.
+function mailText(mail) {
+  const parts = collectTextParts(mail, [], 0);
+  const plain = tidyText(parts.filter(p => p.type === 'text/plain').map(p => p.text).join('\n\n'));
+  const html = parts.filter(p => p.type === 'text/html').map(p => p.text).join('\n');
+  if (html && plain.length < 400) return tidyText(htmlToText(html));
+  return plain;
 }
