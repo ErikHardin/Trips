@@ -8308,7 +8308,8 @@ function renderBookingInbox() {
         '<div style="flex:1;min-width:0;">' +
           '<div class="inbox-item-summary">' + escHtml(String(it.summary || it.subject || 'Booking')) + '</div>' +
           '<div class="inbox-item-meta">' + escHtml([it.source === 'paste' ? 'Pasted' : it.from, _inboxWhen(it.receivedAt)].filter(Boolean).join(' · ')) +
-            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') + '</div>' +
+            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') +
+            (it.reply ? '<br>Reply: ' + escHtml(String(it.reply).replace(/^failed: /, 'failed — ')) : '') + '</div>' +
         '</div>' +
       '</div>' +
       (details.length ? '<div class="inbox-item-details">' + details.map(l => '<div>' + escHtml(l) + '</div>').join('') + '</div>' : '') +

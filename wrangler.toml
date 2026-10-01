@@ -23,6 +23,11 @@ compatibility_date = "2026-05-01"
 # are never deleted by a deploy either way.
 keep_vars = true
 
+# Keep the Worker's console output (dashboard → Workers → hardin-trips-ai →
+# Logs). The email handler logs what happened to each confirmation reply there.
+[observability]
+enabled = true
+
 # ── Environment ───────────────────────────────────────────────────────────────
 # Encrypted secrets are NOT declared here and must not be — they are managed in
 # the dashboard (or `wrangler secret put`) and survive a deploy untouched.

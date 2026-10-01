@@ -353,7 +353,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-09-30.1';
+const WORKER_VERSION = '2026-10-01.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -641,27 +641,46 @@ async function handleInboundEmail(message, env) {
     return;
   }
 
+  const itemKey = ((await r.json().catch(() => null)) || {}).name;
+
   await notifyBookingQueued(env, item);
 
   // Confirm by email, but only to a person who forwarded it themselves. On a
   // Gmail auto-forward the envelope sender is the airline or hotel, and a reply
   // would go to them.
+  let reply;
   if ((message.from || '').toLowerCase() === sender) {
     try {
-      await sendInboxReply(message, mail, item);
+      reply = await sendInboxReply(message, mail, item);
     } catch (e) {
       // The booking is already queued; a missing confirmation loses nothing
-      console.warn('Booking inbox reply failed: ' + e.message);
+      reply = 'failed: ' + (e && e.message || e);
     }
+  } else {
+    reply = 'skipped: forwarded automatically (sender ' + (message.from || 'unknown') + ')';
+  }
+
+  // Recorded on the item so the app shows what happened to the reply
+  console.log('Booking inbox reply ' + reply + ' — ' + (item.summary || item.subject || ''));
+  if (itemKey) {
+    try {
+      await fetch(env.FIREBASE_URL + '/bookingInbox/' + itemKey + '.json' + auth, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply }),
+      });
+    } catch (e) { /* the status is a nicety */ }
   }
 }
 
 // A plain-text reply in the sender's thread: that the booking is in the inbox,
 // and what was read from it. Cloudflare only allows replying to the original
-// sender, from the routed address, with In-Reply-To set.
+// sender, from the routed address, with In-Reply-To set. Returns 'sent' or why
+// it wasn't; throws when Cloudflare refuses the reply.
 async function sendInboxReply(message, mail, item) {
   const inReplyTo = mail.headers['message-id'];
-  if (!inReplyTo || !message.to) return;
+  if (!inReplyTo) return 'skipped: no Message-ID on the email';
+  if (!message.to) return 'skipped: no recipient address';
   // Imported here rather than at the top so the module still loads outside the
   // Workers runtime (local tests stub it)
   const { EmailMessage } = await import('cloudflare:email');
@@ -689,6 +708,7 @@ async function sendInboxReply(message, mail, item) {
     utf8Base64(body + '\r\n').replace(/(.{76})/g, '$1\r\n'),
   ].join('\r\n');
   await message.reply(new EmailMessage(message.to, message.from, raw));
+  return 'sent';
 }
 
 // Same lines the app's inbox card shows (_inboxDetailLines in index.html)
