@@ -1394,11 +1394,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
         <div class="admin-panel-body" id="bookingInboxBody" style="display:none;">
           <div class="inbox-howto">
             Forward flight, hotel, rental-car and activity/reservation confirmations to the inbox address. Each one is read automatically and waits here until you pick its trip.
-            <label class="form-label" style="margin-top:10px;">Inbox address</label>
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-              <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" disabled style="margin:0;flex:1;">
-              <button class="form-btn secondary" id="bookingInboxAddressBtn" style="width:auto;padding:10px 16px;" onclick="toggleBookingInboxAddressEdit()">Edit</button>
-            </div>
+            <details id="bookingInboxAddressDetails">
+              <summary id="bookingInboxAddressSummary">Inbox address</summary>
+              <div style="display:flex;gap:8px;align-items:center;margin:8px 0 4px;">
+                <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" disabled style="margin:0;flex:1;">
+                <button class="form-btn secondary" id="bookingInboxAddressBtn" style="width:auto;padding:10px 16px;" onclick="toggleBookingInboxAddressEdit()">Edit</button>
+              </div>
+            </details>
             <details id="bookingSendersDetails">
               <summary id="bookingSendersSummary">Approved senders</summary>
               <div style="margin:8px 0 6px;">People with app accounts can always send. Add other addresses you book from.</div>
@@ -8608,6 +8610,13 @@ async function loadBookingInboxAddress() {
     const snap = await window._get(window._ref(window._db, 'config/bookingInboxAddress'));
     input.value = snap.val() || '';
   } catch(e) { console.warn('Could not load inbox address', e); }
+  _renderInboxAddressSummary(input.value);
+}
+
+// Collapsed, the section still shows where to forward to
+function _renderInboxAddressSummary(value) {
+  const summary = document.getElementById('bookingInboxAddressSummary');
+  if (summary) summary.textContent = 'Inbox address' + (value ? ': ' + value : '');
 }
 
 // The address is locked (greyed) until Edit is tapped; the same button saves
@@ -8627,6 +8636,7 @@ window.toggleBookingInboxAddressEdit = async function() {
     input.value = value;
     input.disabled = true;
     btn.textContent = 'Edit';
+    _renderInboxAddressSummary(value);
     showToast('Inbox address saved ✓');
   } catch(e) { showToast('Save failed — check connection'); console.error(e); }
   btn.disabled = false;
