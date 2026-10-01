@@ -1392,7 +1392,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
         </div>
         <div class="admin-panel-body" id="bookingInboxBody" style="display:none;">
           <div class="inbox-howto">
-            Forward flight, hotel and rental-car confirmations to the inbox address. Each one is read automatically and waits here until you pick its trip.
+            Forward flight, hotel, rental-car and activity/reservation confirmations to the inbox address. Each one is read automatically and waits here until you pick its trip.
             <label class="form-label" style="margin-top:10px;">Inbox address</label>
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
               <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" disabled style="margin:0;flex:1;">
@@ -2063,7 +2063,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 309 };
+window.BUILD_INFO = { prNumber: 310 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -8129,7 +8129,7 @@ window.addBookingSubItem = async function(tripId, key) {
 // flight strings, day flightInfo, day hotels, activities, and a checked line on
 // the Logistics booking checklist.
 const BOOKING_WORKER_URL = 'https://hardin-trips-ai.erikchardin.workers.dev';
-const INBOX_KIND_ICON = { flight: '✈️', hotel: '🏨', car: '🚗', other: '📩' };
+const INBOX_KIND_ICON = { flight: '✈️', hotel: '🏨', car: '🚗', activity: '🎟️', other: '📩' };
 let bookingInbox = {};
 let _bookingInboxUnsub = null;
 
@@ -8209,6 +8209,7 @@ function _inboxItemDates(it) {
   (p.flights || []).forEach(f => out.push(f.dateISO));
   (p.hotels || []).forEach(h => out.push(h.checkInISO, h.checkOutISO));
   (p.cars || []).forEach(c => out.push(c.pickupISO, c.dropoffISO));
+  (p.activities || []).forEach(a => out.push(a.dateISO));
   return out.filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s || '')).sort();
 }
 
@@ -8258,6 +8259,13 @@ function _formatInboxFlight(f) {
   return num + ' ' + from + ' → ' + to + (dep && arr ? ' · ' + dep + ' – ' + arr : '');
 }
 
+// "7:30pm", or "11:30am–3pm" when the reservation has an end time
+function _inboxActivityTime(a) {
+  const start = normalizeTimeLabel(a.time || '');
+  const end = normalizeTimeLabel(a.endTime || '');
+  return start && end ? start + '–' + end : start;
+}
+
 // Flight chips carry one traveler label; a shared booking gets "Erik & Megan"
 function _inboxTravelerLabel(f) {
   return (Array.isArray(f.travelers) ? f.travelers : [])
@@ -8274,7 +8282,9 @@ function _inboxDetailLines(it) {
   (p.cars || []).forEach(c => lines.push('🚗 ' + (c.company || 'Rental car') + ' · ' +
     [_inboxShortDate(c.pickupISO), c.pickupLocation].filter(Boolean).join(' ') + ' → ' +
     [_inboxShortDate(c.dropoffISO), c.dropoffLocation].filter(Boolean).join(' ')));
-  const confs = [...new Set([...(p.flights || []), ...(p.hotels || []), ...(p.cars || [])].map(x => x.confirmation).filter(Boolean))];
+  (p.activities || []).forEach(a => lines.push('🎟️ ' + [_inboxShortDate(a.dateISO), a.title || a.venue || 'Activity',
+    _inboxActivityTime(a), a.partySize > 0 ? 'Party of ' + a.partySize : '', a.paid ? 'Paid' : ''].filter(Boolean).join(' · ')));
+  const confs = [...new Set([...(p.flights || []), ...(p.hotels || []), ...(p.cars || []), ...(p.activities || [])].map(x => x.confirmation).filter(Boolean))];
   if (confs.length) lines.push('Confirmation: ' + confs.join(', '));
   return lines;
 }
@@ -8308,13 +8318,12 @@ function renderBookingInbox() {
         '<div style="flex:1;min-width:0;">' +
           '<div class="inbox-item-summary">' + escHtml(String(it.summary || it.subject || 'Booking')) + '</div>' +
           '<div class="inbox-item-meta">' + escHtml([it.source === 'paste' ? 'Pasted' : it.from, _inboxWhen(it.receivedAt)].filter(Boolean).join(' · ')) +
-            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') +
-            (it.reply ? '<br>Reply: ' + escHtml(String(it.reply).replace(/^failed: /, 'failed — ')) : '') + '</div>' +
+            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') + '</div>' +
         '</div>' +
       '</div>' +
       (details.length ? '<div class="inbox-item-details">' + details.map(l => '<div>' + escHtml(l) + '</div>').join('') + '</div>' : '') +
       (it.status === 'error' ? '<div class="inbox-item-error">Couldn’t read this email' + (it.error ? ': ' + escHtml(String(it.error)) : '') + '</div>'
-        : !assignable ? '<div class="inbox-item-error">No flight, hotel or rental car found in this email.</div>' : '') +
+        : !assignable ? '<div class="inbox-item-error">No flight, hotel, rental car or activity found in this email.</div>' : '') +
       (assignable
         ? '<select class="form-input" data-inbox-id="' + id + '">' +
             '<option value="">— Choose a trip —</option>' +
@@ -8379,8 +8388,13 @@ const INBOX_EDIT_FIELDS = {
     ['pickupISO', 'Pick-up date', 'date'], ['dropoffISO', 'Return date', 'date'],
     ['pickupTime', 'Pick-up time', 'text', '10am'], ['dropoffTime', 'Return time', 'text', '9am'],
   ],
+  activities: [
+    ['title', 'Activity', 'text', 'Dinner at Soma'], ['dateISO', 'Date', 'date'],
+    ['time', 'Time', 'text', '7:30pm'], ['endTime', 'Ends', 'text', '9:30pm'],
+    ['venue', 'Place', 'text', 'Soma'], ['confirmation', 'Confirmation', 'text'],
+  ],
 };
-const INBOX_EDIT_TITLES = { flights: '✈️ Flights', hotels: '🏨 Hotels', cars: '🚗 Rental cars' };
+const INBOX_EDIT_TITLES = { flights: '✈️ Flights', hotels: '🏨 Hotels', cars: '🚗 Rental cars', activities: '🎟️ Activities' };
 
 function _inboxEditorHtml(id, it) {
   const ed = _inboxEdits[id];
@@ -8407,6 +8421,7 @@ function _inboxEditorHtml(id, it) {
       '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'flights\')">+ Flight</button>' +
       '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'hotels\')">+ Hotel</button>' +
       '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'cars\')">+ Car</button>' +
+      '<button class="inbox-link-btn" onclick="addInboxEditRow(\'' + id + '\',\'activities\')">+ Activity</button>' +
     '</div>' +
     '<div class="inbox-item-actions">' +
       '<button class="form-btn" onclick="saveInboxEdit(\'' + id + '\', this)">Save</button>' +
@@ -8426,6 +8441,7 @@ window.startInboxEdit = function(id) {
     flights: rows(p.flights).map(f => Object.assign({}, f, { travelers: (Array.isArray(f.travelers) ? f.travelers : []).join(', ') })),
     hotels: rows(p.hotels),
     cars: rows(p.cars),
+    activities: rows(p.activities),
   };
   renderBookingInbox();
 };
@@ -8470,6 +8486,11 @@ function _inboxSummaryFromParsed(p) {
     const c = p.cars[0];
     return [c.company || 'Rental car', c.pickupLocation].filter(Boolean).join(' · ') + (c.pickupISO ? ' · ' + range(c.pickupISO, c.dropoffISO) : '');
   }
+  if (p.activities.length) {
+    const a = p.activities[0];
+    return [a.title || a.venue || 'Activity', _inboxShortDate(a.dateISO), _inboxActivityTime(a)].filter(Boolean).join(' · ') +
+      (p.activities.length > 1 ? ' +' + (p.activities.length - 1) + ' more' : '');
+  }
   return '';
 }
 
@@ -8494,8 +8515,12 @@ window.saveInboxEdit = async function(id, btn) {
       (parseActivityStartMinutes(a.depTime) ?? 0) - (parseActivityStartMinutes(b.depTime) ?? 0)),
     hotels: ed.hotels.map(clean).filter(h => h.name || h.checkInISO),
     cars: ed.cars.map(clean).filter(c => c.company || c.pickupISO || c.dropoffISO),
+    activities: ed.activities.map(clean).filter(a => a.title || a.venue || a.dateISO)
+      .sort((a, b) => (a.dateISO || '').localeCompare(b.dateISO || '') ||
+        (parseActivityStartMinutes(a.time) ?? 0) - (parseActivityStartMinutes(b.time) ?? 0)),
   };
-  const kind = parsed.flights.length ? 'flight' : parsed.hotels.length ? 'hotel' : parsed.cars.length ? 'car' : 'other';
+  const kind = parsed.flights.length ? 'flight' : parsed.hotels.length ? 'hotel' : parsed.cars.length ? 'car'
+    : parsed.activities.length ? 'activity' : 'other';
   if (btn) btn.disabled = true;
   try {
     await window._update(window._ref(window._db, 'bookingInbox/' + id), {
@@ -8635,10 +8660,15 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
 
   const toActs = v => (Array.isArray(v) ? v : Object.values(v || {})).filter(Boolean);
   const dayActs = {};
+  const actsFor = (dayId, day) => dayActs[dayId] || (dayActs[dayId] = toActs(day.activities));
+  // Same key format saveDayEdit mints, so notes and photos can attach to it
+  const genKey = () => Math.random().toString(36).slice(2, 8);
   const addActivity = (dayId, day, act) => {
-    const acts = dayActs[dayId] || (dayActs[dayId] = toActs(day.activities));
-    if (acts.some(a => (a && typeof a === 'object' ? a.text : a) === act.text)) return;
-    acts.push(act.time ? act : { emoji: act.emoji, text: act.text });
+    const acts = actsFor(dayId, day);
+    if (acts.some(a => (a && typeof a === 'object' ? a.text : a) === act.text)) return false;
+    acts.push(Object.assign({ emoji: act.emoji, text: act.text }, act.time ? { time: act.time } : {},
+      { key: genKey(), bookingStatus: act.bookingStatus || 'booked' }));
+    return true;
   };
 
   const subItems = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems);
@@ -8740,6 +8770,43 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     addSub('carRentalBooked', c.pickupISO || c.dropoffISO, [company, c.pickupLocation].filter(Boolean).join(', ') +
       (c.dropoffISO ? ' → ' + _inboxShortDate(c.dropoffISO) : '') + confTag(c));
     log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO)]);
+  });
+
+  // ── Activities: reservations and tickets go on their day, marked booked. A
+  // day that already plans the same place ("Dinner at Soma") gets that activity
+  // marked booked and timed instead of a duplicate.
+  const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const ACT_CATEGORY_EMOJI = { dining: '🍽️', tour: '🗺️', tasting: '🍷', tickets: '🎟️', show: '🎭', spa: '💆', other: '📌' };
+  (p.activities || []).forEach(a => {
+    const title = String(a.title || a.venue || '').trim();
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(a.dateISO || '')) { problems.push('an activity with no name or date'); return; }
+    const match = _findTripDay(trip, a.dateISO);
+    if (!match) { problems.push(title + ' on ' + _inboxShortDate(a.dateISO) + ' (no trip day)'); return; }
+    const [dayId, day] = match;
+    const time = _inboxActivityTime(a);
+    const status = a.paid ? 'paid' : 'booked';
+    const acts = actsFor(dayId, day);
+    const names = [fold(a.venue), fold(title)].filter(n => n.length >= 3);
+    const idx = acts.findIndex(x => {
+      const t = fold(x && typeof x === 'object' ? x.text : x);
+      return t && names.some(n => t === n || t.includes(n));
+    });
+    if (idx >= 0) {
+      const ex = acts[idx];
+      const obj = typeof ex === 'object' ? Object.assign({}, ex) : { text: String(ex), emoji: getEmoji(String(ex)) };
+      if (!obj.time && time) obj.time = time;
+      // Never downgrade a planned "paid" back to "booked"
+      if (obj.bookingStatus !== 'paid') obj.bookingStatus = status;
+      if (!obj.key) obj.key = genKey();
+      acts[idx] = obj;
+      log.push(['Activity booked from email', obj.text + (obj.time ? ' · ' + obj.time : '')]);
+    } else {
+      const guess = getEmoji(title);
+      const emoji = guess && guess !== '📍' ? guess : (ACT_CATEGORY_EMOJI[a.category] || '📌');
+      if (addActivity(dayId, day, { emoji, text: title, time, bookingStatus: status })) {
+        log.push(['Activity added from email', title + ' · ' + _inboxShortDate(a.dateISO) + (time ? ' · ' + time : '')]);
+      }
+    }
   });
 
   Object.entries(dayActs).forEach(([dayId, acts]) => { updates[base + '/days/' + dayId + '/activities'] = acts; });
