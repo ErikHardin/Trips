@@ -353,7 +353,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-02.1';
+const WORKER_VERSION = '2026-10-03.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -762,8 +762,9 @@ function encodeHeaderWords(s) {
   return words.map(w => '=?UTF-8?B?' + utf8Base64(w) + '?=').join('\r\n ');
 }
 
-// Lowercased addresses of everyone with an admin or user role. Access keys are
-// the email with '.' replaced by ',' — decoded too, for records missing email.
+// Lowercased addresses allowed to send: everyone with an admin or user role,
+// plus the approved senders list. Access keys are the email with '.' replaced
+// by ',' — decoded too, for records missing email.
 async function bookingAllowedSenders(env) {
   const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
   const access = await wFetchJson(env.FIREBASE_URL + '/access.json' + auth);
@@ -773,6 +774,16 @@ async function bookingAllowedSenders(env) {
     set.add(key.replace(/,/g, '.').toLowerCase());
     if (u.email) set.add(String(u.email).toLowerCase());
   });
+  // Addresses without an app account that people book from, managed in the
+  // app's Booking Inbox → Approved senders. Unreadable never blocks the above.
+  try {
+    const extra = await wFetchJson(env.FIREBASE_URL + '/config/bookingInboxSenders.json' + auth);
+    Object.entries(extra || {}).forEach(([key, s]) => {
+      set.add(String((s && s.email) || key.replace(/,/g, '.')).trim().toLowerCase());
+    });
+  } catch (e) {
+    console.warn('Approved senders unavailable: ' + e.message);
+  }
   return set;
 }
 

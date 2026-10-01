@@ -602,6 +602,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .inbox-recent-row { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--muted); padding: 6px 2px; border-bottom: 1px solid var(--border); }
 .inbox-recent-row:last-child { border-bottom: none; }
 .inbox-recent-row span:first-child { flex: 1; color: var(--ink); }
+.inbox-recent-row a { color: var(--terracotta); text-decoration: none; }
 #bookingInboxAddress:disabled { opacity: 0.6; }
 .inbox-item-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
 .inbox-link-btn { background: none; border: none; padding: 0; font-family: 'DM Sans', sans-serif; font-size: 12.5px; font-weight: 500; color: var(--terracotta); cursor: pointer; }
@@ -1398,6 +1399,15 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
               <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" disabled style="margin:0;flex:1;">
               <button class="form-btn secondary" id="bookingInboxAddressBtn" style="width:auto;padding:10px 16px;" onclick="toggleBookingInboxAddressEdit()">Edit</button>
             </div>
+            <details id="bookingSendersDetails">
+              <summary id="bookingSendersSummary">Approved senders</summary>
+              <div style="margin:8px 0 6px;">People with app accounts can always send. Add other addresses you book from.</div>
+              <div id="bookingSendersList"></div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                <input class="form-input" id="bookingSenderInput" type="email" placeholder="name@example.com" style="margin:0;flex:1;" onkeydown="if(event.key==='Enter')addBookingSender()">
+                <button class="form-btn secondary" style="width:auto;padding:10px 16px;" onclick="addBookingSender()">Add</button>
+              </div>
+            </details>
             <details>
               <summary>Paste a confirmation instead</summary>
               <textarea id="bookingPasteInput" class="form-input" style="min-height:90px;resize:vertical;margin-top:8px;" placeholder="Paste the confirmation email text"></textarea>
@@ -8538,6 +8548,58 @@ window.saveInboxEdit = async function(id, btn) {
   }
 };
 
+// ── Approved senders: addresses without an app account that may email the
+// inbox (the Worker also allows everyone in User Access). Stored under config/
+// keyed like access/ — lowercased, '.' → ','.
+let bookingSenders = {};
+const _bookingSenderKey = email => email.replace(/\./g, ',');
+
+function renderBookingSenders() {
+  const list = document.getElementById('bookingSendersList');
+  const summary = document.getElementById('bookingSendersSummary');
+  if (!list) return;
+  const rows = Object.entries(bookingSenders)
+    .map(([key, s]) => [key, (s && s.email) || key.replace(/,/g, '.')])
+    .sort((a, b) => a[1].localeCompare(b[1]));
+  if (summary) summary.textContent = 'Approved senders' + (rows.length ? ' (' + rows.length + ')' : '');
+  list.innerHTML = rows.length
+    ? rows.map(([key, email]) => '<div class="inbox-recent-row"><span>' + escHtml(email) + '</span>' +
+        '<a href="#" onclick="removeBookingSender(\'' + escHtml(key) + '\');return false;" title="Remove">✕</a></div>').join('')
+    : '<div style="color:var(--muted);font-style:italic;">No extra addresses yet.</div>';
+}
+
+async function loadBookingSenders() {
+  try {
+    const snap = await window._get(window._ref(window._db, 'config/bookingInboxSenders'));
+    bookingSenders = snap.val() || {};
+  } catch(e) { console.warn('Could not load approved senders', e); }
+  renderBookingSenders();
+}
+
+window.addBookingSender = async function() {
+  const input = document.getElementById('bookingSenderInput');
+  const email = (input.value || '').trim().toLowerCase();
+  if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email)) { showToast('Enter a valid email address'); return; }
+  const key = _bookingSenderKey(email);
+  if (bookingSenders[key]) { showToast('Already approved'); input.value = ''; return; }
+  const record = { email, addedAt: Date.now(), addedBy: adminUser || '' };
+  try {
+    await window._set(window._ref(window._db, 'config/bookingInboxSenders/' + key), record);
+    bookingSenders[key] = record;
+    input.value = '';
+    renderBookingSenders();
+    showToast('Approved ' + email + ' ✓');
+  } catch(e) { showToast('Save failed — check connection'); console.error(e); }
+};
+
+window.removeBookingSender = async function(key) {
+  try {
+    await window._remove(window._ref(window._db, 'config/bookingInboxSenders/' + key));
+    delete bookingSenders[key];
+    renderBookingSenders();
+  } catch(e) { showToast('Remove failed — check connection'); console.error(e); }
+};
+
 async function loadBookingInboxAddress() {
   const input = document.getElementById('bookingInboxAddress');
   // Mid-edit, don't overwrite what's being typed
@@ -8886,6 +8948,7 @@ window.toggleAdminSection = function(sectionId) {
   }
   if (sectionId === 'bookingInbox' && opening) {
     loadBookingInboxAddress();
+    loadBookingSenders();
     renderBookingInbox();
   }
 };

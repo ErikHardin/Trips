@@ -124,8 +124,11 @@ address can't receive mail.
 4. Deploy `database.rules.json` to the Realtime Database. It adds the
    admin-only `bookingInbox` rule, and the Worker's secret bypasses it.
 
-**Who can send:** mail is accepted only from an address in User Access with the
-`admin` or `user` role. It checks the envelope sender, the `From` header, and
+**Who can send:** mail is accepted from an address in User Access with the
+`admin` or `user` role, and from any address in **Booking Inbox → Approved
+senders**. Use that list for personal addresses you book from that have no app
+account; it's stored at `config/bookingInboxSenders`. The Worker checks the
+envelope sender, the `From` header, and
 the account Gmail names in `X-Forwarded-For` when auto-forwarding. Anything
 else is bounced with "Sender not allowed". This keeps junk out of the queue but
 isn't strong authentication, so keep the address to yourselves.
