@@ -2075,7 +2075,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 311 };
+window.BUILD_INFO = { prNumber: 312 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -8149,10 +8149,44 @@ function startBookingInboxListener() {
   if (_bookingInboxUnsub) return;
   _bookingInboxUnsub = window._onValue(window._ref(window._db, 'bookingInbox'), snap => {
     bookingInbox = snap.val() || {};
+    pruneBookingInbox();
     updateBookingInboxBadges();
     const body = document.getElementById('bookingInboxBody');
     if (body && body.style.display !== 'none') renderBookingInbox();
   }, err => console.warn('Booking inbox listener failed', err));
+}
+
+// Handled items don't need keeping: an assigned booking is recorded on its
+// trip (and in its Changes tab), so it goes a day after it was added. A
+// dismissed one stays a week so a mis-tap can still be restored. Runs from the
+// listener whenever an admin has the app open; the delete's own snapshot
+// finds nothing left to prune.
+const INBOX_KEEP_ASSIGNED_MS  = 1 * 86400000;
+const INBOX_KEEP_DISMISSED_MS = 7 * 86400000;
+let _inboxPruning = false;
+
+function _inboxExpired(it, now) {
+  if (!it) return false;
+  if (it.status === 'assigned')  return now - (it.assignedAt  || it.receivedAt || 0) > INBOX_KEEP_ASSIGNED_MS;
+  if (it.status === 'dismissed') return now - (it.dismissedAt || it.receivedAt || 0) > INBOX_KEEP_DISMISSED_MS;
+  return false;
+}
+
+async function pruneBookingInbox() {
+  if (_inboxPruning || userRole !== 'admin') return;
+  const now = Date.now();
+  const expired = Object.keys(bookingInbox).filter(id => _inboxExpired(bookingInbox[id], now));
+  if (!expired.length) return;
+  _inboxPruning = true;
+  try {
+    const updates = {};
+    expired.forEach(id => { updates[id] = null; });
+    await window._update(window._ref(window._db, 'bookingInbox'), updates);
+  } catch(e) {
+    console.warn('Booking inbox cleanup failed', e);
+  } finally {
+    _inboxPruning = false;
+  }
 }
 
 function stopBookingInboxListener() {
@@ -8357,12 +8391,14 @@ function renderBookingInbox() {
     '</div>';
   });
 
+  const now = Date.now();
   const recent = Object.entries(bookingInbox)
-    .filter(([, it]) => it && (it.status === 'assigned' || it.status === 'dismissed'))
+    .filter(([, it]) => it && (it.status === 'assigned' || it.status === 'dismissed') && !_inboxExpired(it, now))
     .sort((a, b) => ((b[1].assignedAt || b[1].dismissedAt || b[1].receivedAt || 0) - (a[1].assignedAt || a[1].dismissedAt || a[1].receivedAt || 0)))
     .slice(0, 20);
   if (recent.length) {
     html += '<details class="inbox-howto"><summary>Recent (' + recent.length + ')</summary>' +
+      '<div style="margin:6px 0 4px;">Added bookings clear after a day; dismissed ones after a week.</div>' +
       recent.map(([id, it]) => {
         const trip = it.assignedTripId && allTrips[it.assignedTripId];
         const where = it.status === 'assigned' ? '→ ' + (trip ? trip.name || 'trip' : 'deleted trip') : 'Dismissed';
