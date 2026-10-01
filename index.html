@@ -2063,7 +2063,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 308 };
+window.BUILD_INFO = { prNumber: 309 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -8308,7 +8308,8 @@ function renderBookingInbox() {
         '<div style="flex:1;min-width:0;">' +
           '<div class="inbox-item-summary">' + escHtml(String(it.summary || it.subject || 'Booking')) + '</div>' +
           '<div class="inbox-item-meta">' + escHtml([it.source === 'paste' ? 'Pasted' : it.from, _inboxWhen(it.receivedAt)].filter(Boolean).join(' · ')) +
-            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') + '</div>' +
+            (it.subject ? '<br>' + escHtml(String(it.subject)) : '') +
+            (it.reply ? '<br>Reply: ' + escHtml(String(it.reply).replace(/^failed: /, 'failed — ')) : '') + '</div>' +
         '</div>' +
       '</div>' +
       (details.length ? '<div class="inbox-item-details">' + details.map(l => '<div>' + escHtml(l) + '</div>').join('') + '</div>' : '') +
