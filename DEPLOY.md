@@ -103,7 +103,8 @@ curl https://hardin-trips-ai.erikchardin.workers.dev/version
 
 ## Booking inbox (email-in)
 
-Forwarding a flight, hotel or rental-car confirmation to an inbox address
+Forwarding a flight, hotel, rental-car or activity (restaurant, tour, tickets)
+confirmation to an inbox address
 queues it in the app under **Admin → Booking Inbox**. From there you pick the
 trip it belongs to. The Worker's `email()` handler receives the mail, reads it
 with Claude (`ANTHROPIC_KEY`) and writes it to `bookingInbox/` in Firebase
@@ -129,11 +130,12 @@ the account Gmail names in `X-Forwarded-For` when auto-forwarding. Anything
 else is bounced with "Sender not allowed". This keeps junk out of the queue but
 isn't strong authentication, so keep the address to yourselves.
 
-**Confirmation reply:** once a forwarded booking is queued, the Worker replies
-in the same thread from the inbox address. The reply says the booking was added
-to the inbox and lists what was read. It is sent only when you forwarded the
-email yourself. On a Gmail auto-forward the sender is the airline or hotel, so
-no reply is sent. A failed reply never affects the queued booking.
+**Confirmation reply (off):** the Worker has code to email a confirmation back
+to whoever forwarded the booking, but `BOOKING_SEND_REPLY` in `worker.js` keeps
+it switched off. Cloudflare refuses a direct reply to a forwarded (threaded)
+email ("original email is not repliable"). Sending a fresh email instead needs
+either each recipient verified under Email Routing, or a sending service (Resend,
+or Cloudflare Email Service on the Workers Paid plan).
 
 **Using it:** forward the confirmation email as is. It lands in the inbox
 within a few seconds, with a trip already suggested from its dates. If
@@ -144,8 +146,12 @@ the booking into the trip:
   Trip shows.
 - **Hotels** go onto each night's hotel, plus a check-in activity.
 - **Rental cars** become pick-up and return activities.
+- **Activities** (restaurant reservations, tours, tastings, tickets) become an
+  activity on their day, with the time and a Booked or Paid status. If the day
+  already has a matching activity, such as a planned "Dinner at Soma", that one
+  is updated instead of a duplicate being added.
 
-Each booking also becomes a checked line, with its confirmation number, on the
+Each flight, hotel and car also becomes a checked line, with its confirmation number, on the
 trip's Logistics booking checklist. **Paste a confirmation instead** does the
 same thing for a booking that only exists in an app.
 

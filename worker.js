@@ -353,7 +353,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-01.1';
+const WORKER_VERSION = '2026-10-02.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -573,6 +573,8 @@ const BOOKING_EXCERPT_LIMIT = 12000;
 // Raw MIME size above which mail is refused rather than read into memory.
 const BOOKING_RAW_LIMIT = 15 * 1024 * 1024;
 const BOOKING_MODEL = 'claude-sonnet-4-6';
+// Email a confirmation back to the forwarder (sendInboxReply). Off — see handleInboundEmail.
+const BOOKING_SEND_REPLY = false;
 
 async function handleInboundEmail(message, env) {
   if (!env.FIREBASE_URL) {
@@ -641,9 +643,14 @@ async function handleInboundEmail(message, env) {
     return;
   }
 
-  const itemKey = ((await r.json().catch(() => null)) || {}).name;
-
   await notifyBookingQueued(env, item);
+
+  // Replies are off: Cloudflare refuses to reply to a forwarded (threaded)
+  // email, and sending a fresh one needs every recipient verified or a paid
+  // sending service. The code below stays for when that changes.
+  if (!BOOKING_SEND_REPLY) return;
+
+  const itemKey = ((await r.json().catch(() => null)) || {}).name;
 
   // Confirm by email, but only to a person who forwarded it themselves. On a
   // Gmail auto-forward the envelope sender is the airline or hotel, and a reply
@@ -727,7 +734,9 @@ function bookingDetailLines(p) {
   list(p.cars).forEach(c => lines.push('🚗 ' + (c.company || 'Rental car') + ' · ' +
     [d(c.pickupISO), c.pickupLocation].filter(Boolean).join(' ') + ' → ' +
     [d(c.dropoffISO), c.dropoffLocation].filter(Boolean).join(' ')));
-  const confs = [...new Set([...list(p.flights), ...list(p.hotels), ...list(p.cars)].map(x => x.confirmation).filter(Boolean))];
+  list(p.activities).forEach(a => lines.push('🎟️ ' + [d(a.dateISO), a.title || a.venue || 'Activity',
+    a.time ? a.time + (a.endTime ? '–' + a.endTime : '') : '', a.partySize > 0 ? 'Party of ' + a.partySize : ''].filter(Boolean).join(' · ')));
+  const confs = [...new Set([...list(p.flights), ...list(p.hotels), ...list(p.cars), ...list(p.activities)].map(x => x.confirmation).filter(Boolean))];
   if (confs.length) lines.push('Confirmation: ' + confs.join(', '));
   return lines;
 }
@@ -786,13 +795,15 @@ async function parseBookingText(env, subject, text) {
   if (!env.ANTHROPIC_KEY) throw new Error('ANTHROPIC_KEY not configured');
   const today = new Date().toISOString().slice(0, 10);
   const system = [
-    'You extract travel bookings from confirmation emails (often forwarded). Today is ' + today + '.',
+    'You extract travel bookings from confirmation emails (often forwarded): flights, hotels, rental cars, and activity reservations (restaurants, tours, tastings, tickets, shows, spa, classes). Today is ' + today + '.',
     'Reply with ONLY a JSON object, no prose and no code fences, in exactly this shape:',
-    '{"kind":"flight|hotel|car|other","summary":"...","flights":[...],"hotels":[...],"cars":[...]}',
+    '{"kind":"flight|hotel|car|activity|other","summary":"...","flights":[...],"hotels":[...],"cars":[...],"activities":[...]}',
     'flights items: {"flightNumber":"UA100","dateISO":"YYYY-MM-DD","from":"DEN","to":"LIS","depTime":"8:05am","arrTime":"10:40pm","arrDayOffset":0,"travelers":["First Last"],"confirmation":"ABC123"}',
     'hotels items: {"name":"Hotel name","city":"City","address":"...","checkInISO":"YYYY-MM-DD","checkOutISO":"YYYY-MM-DD","checkInTime":"3pm","confirmation":"..."}',
     'cars items: {"company":"Hertz","pickupLocation":"...","pickupISO":"YYYY-MM-DD","pickupTime":"10am","dropoffLocation":"...","dropoffISO":"YYYY-MM-DD","dropoffTime":"9am","confirmation":"..."}',
+    'activities items: {"title":"Dinner at Soma","dateISO":"YYYY-MM-DD","time":"7:30pm","endTime":"","venue":"Soma","city":"Lyon","address":"...","category":"dining|tour|tasting|tickets|show|spa|other","partySize":4,"paid":false,"confirmation":"..."}',
     'Rules:',
+    '- activities: one item per reservation or ticketed time slot. title is a short itinerary label in the style "Dinner at Soma", "Lunch at Le Vineum", "Tasting at Domaine Tempier", "Lyon Secret Food Tour", "Louvre tickets". venue is the bare place name. paid is true only when the email shows it was paid in full (tickets, prepaid tours); a deposit or card hold is false. partySize is a number, 0 if not given.',
     '- One flights item per flight segment (a connection is two segments). Include every segment of the itinerary.',
     '- flightNumber is airline IATA code + number, no spaces. from/to are 3-letter IATA airport codes.',
     '- Times are local, ALWAYS 12-hour with am/pm like "7:30pm" or "10am". Never 24-hour. Use "" when unknown.',
@@ -801,8 +812,8 @@ async function parseBookingText(env, subject, text) {
     '- travelers: passenger names as "First Last" in normal capitalization. [] if not given.',
     '- Use "" for unknown strings and [] for empty lists; keep every key.',
     '- A cancellation is not a booking: kind "other", and say it is a cancellation in summary.',
-    '- kind is the main booking type; "other" if there is no flight, hotel or car booking.',
-    '- summary: one short line, e.g. "UA100 DEN → LIS · Oct 12", "Hôtel Martinez, Cannes · Jun 3–5", "Hertz · Lyon Airport · Jun 1–8".',
+    '- kind is the main booking type; "other" if there is no flight, hotel, car or activity booking.',
+    '- summary: one short line, e.g. "UA100 DEN → LIS · Oct 12", "Hôtel Martinez, Cannes · Jun 3–5", "Hertz · Lyon Airport · Jun 1–8", "Dinner at Soma · Oct 14 · 7:30pm".',
   ].join('\n');
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -829,12 +840,13 @@ async function parseBookingText(env, subject, text) {
   const j = JSON.parse(out.slice(start, end + 1));
 
   const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === 'object') : [];
-  const parsed = { flights: arr(j.flights), hotels: arr(j.hotels), cars: arr(j.cars) };
-  let kind = ['flight', 'hotel', 'car', 'other'].includes(j.kind) ? j.kind : 'other';
+  const parsed = { flights: arr(j.flights), hotels: arr(j.hotels), cars: arr(j.cars), activities: arr(j.activities) };
+  let kind = ['flight', 'hotel', 'car', 'activity', 'other'].includes(j.kind) ? j.kind : 'other';
   if (kind === 'other' && !/cancel/i.test(j.summary || '')) {
     if (parsed.flights.length) kind = 'flight';
     else if (parsed.hotels.length) kind = 'hotel';
     else if (parsed.cars.length) kind = 'car';
+    else if (parsed.activities.length) kind = 'activity';
   }
   return { kind, summary: String(j.summary || subject || 'Booking'), parsed };
 }
