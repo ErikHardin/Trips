@@ -50,6 +50,12 @@
           ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
         }
       }
+    },
+    "pushTokens": {
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email.replace('.', ',') == $emailKey",
+        ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
+      }
     }
   }
 }

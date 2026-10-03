@@ -20,6 +20,14 @@
         "twitter": false
       },
       "logLevel": 1
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "banner",
+        "list"
+      ]
     }
   }
 }
