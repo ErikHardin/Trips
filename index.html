@@ -379,6 +379,7 @@ body {
 #lightbox-img-wrap {
   display: flex; align-items: center; justify-content: center;
   width: 100%; height: 100%; overflow: hidden;
+  touch-action: none;
 }
 #lightbox-img {
   max-width: 100%; max-height: 100vh;
@@ -2078,7 +2079,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 317 };
+window.BUILD_INFO = { prNumber: 318 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -7373,16 +7374,21 @@ function closeLightbox() {
   vid.src = '';
 }
 
-// Wire up lightbox events after DOM ready
+// Wire up lightbox events after DOM ready.
+// Gestures are handled here directly (no map/zoom library) so they can't steal
+// swipe navigation: two fingers pinch, one finger swipes at 1× and pans when
+// zoomed, double-tap toggles zoom. Pan offsets are in screen px from centre.
 document.addEventListener('DOMContentLoaded', function() {
-  var lb  = document.getElementById('lightbox');
-  var img = document.getElementById('lightbox-img');
-  if (!lb || !img) return;
+  var lb   = document.getElementById('lightbox');
+  var img  = document.getElementById('lightbox-img');
+  var wrap = document.getElementById('lightbox-img-wrap');
+  if (!lb || !img || !wrap) return;
 
+  var MAX_SCALE = 4, MIN_PINCH = 0.85, DOUBLE_TAP_SCALE = 2.5;
   var scale = 1;
   var panX = 0, panY = 0;
-  var ZOOM_LEVELS = [1, 2, 3];
-  var zoomIdx = 0;
+
+  function imageActive() { return img.style.display !== 'none' && !!img.getAttribute('src'); }
 
   function applyTransform(animate) {
     img.classList.toggle('no-transition', !animate);
@@ -7390,68 +7396,165 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function resetZoom() {
-    scale = 1; panX = 0; panY = 0; zoomIdx = 0;
+    scale = 1; panX = 0; panY = 0;
     img.style.transform = '';
     img.classList.remove('no-transition');
-    var zoomBtn = document.getElementById('lightbox-zoom');
-    if (zoomBtn) zoomBtn.textContent = '⊕';
   }
 
-  window.lightboxZoomStep = function() {
-    zoomIdx = (zoomIdx + 1) % ZOOM_LEVELS.length;
-    scale = ZOOM_LEVELS[zoomIdx];
-    if (scale === 1) { panX = 0; panY = 0; }
-    document.getElementById('lightbox-zoom').textContent = scale === 1 ? '⊕' : scale + '×';
-    applyTransform(true);
-  };
+  // Keep the zoomed photo covering the screen instead of sliding off an edge.
+  function clampPan() {
+    var maxX = Math.max(0, (img.offsetWidth  * scale - wrap.clientWidth)  / 2);
+    var maxY = Math.max(0, (img.offsetHeight * scale - wrap.clientHeight) / 2);
+    panX = Math.min(maxX, Math.max(-maxX, panX));
+    panY = Math.min(maxY, Math.max(-maxY, panY));
+  }
 
-  // ── Touch pan when zoomed ──
-  var wrap = document.getElementById('lightbox-img-wrap');
-  var touchStartX = 0, touchStartY = 0;
-  var panStartX = 0, panStartY = 0;
-  var swipeStartX = 0, swipeStartY = 0;
-  var isDragging = false;
+  // Point relative to the centre of the wrap (where the photo is centred).
+  function toLocal(clientX, clientY) {
+    var r = wrap.getBoundingClientRect();
+    return { x: clientX - (r.left + r.width / 2), y: clientY - (r.top + r.height / 2) };
+  }
+
+  // Zoom to `next`, keeping the photo point under (clientX, clientY) fixed.
+  function zoomAt(clientX, clientY, next, animate) {
+    var p = toLocal(clientX, clientY);
+    next = Math.min(MAX_SCALE, Math.max(1, next));
+    panX = p.x - (p.x - panX) * next / scale;
+    panY = p.y - (p.y - panY) * next / scale;
+    scale = next;
+    if (scale <= 1.01) { resetZoom(); return; }
+    clampPan();
+    applyTransform(animate);
+  }
+
+  function toggleZoomAt(clientX, clientY) {
+    if (scale > 1) { scale = 1; panX = 0; panY = 0; applyTransform(true); }
+    else zoomAt(clientX, clientY, DOUBLE_TAP_SCALE, true);
+  }
+
+  // Animate to a valid state when fingers lift: snap back to 1× or clamp.
+  function settle() {
+    if (scale < 1.05) { scale = 1; panX = 0; panY = 0; }
+    else { scale = Math.min(MAX_SCALE, scale); clampPan(); }
+    applyTransform(true);
+  }
+
+  // ── Touch ──
+  var mode = null;            // 'pinch' | 'pan' | 'swipe'
+  var wasPinch = false;       // this touch sequence included a pinch
+  var startX = 0, startY = 0, startPanX = 0, startPanY = 0, moved = false;
+  var pinchDist = 0, pinchScale = 1, pinchMid = null;
+  var lastTap = null;
+
+  function dist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
+  function mid(t)  { return toLocal((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2); }
+
+  function beginOneFinger(t) {
+    startX = t.clientX; startY = t.clientY;
+    startPanX = panX; startPanY = panY;
+    moved = false;
+    mode = scale > 1 ? 'pan' : 'swipe';
+  }
+
+  function isBackdrop(el) { return el === lb || el === wrap; }
+
+  lb.addEventListener('gesturestart', function(e) { e.preventDefault(); });
 
   lb.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 1) {
-      touchStartX = swipeStartX = e.touches[0].clientX;
-      touchStartY = swipeStartY = e.touches[0].clientY;
-      panStartX = panX;
-      panStartY = panY;
-      isDragging = false;
+    if (e.touches.length >= 2 && imageActive()) {
+      e.preventDefault();
+      mode = 'pinch'; wasPinch = true;
+      pinchDist = dist(e.touches) || 1;
+      pinchScale = scale;
+      pinchMid = mid(e.touches);
+      startPanX = panX; startPanY = panY;
+    } else if (e.touches.length === 1) {
+      wasPinch = false;
+      beginOneFinger(e.touches[0]);
     }
-  }, {passive: true});
+  }, {passive: false});
 
   lb.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 1 && scale > 1) {
+    if (mode === 'pinch' && e.touches.length >= 2) {
       e.preventDefault();
-      var dx = e.touches[0].clientX - touchStartX;
-      var dy = e.touches[0].clientY - touchStartY;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
-      panX = panStartX + dx;
-      panY = panStartY + dy;
+      var next = Math.min(MAX_SCALE, Math.max(MIN_PINCH, pinchScale * dist(e.touches) / pinchDist));
+      var m = mid(e.touches);
+      // Photo point that started under the finger midpoint follows the midpoint.
+      panX = m.x - (pinchMid.x - startPanX) * next / pinchScale;
+      panY = m.y - (pinchMid.y - startPanY) * next / pinchScale;
+      scale = next;
       applyTransform(false);
+    } else if (mode === 'pan' && e.touches.length === 1) {
+      e.preventDefault();
+      var dx = e.touches[0].clientX - startX;
+      var dy = e.touches[0].clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+      panX = startPanX + dx;
+      panY = startPanY + dy;
+      clampPan();
+      applyTransform(false);
+    } else if (mode === 'swipe' && e.touches.length === 1) {
+      if (Math.abs(e.touches[0].clientX - startX) > 10 || Math.abs(e.touches[0].clientY - startY) > 10) moved = true;
     }
   }, {passive: false});
 
   lb.addEventListener('touchend', function(e) {
-    if (isDragging) { isDragging = false; return; }
-    if (scale <= 1 && e.changedTouches.length === 1) {
-      var dx = e.changedTouches[0].clientX - swipeStartX;
-      var dy = e.changedTouches[0].clientY - swipeStartY;
-      if (Math.abs(dx) > 50 && Math.abs(dy) < 40) {
-        resetZoom();
-        lightboxNav(dx < 0 ? 1 : -1);
-        return;
-      }
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && e.target === lb) {
-        closeLightbox();
-      }
+    if (mode === 'pinch') {
+      if (e.touches.length >= 2) return;
+      settle();
+      // One finger still down after a pinch keeps panning, never swipes.
+      if (e.touches.length === 1 && scale > 1) { beginOneFinger(e.touches[0]); mode = 'pan'; moved = true; }
+      else mode = null;
+      return;
     }
-  }, {passive: true});
+    if (e.touches.length > 0 || !mode) return;
+    var m0 = mode; mode = null;
+    if (wasPinch) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - startX, dy = t.clientY - startY;
 
-  // ── Mouse drag for desktop ──
-  var mouseDown = false, mousePanStartX = 0, mousePanStartY = 0, mousePanX = 0, mousePanY = 0;
+    if (m0 === 'swipe' && Math.abs(dx) > 50 && Math.abs(dy) < 40) {
+      e.preventDefault();
+      resetZoom();
+      lightboxNav(dx < 0 ? 1 : -1);
+      return;
+    }
+    if (moved || Math.abs(dx) >= 10 || Math.abs(dy) >= 10) return;
+
+    // A tap.
+    if (e.target === img && imageActive()) {
+      e.preventDefault(); // no emulated click/dblclick
+      var now = Date.now();
+      if (lastTap && now - lastTap.t < 300 && Math.hypot(t.clientX - lastTap.x, t.clientY - lastTap.y) < 30) {
+        lastTap = null;
+        toggleZoomAt(t.clientX, t.clientY);
+      } else {
+        lastTap = { t: now, x: t.clientX, y: t.clientY };
+      }
+      return;
+    }
+    if (scale <= 1 && isBackdrop(e.target)) {
+      e.preventDefault(); // stop the emulated click landing on the page underneath
+      closeLightbox();
+    }
+  }, {passive: false});
+
+  lb.addEventListener('touchcancel', function() { if (mode === 'pinch') settle(); mode = null; });
+
+  // ── Mouse (desktop): wheel zoom, double-click toggle, drag to pan ──
+  wrap.addEventListener('wheel', function(e) {
+    if (!imageActive()) return;
+    e.preventDefault();
+    zoomAt(e.clientX, e.clientY, scale * Math.exp(-e.deltaY * 0.002), false);
+  }, {passive: false});
+
+  img.addEventListener('dblclick', function(e) {
+    if (!imageActive()) return;
+    e.preventDefault();
+    toggleZoomAt(e.clientX, e.clientY);
+  });
+
+  var mouseDown = false, isDragging = false, mousePanStartX = 0, mousePanStartY = 0, mousePanX = 0, mousePanY = 0;
   wrap.addEventListener('mousedown', function(e) {
     if (scale <= 1) return;
     mouseDown = true; isDragging = false;
@@ -7465,17 +7568,19 @@ document.addEventListener('DOMContentLoaded', function() {
     panX = mousePanX + (e.clientX - mousePanStartX);
     panY = mousePanY + (e.clientY - mousePanStartY);
     isDragging = true;
+    clampPan();
     applyTransform(false);
   });
   window.addEventListener('mouseup', function() {
-    mouseDown = false; isDragging = false;
+    mouseDown = false;
     wrap.classList.remove('panning');
   });
 
   window._resetLightboxZoom = resetZoom;
 
   lb.addEventListener('click', function(e) {
-    if (e.target === lb && !isDragging) closeLightbox();
+    var dragged = isDragging; isDragging = false;
+    if (isBackdrop(e.target) && !dragged && scale <= 1) closeLightbox();
   });
 });
 
