@@ -30,11 +30,22 @@ A walkthrough of the Trips app for the whole family: how to sign in, find your w
 
 <img src="img/01-login.png" width="280" align="right" alt="Login screen">
 
-Open the app and tap **Sign in with Google**. Use the Google account Erik gave access to.
+Open the app and pick one way to sign in. Each one works with the email address Erik gave access to:
 
-- If you see *"… isn't authorized. Contact Erik to request access."*, that account hasn't been added yet. Ask an admin to add your email under **Admin → User Access**, or tap **Sign in with a different account** to try another Google account.
+- **Sign in with Google**: use your Google account.
+- **Sign in with Apple**: use your Apple ID. If Apple asks, choosing **Share My Email** is simplest. If you choose **Hide My Email**, Apple makes up a private address, and Erik has to add that address instead (the app shows it to you).
+- **Email and password**, for any other email (Yahoo, Outlook, iCloud, work):
+  1. Enter your email and a password of at least 8 characters, then tap **Create account**.
+  2. Open the verification email and tap its link.
+  3. Back in the app, tap **I've verified**.
+
+  Next time, just tap **Sign in**. If you forget the password, enter your email and tap **Forgot password?**.
+
+If you see *"… isn't authorized. Contact Erik to request access."*, that email hasn't been added yet. Ask an admin to add it under **Admin → User Access**, or tap **Sign in with a different account**.
+
 - **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon.
-- To sign out, tap the 🔒 lock in the top-right corner of the home screen.
+- **To sign out**, tap the 🔒 lock in the top-right corner of the home screen, then **Sign out**.
+- **To delete your account**, tap the 🔒 lock, then **Delete account**. You confirm with your sign-in one more time. This removes your sign-in and your access. Trips you created stay in the app for everyone else.
 
 <br clear="all">
 
@@ -386,7 +397,7 @@ Everyone who can sign in is listed here, grouped into Admins, Users and Guests, 
 
 **To add someone:**
 
-1. Enter their **name** and the **email address of their Google account**.
+1. Enter their **name** and the **email address they'll sign in with**. Any email works: Google, Apple or email and password. For someone who used Apple's **Hide My Email**, enter the `…@privaterelay.appleid.com` address the app showed them.
 2. Choose a **role** (see [section 2](#2-who-can-do-what)).
 3. For guests and users, tick the **trips** they should see.
 4. Tap **Add User**.

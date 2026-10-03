@@ -1,53 +1,53 @@
 {
   "rules": {
     "trips": {
-      ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
+      ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
       "$tripId": {
         ".read": true,
-        ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists() || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && !data.exists() && newData.child('ownerId').val() == auth.token.email) || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && data.exists() && newData.exists() && data.child('ownerId').val() == auth.token.email))",
+        ".write": "auth != null && auth.token.email_verified == true && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists() || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && !data.exists() && newData.child('ownerId').val() == auth.token.email) || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && data.exists() && newData.exists() && data.child('ownerId').val() == auth.token.email))",
         "logistics": {
-          ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && (root.child('trips').child($tripId).child('ownerId').val() == auth.token.email || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists())))"
+          ".write": "auth != null && auth.token.email_verified == true && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'user' && (root.child('trips').child($tripId).child('ownerId').val() == auth.token.email || root.child('access').child(auth.token.email.replace('.', ',')).child('trips').child($tripId).exists())))"
         }
       }
     },
     "avatarUrls": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email_verified == true"
     },
     "geocache": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+      ".read": "auth != null && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
     },
     "aiPlaceCache": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email_verified == true"
     },
     "drivecache": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email_verified == true"
     },
     "travelTracker": {
-      ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
-      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+      ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
+      ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
     },
     "bookingInbox": {
-      ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
-      ".write": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+      ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
+      ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
     },
     "config": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email_verified == true"
     },
     "access": {
-      ".read": "auth != null && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
+      ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
       "$emailKey": {
-        ".read": "auth != null && auth.token.email.replace('.', ',') == $emailKey",
-        ".write": "auth != null && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (!data.exists() && !root.child('access').exists() && auth.token.email.replace('.', ',') == $emailKey))",
+        ".read": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey",
+        ".write": "auth != null && auth.token.email_verified == true && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (!data.exists() && !root.child('access').exists() && auth.token.email.replace('.', ',') == $emailKey) || (data.exists() && !newData.exists() && auth.token.email.replace('.', ',') == $emailKey))",
         "lastLogin": {
-          ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
+          ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
         },
         "lastOutstandingPopupAt": {
-          ".write": "auth != null && auth.token.email.replace('.', ',') == $emailKey"
+          ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
         }
       }
     }
