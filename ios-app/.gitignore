@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+# Per-developer Firebase config; add it in Xcode, don't commit it.
+GoogleService-Info.plist
