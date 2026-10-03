@@ -181,6 +181,9 @@ signs in, their email has to be on that list. Firebase setup, once:
    Google and Apple always provide. Password accounts get one after clicking the
    verification email. The rules also let people delete their own User Access
    entry (**🔒 → Delete account**).
+   Someone who signs in without being on the list leaves a request under
+   `accessRequests/`. Admins approve it in **User Access → Waiting for access**.
+   A new request also posts to the ntfy topic (`NTFY_TOPIC`).
 5. iOS app: add the Sign in with Apple capability (see `ios-app/IOS.md`) and
    upload a new TestFlight build.
 

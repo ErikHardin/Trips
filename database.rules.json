@@ -38,6 +38,14 @@
       ".read": "auth != null && auth.token.email_verified == true",
       ".write": "auth != null && auth.token.email_verified == true"
     },
+    "accessRequests": {
+      ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey",
+        ".write": "auth != null && auth.token.email_verified == true && (root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin' || (auth.token.email.replace('.', ',') == $emailKey && !root.child('access').child($emailKey).exists()))",
+        ".validate": "!newData.exists() || newData.hasChildren(['email', 'requestedAt'])"
+      }
+    },
     "access": {
       ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
       "$emailKey": {

@@ -1290,6 +1290,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
     <div class="login-divider">or use your email</div>
     <div class="login-email-form" id="loginEmailForm">
+      <input id="loginNameInput" type="text" autocomplete="name" placeholder="Your name" style="display:none;">
       <input id="loginEmailInput" type="email" autocomplete="username" placeholder="Email address" onkeydown="if(event.key==='Enter')document.getElementById('loginPasswordInput').focus()">
       <input id="loginPasswordInput" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')signInWithPassword()">
       <div class="login-email-actions">
@@ -1300,7 +1301,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
     <div class="login-verify" id="loginVerify" style="display:none;">
       <div id="loginVerifyText"></div>
-      <div class="login-email-actions">
+      <div class="login-email-actions" id="loginVerifyActions">
         <button class="primary" onclick="checkEmailVerified()">I've verified</button>
         <button onclick="resendVerificationEmail()">Resend email</button>
       </div>
@@ -1995,7 +1996,7 @@ import { getDatabase, ref, set, update, push, onValue, remove, get } from "https
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
 import { getAuth, GoogleAuthProvider, OAuthProvider, EmailAuthProvider, signInWithPopup, signInWithCredential, onAuthStateChanged, signOut,
   createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
-  reauthenticateWithPopup, reauthenticateWithCredential, deleteUser, revokeAccessToken } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+  reauthenticateWithPopup, reauthenticateWithCredential, deleteUser, revokeAccessToken, updateProfile } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAM2Bm8PgkCk6c6uAiySuclKLkIq06HMxQ",
@@ -2039,6 +2040,7 @@ window._reauthenticateWithPopup = reauthenticateWithPopup;
 window._reauthenticateWithCredential = reauthenticateWithCredential;
 window._deleteUser = deleteUser;
 window._revokeAccessToken = revokeAccessToken;
+window._updateProfile = updateProfile;
 window._signInWithCredential = signInWithCredential;
 window._onAuthStateChanged = onAuthStateChanged;
 window._signOut = signOut;
@@ -2281,6 +2283,7 @@ function setupAuth() {
       outstandingBookingsCheckStarted = false;
       lastOutstandingPopupAt = null;
       stopBookingInboxListener();
+      stopAccessApprovalWatch();
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -2323,15 +2326,20 @@ async function handleSignedInUser(user) {
         access = record;
       } else {
         document.documentElement.style.visibility = '';
+        const requested = await requestAccess(user, email, emailKey);
         // Apple's "Hide My Email" signs in with a relay address, which is the
-        // one an admin has to add.
+        // one an admin will see.
         const relayNote = /@privaterelay\.appleid\.com$/.test(email)
-          ? ' This is the private address Apple created for you — send it to Erik exactly as shown.' : '';
-        document.getElementById('loginError').textContent =
-          `${email} isn't authorized. Contact Erik to request access.${relayNote}`;
-        document.getElementById('loginError').style.display = '';
+          ? ' Apple shows Erik a private address for you, so let him know it’s you.' : '';
+        if (requested) {
+          setLoginMode('waiting', `Thanks! Your request to join was sent to Erik (${email}). This page opens by itself once you’re added.${relayNote}`);
+        } else {
+          document.getElementById('loginError').textContent = `${email} isn't authorized. Contact Erik to request access.`;
+          document.getElementById('loginError').style.display = '';
+        }
         document.getElementById('loginSignOutBtn').style.display = '';
         showScreen('screen-login');
+        if (requested) watchForAccessApproval(user, emailKey);
         return;
       }
     }
@@ -2346,6 +2354,7 @@ async function handleSignedInUser(user) {
     document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
     if (userRole === 'admin') checkOutstandingBookings();
     if (userRole === 'admin') startBookingInboxListener();
+    if (userRole === 'admin') announcePendingAccessRequests();
     initApp();
   } catch(e) {
     console.error('Auth lookup failed:', e);
@@ -2356,22 +2365,82 @@ async function handleSignedInUser(user) {
   }
 }
 
-// 'signin' shows the sign-in buttons and email form; 'verify' replaces them
-// with the "check your inbox" step for a new password account.
-function setLoginMode(mode, email) {
-  const verify = mode === 'verify';
-  document.getElementById('loginProviderBtns').style.display = verify ? 'none' : '';
-  document.querySelector('#screen-login .login-divider').style.display = verify ? 'none' : '';
-  document.getElementById('loginEmailForm').style.display = verify ? 'none' : '';
-  document.getElementById('loginVerify').style.display = verify ? '' : 'none';
-  if (verify) document.getElementById('loginVerifyText').textContent =
-    `We sent a verification link to ${email}. Open it, then come back and tap “I've verified”.`;
+// 'signin' shows the sign-in buttons and email form. 'verify' replaces them
+// with the "check your inbox" step for a new password account; 'waiting'
+// with a message while an access request is pending.
+function setLoginMode(mode, text) {
+  const signin = mode === 'signin';
+  document.getElementById('loginProviderBtns').style.display = signin ? '' : 'none';
+  document.querySelector('#screen-login .login-divider').style.display = signin ? '' : 'none';
+  document.getElementById('loginEmailForm').style.display = signin ? '' : 'none';
+  document.getElementById('loginVerify').style.display = signin ? 'none' : '';
+  document.getElementById('loginVerifyActions').style.display = mode === 'verify' ? '' : 'none';
+  if (mode === 'verify') document.getElementById('loginVerifyText').textContent =
+    `We sent a verification link to ${text}. Open it, then come back and tap “I've verified”.`;
+  if (mode === 'waiting') document.getElementById('loginVerifyText').textContent = text;
 }
 
 function showLoginError(msg) {
   const el = document.getElementById('loginError');
   el.textContent = msg;
   el.style.display = '';
+}
+
+// ── Access requests ──
+// Someone signs in (any provider, verified email) but isn't in User Access:
+// leave a request at accessRequests/{emailKey} for an admin to approve, ping
+// the admin ntfy topic once, and open the app as soon as access appears.
+async function requestAccess(user, email, emailKey) {
+  const reqRef = window._ref(window._db, `accessRequests/${emailKey}`);
+  try {
+    if ((await window._get(reqRef)).val()) return true;
+    await window._set(reqRef, {
+      email,
+      name: user.displayName || '',
+      provider: (user.providerData[0] || {}).providerId || '',
+      requestedAt: Date.now(),
+    });
+  } catch(e) {
+    console.warn('requestAccess failed:', e);
+    return false;
+  }
+  notifyAdminOfAccessRequest(user.displayName || email);
+  return true;
+}
+
+async function notifyAdminOfAccessRequest(who) {
+  try {
+    const cfg = await getNtfyConfig();
+    if (!cfg.ok) return;
+    const headers = { 'Title': 'New access request', 'Tags': 'wave', 'Content-Type': 'text/plain',
+      'Click': location.origin + location.pathname };
+    if (cfg.token) headers['Authorization'] = 'Bearer ' + cfg.token;
+    await fetch(`https://ntfy.sh/${cfg.topic}`, { method: 'POST', headers,
+      body: `${who} wants to join. Open Admin → User Access to choose a role and trips.` });
+  } catch(e) { console.warn('notifyAdminOfAccessRequest failed:', e); }
+}
+
+let accessApprovalUnsub = null;
+function watchForAccessApproval(user, emailKey) {
+  stopAccessApprovalWatch();
+  accessApprovalUnsub = window._onValue(window._ref(window._db, `access/${emailKey}`), snap => {
+    if (!snap.val()) return;
+    stopAccessApprovalWatch();
+    document.getElementById('loginError').style.display = 'none';
+    document.getElementById('loginSignOutBtn').style.display = 'none';
+    handleSignedInUser(user);
+  }, e => console.warn('watchForAccessApproval failed:', e));
+}
+function stopAccessApprovalWatch() {
+  if (accessApprovalUnsub) { accessApprovalUnsub(); accessApprovalUnsub = null; }
+}
+
+async function announcePendingAccessRequests() {
+  try {
+    const n = Object.keys((await window._get(window._ref(window._db, 'accessRequests'))).val() || {}).length;
+    if (n) showToast(n === 1 ? '1 person is waiting for access — see Admin → User Access'
+      : n + ' people are waiting for access — see Admin → User Access');
+  } catch(e) {}
 }
 
 const AUTH_ERROR_TEXT = {
@@ -2492,6 +2561,16 @@ window.signInWithPassword = async function() {
 };
 
 window.createPasswordAccount = async function() {
+  // The name field only appears for new accounts, so the admin sees who's asking.
+  const nameInput = document.getElementById('loginNameInput');
+  if (nameInput.style.display === 'none') {
+    nameInput.style.display = '';
+    nameInput.focus();
+    showLoginError('Add your name, then tap Create account again.');
+    return;
+  }
+  const name = nameInput.value.trim();
+  if (!name) { showLoginError('Enter your name.'); nameInput.focus(); return; }
   const email = readLoginEmail(); if (!email) return;
   const password = document.getElementById('loginPasswordInput').value;
   if (password.length < 8) { showLoginError('Choose a password with at least 8 characters.'); return; }
@@ -2499,6 +2578,7 @@ window.createPasswordAccount = async function() {
   setEmailButtonsDisabled(true);
   try {
     const cred = await window._createUserWithEmailAndPassword(window._auth, email, password);
+    try { await window._updateProfile(cred.user, { displayName: name }); } catch(e) {}
     await window._sendEmailVerification(cred.user);
   } catch(e) {
     showLoginError(authErrorText(e, 'Couldn’t create the account — please try again.'));
@@ -5671,10 +5751,17 @@ async function renderUserManagement() {
   if (!list) return;
   list.innerHTML = '<div style="padding:12px 14px;color:var(--muted);font-size:13px;">Loading…</div>';
   try {
-    const snap = await window._get(window._ref(window._db, 'access'));
+    const [snap, reqSnap] = await Promise.all([
+      window._get(window._ref(window._db, 'access')),
+      window._get(window._ref(window._db, 'accessRequests')).catch(() => null),
+    ]);
     const data = snap.val() || {};
     const entries = Object.entries(data);
-    if (!entries.length) {
+    // Requests from people who were added some other way are stale; skip them.
+    const requests = Object.entries((reqSnap && reqSnap.val()) || {})
+      .filter(([k]) => !data[k])
+      .sort(([, a], [, b]) => (a.requestedAt || 0) - (b.requestedAt || 0));
+    if (!entries.length && !requests.length) {
       list.innerHTML = '<div style="padding:12px 14px;color:var(--muted);font-size:13px;font-style:italic;">No users configured.</div>';
       return;
     }
@@ -5712,7 +5799,28 @@ async function renderUserManagement() {
         <div style="padding:8px 14px 4px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);background:var(--sand);">${label} (${members.length})</div>
         ${members.map(renderUserRow).join('')}`;
     };
-    list.innerHTML = renderGroup('Admins', admins) + renderGroup('Users', users) + renderGroup('Guests', guests);
+    const providerLabel = p => p === 'apple.com' ? 'Apple' : p === 'password' ? 'email & password' : p === 'google.com' ? 'Google' : '';
+    const renderRequestRow = ([emailKey, r]) => {
+      const email = r.email || emailKey.replace(/,/g, '.');
+      const when = r.requestedAt ? new Date(r.requestedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      const via = providerLabel(r.provider);
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:500;color:var(--ink);">${escHtml(r.name || email)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;word-break:break-all;">${escHtml(email)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;">Asked ${escHtml(when)}${via ? ' · ' + via : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button onclick="approveAccessRequest('${escAttr(emailKey)}','${escAttr(r.name || '')}')" style="background:var(--terracotta);border:1px solid var(--terracotta);border-radius:8px;padding:5px 10px;font-size:11px;color:white;cursor:pointer;">Approve</button>
+            <button onclick="dismissAccessRequest('${escAttr(emailKey)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Dismiss</button>
+          </div>
+        </div>`;
+    };
+    const pending = requests.length ? `
+        <div style="padding:8px 14px 4px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--terracotta);background:var(--sand);">Waiting for access (${requests.length})</div>
+        ${requests.map(renderRequestRow).join('')}` : '';
+    list.innerHTML = pending + renderGroup('Admins', admins) + renderGroup('Users', users) + renderGroup('Guests', guests);
   } catch(e) {
     list.innerHTML = '<div style="padding:12px 14px;color:var(--terracotta);font-size:13px;">Error loading users.</div>';
   }
@@ -5736,6 +5844,7 @@ window.addUser = async function() {
   }
   try {
     await window._set(window._ref(window._db, `access/${emailKey}`), data);
+    try { await window._remove(window._ref(window._db, `accessRequests/${emailKey}`)); } catch(e) {}
     const wasEditing = !!_editingUserKey;
     cancelEditUser();
     await renderUserManagement();
@@ -5743,6 +5852,32 @@ window.addUser = async function() {
   } catch(e) {
     showToast('Error saving user — try again');
     console.error('addUser error:', e);
+  }
+};
+
+// Approve fills the Add User form; the request clears when it's saved.
+window.approveAccessRequest = function(emailKey, name) {
+  cancelEditUser();
+  document.getElementById('newUserName').value = name;
+  document.getElementById('newUserEmail').value = emailKey.replace(/,/g, '.');
+  document.getElementById('newUserEmail').readOnly = true;
+  document.getElementById('newUserEmail').style.opacity = '0.6';
+  document.getElementById('cancelEditUserBtn').style.display = '';
+  document.getElementById('newUserFormTitle').textContent = 'Approve Access';
+  (name ? document.getElementById('newUserRole') : document.getElementById('newUserName')).focus();
+  document.getElementById('newUserFormTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  showToast('Choose a role and trips, then tap Add User');
+};
+
+window.dismissAccessRequest = async function(emailKey) {
+  if (!(await showConfirmDialog('Dismiss request?', 'They won’t get access. If they sign in again, a new request will appear.', 'Dismiss'))) return;
+  try {
+    await window._remove(window._ref(window._db, `accessRequests/${emailKey}`));
+    await renderUserManagement();
+    showToast('Request dismissed');
+  } catch(e) {
+    showToast('Error dismissing request');
+    console.error('dismissAccessRequest error:', e);
   }
 };
 

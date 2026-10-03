@@ -47,5 +47,6 @@ export async function reauthenticateWithPopup() { return {}; }
 export async function reauthenticateWithCredential() {}
 export async function deleteUser() {}
 export async function revokeAccessToken() {}
+export async function updateProfile() {}
 export function onAuthStateChanged(a, cb) { setTimeout(() => cb(fakeUser()), 0); return () => {}; }
 export async function signOut() {}
