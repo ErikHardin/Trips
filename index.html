@@ -1878,7 +1878,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 
     <button class="form-btn" onclick="saveDayEdit()">Save Day</button>
     <button class="form-btn secondary" style="margin-top:8px;" id="deleteDayBtn" onclick="deleteDay()">Delete Day</button>
-    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeEditDayModalDirect()">Cancel</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="requestCloseEditDay()">Cancel</button>
   </div>
 </div>
 
@@ -1893,7 +1893,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       ＋ Add Activity
     </button>
     <button class="form-btn" onclick="saveQuickActivityEdit()">Save Activities</button>
-    <button class="form-btn secondary" style="margin-top:8px;" onclick="closeQuickActivityModalDirect()">Cancel</button>
+    <button class="form-btn secondary" style="margin-top:8px;" onclick="requestCloseQuickActivity()">Cancel</button>
   </div>
 </div>
 
@@ -2478,7 +2478,28 @@ async function initApp() {
   }
 }
 
-window.goBackFromEdit = function() {
+window.goBackFromEdit = async function() {
+  if (_editTripDirty()) {
+    const pending = _pendingFlightRows().length;
+    const msg = pending
+      ? pending + ' flight' + (pending > 1 ? 's haven’t' : ' hasn’t') + ' been looked up and added yet. Save will look ' + (pending > 1 ? 'them' : 'it') + ' up and save the trip.'
+      : 'You have changes to this trip that haven’t been saved yet.';
+    const choice = await showUnsavedChangesDialog(msg);
+    if (choice === 'cancel') return;
+    if (choice === 'save') {
+      if (document.querySelectorAll('.flight-entry-row').length) {
+        // Drop untouched blank rows, then try to add everything else.
+        document.querySelectorAll('.flight-entry-row').forEach(r => { if (!r.querySelector('.fr-num').value.trim()) r.remove(); });
+        if (document.querySelectorAll('.flight-entry-row').length) await lookupAllFlights();
+        if (document.querySelectorAll('.flight-entry-row').length) {
+          showToast('Some flights couldn’t be looked up — fix them below, then save');
+          return;
+        }
+      }
+      if (!(await saveEditedTrip())) return;
+    }
+  }
+  _editTripBaseline = null;
   showScreen(editTripOrigin);
   if (editTripOrigin === 'screen-trip' && currentTripId && allTrips[currentTripId]) {
     renderTripItinerary(allTrips[currentTripId]);
@@ -5472,6 +5493,62 @@ let _editFlightsOut    = [];
 let _editFlightsRet    = [];
 let _editFlightsIntrip = [];
 let _flightRowCount    = 0;
+let _editTripBaseline  = null;
+let _editDayBaseline   = null;
+let _quickActBaseline  = null;
+
+// ── Unsaved-change tracking ──
+// Each editor stores a snapshot when it opens (and after each save); leaving with a
+// different snapshot asks Save / Discard / Keep editing instead of silently dropping edits.
+function _editTripSnapshot() {
+  const v = id => document.getElementById(id).value;
+  const fl = arr => arr.map(f => [f.formatted, f.travelerName || '', f.dayOffset ?? null]);
+  return JSON.stringify([
+    v('editTripName'), v('editTripYear'), v('editTripDates'), v('editTripEmoji'),
+    v('editTripStatus'), v('editTripCurrency'),
+    document.getElementById('editTripIncludeInWorldMap').checked,
+    fl(_editFlightsOut), fl(_editFlightsRet)
+  ]);
+}
+// Flight rows with a flight number typed in that haven't been looked up / added yet.
+function _pendingFlightRows() {
+  return [...document.querySelectorAll('.flight-entry-row')]
+    .filter(r => r.querySelector('.fr-num').value.trim());
+}
+function _actRowsSnapshot(containerSel) {
+  return [...document.querySelectorAll(containerSel + ' .act-row')].map(r => [
+    r.querySelector('.act-emoji-btn').textContent.trim(),
+    r.querySelector('.act-text-input').value.trim(),
+    r.querySelector('.act-time-input').value.trim(),
+    r.querySelector('.act-drive-btn').dataset.drive === 'true',
+    r.querySelector('.act-booking-select').value
+  ]).filter(a => a[1]);
+}
+function _editDaySnapshot() {
+  const v = id => document.getElementById(id).value.trim();
+  return JSON.stringify([
+    v('editDayDate'), v('editDayRegion'), v('editDayCity'), v('editDayDescription'),
+    v('editDayHotel'), v('editDayRegionColor'), _actRowsSnapshot('#editActivityRows')
+  ]);
+}
+function _quickActSnapshot() {
+  return JSON.stringify(_actRowsSnapshot('#quickActivityRows'));
+}
+function _editTripDirty() {
+  if (!document.getElementById('screen-edit').classList.contains('active') || !editingTripId) return false;
+  return _pendingFlightRows().length > 0 || (_editTripBaseline !== null && _editTripSnapshot() !== _editTripBaseline);
+}
+function _editDayDirty() {
+  return document.getElementById('editDayModal').classList.contains('open') &&
+    _editDayBaseline !== null && _editDaySnapshot() !== _editDayBaseline;
+}
+function _quickActDirty() {
+  return document.getElementById('quickActivityModal').classList.contains('open') &&
+    _quickActBaseline !== null && _quickActSnapshot() !== _quickActBaseline;
+}
+window.addEventListener('beforeunload', e => {
+  if (_editTripDirty() || _editDayDirty() || _quickActDirty()) { e.preventDefault(); e.returnValue = ''; }
+});
 
 window.openEditTrip = function(tripId, origin = 'screen-admin') {
   editTripOrigin = origin;
@@ -5516,6 +5593,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   _flightRowCount = 0;
   document.getElementById('flightLookupStatus').textContent = '';
   renderEditDaysList(trip);
+  _editTripBaseline = _editTripSnapshot();
   showScreen('screen-edit');
 };
 
@@ -5526,7 +5604,7 @@ window.saveEditedTrip = async function() {
   // flight list. Make the user finish or cancel that edit first.
   if (document.querySelectorAll('.flight-entry-row').length) {
     showToast('Finish or remove the flight you’re editing before saving');
-    return;
+    return false;
   }
   // Use update (not set) so only edited fields are touched —
   // preserves days, logistics, packingList, startDateISO, avatars etc.
@@ -5547,7 +5625,13 @@ window.saveEditedTrip = async function() {
     flightReturnNames: _editFlightsRet.map(f => f.travelerName || ''),
     flightReturnDayOffsets: _editFlightsRet.map(f => f.dayOffset ?? null),
   };
-  await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
+  try {
+    await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
+  } catch (e) {
+    console.error(e);
+    showToast('Save failed — check connection');
+    return false;
+  }
 
   // Diff outbound + return flights and log each specific change
   const existing = allTrips[editingTripId];
@@ -5562,6 +5646,8 @@ window.saveEditedTrip = async function() {
 
   showToast('Trip saved! ✓');
   document.getElementById('editTripHeaderName').textContent = updates.name;
+  _editTripBaseline = _editTripSnapshot();
+  return true;
 };
 
 // ── Flight form functions ──────────────────────────────────────────────────
@@ -5604,9 +5690,12 @@ window.addFlightRow = function(numVal, dateVal, dirVal, nameVal, origVal, destVa
   return row;
 };
 
-window.removeFlightRow = function(n) {
+window.removeFlightRow = async function(n) {
   const el = document.getElementById('flightRow-' + n);
-  if (el) el.remove();
+  if (!el) return;
+  const num = el.querySelector('.fr-num').value.trim();
+  if (num && !(await showConfirmDialog('Remove flight?', escHtml(num.toUpperCase()) + ' hasn’t been added yet and will be discarded.', 'Remove'))) return;
+  el.remove();
 };
 
 window.lookupAllFlights = async function() {
@@ -5803,16 +5892,24 @@ window.editFlightChip = function(dir, index) {
   renderFlightChips();
 };
 
-window.removeFlightChip = function(dir, index) {
-  if (dir === 'out') _editFlightsOut.splice(index, 1);
-  else               _editFlightsRet.splice(index, 1);
+window.removeFlightChip = async function(dir, index) {
+  const arr = dir === 'out' ? _editFlightsOut : _editFlightsRet;
+  const f = arr[index];
+  if (!f) return;
+  if (!(await showConfirmDialog('Remove flight?', escHtml(f.formatted || '') + '<br>Tap Save to apply.', 'Remove'))) return;
+  // Re-find it in case the list changed while the dialog was open.
+  const i = arr.indexOf(f);
+  if (i !== -1) arr.splice(i, 1);
   renderFlightChips();
 };
 
 window.removeIntripFlight = async function(index) {
   const f = _editFlightsIntrip[index];
   if (!f) return;
-  _editFlightsIntrip.splice(index, 1);
+  if (!(await showConfirmDialog('Remove flight?', escHtml(f.formatted || '') + '<br>This removes it from the trip right away.', 'Remove'))) return;
+  const i = _editFlightsIntrip.indexOf(f);
+  if (i === -1) return;
+  _editFlightsIntrip.splice(i, 1);
   const remaining = _editFlightsIntrip.filter(x => x.dayId === f.dayId).map(x => ({ formatted: x.formatted, date: x.date, travelerName: x.travelerName || '', dayOffset: x.dayOffset ?? null }));
   await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + f.dayId), { flightInfo: remaining.length > 0 ? remaining : null });
   logChange(editingTripId, 'Flight removed', f.formatted || '');
@@ -6106,6 +6203,7 @@ window.openEditDay = function(dayId) {
   if (!acts.length) addActivityRow();
 
   document.getElementById('editDayModal').classList.add('open');
+  _editDayBaseline = _editDaySnapshot();
 };
 
 window.selectRegionColor = function(color, el) {
@@ -6306,29 +6404,38 @@ function onTouchEnd(e) {
   touchDragSrc = null;
 }
 
-window.removeActivityRow = async function(btn) {
-  const row = btn.closest('.act-row');
-  const result = await showActivityDeleteDialog();
-  if (result === 'cancel') return;
-  if (result === 'wishlist') {
-    const emoji = row.querySelector('.act-emoji-btn').textContent.trim() || '📌';
-    const text  = row.querySelector('.act-text-input').value.trim();
-    if (text) {
-      try {
-        const newRef = window._push(window._ref(window._db, 'trips/' + editingTripId + '/wishlist'));
-        await window._set(newRef, { emoji, text, notes: null, createdAt: Date.now(), createdBy: adminUser || null });
-        showToast('Moved to wishlist ✓');
-      } catch(err) {
-        showToast('Error saving to wishlist — check connection');
-      }
+async function _moveActivityToWishlist(tripId, emoji, text) {
+  if (!text) return;
+  try {
+    const newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
+    await window._set(newRef, { emoji: emoji || '📌', text, notes: null, createdAt: Date.now(), createdBy: adminUser || null });
+    showToast('Moved to wishlist ✓');
+  } catch(err) {
+    showToast('Error saving to wishlist — check connection');
+  }
+}
+
+// Shared ✕ handler for both activity editors. Blank rows go without asking;
+// anything with text asks Delete / Move to Wishlist / Cancel first.
+async function _confirmRemoveActivityRow(row, tripId) {
+  const text = row.querySelector('.act-text-input').value.trim();
+  if (text) {
+    const result = await showActivityDeleteDialog();
+    if (result === 'cancel') return false;
+    if (result === 'wishlist') {
+      await _moveActivityToWishlist(tripId, row.querySelector('.act-emoji-btn').textContent.trim(), text);
     }
   }
   row.remove();
-  reindexRows();
+  return true;
+}
+
+window.removeActivityRow = async function(btn) {
+  if (await _confirmRemoveActivityRow(btn.closest('.act-row'), editingTripId)) reindexRows();
 };
 
 window.saveDayEdit = async function() {
-  if (!editingTripId || !editingDayId) return;
+  if (!editingTripId || !editingDayId) return false;
   // Validate time inputs require am/pm
   const timeInputs = document.querySelectorAll('#editActivityRows .act-time-input');
   for (const ti of timeInputs) {
@@ -6336,7 +6443,7 @@ window.saveDayEdit = async function() {
     if (v && !/am|pm/i.test(v)) {
       showToast('Include am/pm in times — e.g. 3pm or 10am–2pm');
       ti.focus();
-      return;
+      return false;
     }
   }
   const existing = allTrips[editingTripId].days[editingDayId];
@@ -6407,7 +6514,13 @@ window.saveDayEdit = async function() {
     ...(existing.spendLog != null ? { spendLog: existing.spendLog } : {}),
     ...(existing.flightInfo != null ? { flightInfo: existing.flightInfo } : {}),
   };
-  await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
+  try {
+    await window._set(window._ref(window._db, `trips/${editingTripId}/days/${editingDayId}`), dayData);
+  } catch (e) {
+    console.error(e);
+    showToast('Save failed — check connection');
+    return false;
+  }
 
   // Diff activities and log each specific change
   const city = (dayData.description || dayData.city) || dayData.dayName || '';
@@ -6430,6 +6543,7 @@ window.saveDayEdit = async function() {
 
   closeEditDayModalDirect();
   showToast('Day saved! ✓');
+  return true;
 };
 
 // ════════════════════════════════════════
@@ -6458,6 +6572,7 @@ window.openQuickActivityEditor = function(dayId) {
     addQuickActivityRow();
   }
   document.getElementById('quickActivityModal').classList.add('open');
+  _quickActBaseline = _quickActSnapshot();
 };
 
 window.addQuickActivityRow = function(act) {
@@ -6543,9 +6658,8 @@ window.moveQuickActivityRow = function(btn, dir) {
   btn.blur();
 };
 
-window.removeQuickActivityRow = function(btn) {
-  btn.closest('.act-row').remove();
-  reindexQuickRows();
+window.removeQuickActivityRow = async function(btn) {
+  if (await _confirmRemoveActivityRow(btn.closest('.act-row'), quickEditingTripId)) reindexQuickRows();
 };
 
 window.openQuickEmojiPicker = function(idx) {
@@ -6604,14 +6718,14 @@ window.openQuickEmojiPicker = function(idx) {
 };
 
 window.saveQuickActivityEdit = async function() {
-  if (!quickEditingTripId || !quickEditingDayId) return;
+  if (!quickEditingTripId || !quickEditingDayId) return false;
 
   for (const ti of document.querySelectorAll('#quickActivityRows .act-time-input')) {
     const v = ti.value.trim();
     if (v && !/am|pm/i.test(v)) {
       showToast('Include am/pm in times — e.g. 3pm or 10am–2pm');
       ti.focus();
-      return;
+      return false;
     }
   }
 
@@ -6691,10 +6805,16 @@ window.saveQuickActivityEdit = async function() {
     ...(existing.flightInfo  != null && { flightInfo:  existing.flightInfo  }),
   };
 
-  await window._set(
-    window._ref(window._db, `trips/${quickEditingTripId}/days/${quickEditingDayId}`),
-    dayData
-  );
+  try {
+    await window._set(
+      window._ref(window._db, `trips/${quickEditingTripId}/days/${quickEditingDayId}`),
+      dayData
+    );
+  } catch (e) {
+    console.error(e);
+    showToast('Save failed — check connection');
+    return false;
+  }
 
   const city     = dayData.description || dayData.city || dayData.dayName || '';
   const actLabel = a => (a.emoji ? a.emoji + ' ' : '') + a.text + (a.time ? ' · ' + a.time : '');
@@ -6712,15 +6832,25 @@ window.saveQuickActivityEdit = async function() {
 
   closeQuickActivityModalDirect();
   showToast('Activities saved! ✓');
+  return true;
 };
 
 window.closeQuickActivityModal = function(e) {
-  if (e.target.id === 'quickActivityModal') closeQuickActivityModalDirect();
+  if (e.target.id === 'quickActivityModal') requestCloseQuickActivity();
+};
+window.requestCloseQuickActivity = async function() {
+  if (_quickActDirty()) {
+    const choice = await showUnsavedChangesDialog('You have changes to these activities that haven’t been saved yet.');
+    if (choice === 'cancel') return;
+    if (choice === 'save') { await saveQuickActivityEdit(); return; }
+  }
+  closeQuickActivityModalDirect();
 };
 window.closeQuickActivityModalDirect = function() {
   document.getElementById('quickActivityModal').classList.remove('open');
   quickEditingTripId = null;
   quickEditingDayId  = null;
+  _quickActBaseline  = null;
 };
 
 function _rebuildSpendBadge(dayId) {
@@ -6925,8 +7055,16 @@ window.deleteDay = async function() {
   showToast('Day deleted');
 };
 
-window.closeEditDayModal = function(e) { if (e.target.id==='editDayModal') closeEditDayModalDirect(); };
-window.closeEditDayModalDirect = function() { document.getElementById('editDayModal').classList.remove('open'); editingDayId = null; };
+window.closeEditDayModal = function(e) { if (e.target.id==='editDayModal') requestCloseEditDay(); };
+window.requestCloseEditDay = async function() {
+  if (_editDayDirty()) {
+    const choice = await showUnsavedChangesDialog('You have changes to this day that haven’t been saved yet.');
+    if (choice === 'cancel') return;
+    if (choice === 'save') { await saveDayEdit(); return; }
+  }
+  closeEditDayModalDirect();
+};
+window.closeEditDayModalDirect = function() { document.getElementById('editDayModal').classList.remove('open'); editingDayId = null; _editDayBaseline = null; };
 
 // ── Weather forecast modal ──
 window.closeWxModal = function(e) {
@@ -7624,6 +7762,31 @@ function showConfirmDialog(title, message, yesLabel) {
     modal.querySelector('#confirmDialogYes').onclick = () => cleanup(true);
     modal.querySelector('#confirmDialogNo').onclick = () => cleanup(false);
     modal.addEventListener('click', e => { if (e.target === modal) cleanup(false); });
+    document.body.appendChild(modal);
+  });
+}
+
+// Asked when leaving an editor with changes that haven't been saved yet.
+// Resolves to 'save' | 'discard' | 'cancel' (keep editing).
+function showUnsavedChangesDialog(message) {
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:24px 20px 36px;box-sizing:border-box;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;margin-bottom:8px;">Save your changes?</div>
+        <div style="font-size:14px;color:var(--muted);margin-bottom:24px;">${message || 'You have changes that haven’t been saved yet.'}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button id="unsavedSave" style="padding:14px;background:var(--terracotta);color:white;border:none;border-radius:14px;font-size:15px;font-weight:500;cursor:pointer;">Save</button>
+          <button id="unsavedDiscard" style="padding:14px;background:none;border:1px solid var(--terracotta);border-radius:14px;font-size:15px;color:var(--terracotta);cursor:pointer;">Discard changes</button>
+          <button id="unsavedCancel" style="padding:14px;background:none;border:1px solid var(--border);border-radius:14px;font-size:15px;color:var(--muted);cursor:pointer;">Keep editing</button>
+        </div>
+      </div>`;
+    const cleanup = (result) => { modal.remove(); resolve(result); };
+    modal.querySelector('#unsavedSave').onclick = () => cleanup('save');
+    modal.querySelector('#unsavedDiscard').onclick = () => cleanup('discard');
+    modal.querySelector('#unsavedCancel').onclick = () => cleanup('cancel');
+    modal.addEventListener('click', e => { if (e.target === modal) cleanup('cancel'); });
     document.body.appendChild(modal);
   });
 }
@@ -8767,10 +8930,14 @@ window.addInboxEditRow = function(id, list) {
   renderBookingInbox();
 };
 
-window.removeInboxEditRow = function(id, list, i) {
+window.removeInboxEditRow = async function(id, list, i) {
   const ed = _inboxEdits[id];
   if (!ed) return;
-  ed[list].splice(i, 1);
+  const item = ed[list][i];
+  if (!(await showConfirmDialog('Remove item?', 'This removes it from this booking before it’s added to the trip.', 'Remove'))) return;
+  const idx = ed[list].indexOf(item);
+  if (idx === -1) return;
+  ed[list].splice(idx, 1);
   renderBookingInbox();
 };
 
@@ -8892,6 +9059,7 @@ window.addBookingSender = async function() {
 };
 
 window.removeBookingSender = async function(key) {
+  if (!(await showConfirmDialog('Remove sender?', 'Emails from this address will no longer be accepted into the booking inbox.', 'Remove'))) return;
   try {
     await window._remove(window._ref(window._db, 'config/bookingInboxSenders/' + key));
     delete bookingSenders[key];
@@ -9012,6 +9180,7 @@ window.restoreInboxItem = async function(itemId) {
 };
 
 window.deleteInboxItem = async function(itemId) {
+  if (!(await showConfirmDialog('Remove booking?', 'This removes the forwarded booking from the inbox.', 'Remove'))) return;
   try { await window._remove(window._ref(window._db, 'bookingInbox/' + itemId)); }
   catch(e) { showToast('Remove failed — check connection'); console.error(e); }
 };
@@ -12231,7 +12400,10 @@ window.addTravelIdea = function() {
   });
 };
 
-window.deleteTravelIdea = function(year, ideaId) {
+window.deleteTravelIdea = async function(year, ideaId) {
+  const idea = travelTrackerData[year] && travelTrackerData[year].ideas && travelTrackerData[year].ideas[ideaId];
+  const name = (typeof idea === 'string' ? idea : idea && idea.text) || 'this idea';
+  if (!(await showConfirmDialog('Delete idea?', 'Delete “' + escHtml(String(name)) + '”?'))) return;
   window._remove(window._ref(window._db, `travelTracker/${year}/ideas/${ideaId}`))
     .catch(() => showToast('Error — check connection'));
   if (travelTrackerData[year] && travelTrackerData[year].ideas) {
