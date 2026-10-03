@@ -2078,7 +2078,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 315 };
+window.BUILD_INFO = { prNumber: 316 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2271,6 +2271,7 @@ function setupAuth() {
       if (userRole === 'admin') checkOutstandingBookings();
       if (userRole === 'admin') startBookingInboxListener();
       initApp();
+      registerNativePush(emailKey);
     } catch(e) {
       console.error('Auth lookup failed:', e);
       document.documentElement.style.visibility = '';
@@ -2297,6 +2298,47 @@ async function signInWithGoogleNative() {
   await window._signInWithCredential(window._auth, window._GoogleAuthProvider.credential(idToken));
 }
 
+// iOS app push notifications: ask permission once, then save this phone's APNs
+// token under the signed-in account (pushTokens/<emailKey>/<token>) so the
+// Worker can reach it. Skipped in browsers and in app builds that predate the
+// PushNotifications plugin.
+let _pushRegistered = false;
+let _pushToken = null, _pushTokenEmailKey = null;
+
+async function registerNativePush(emailKey) {
+  const cap = window.Capacitor;
+  if (_pushRegistered || !cap?.isNativePlatform?.() || !cap.isPluginAvailable?.('PushNotifications')) return;
+  _pushRegistered = true;
+  try {
+    let perm = await cap.nativePromise('PushNotifications', 'checkPermissions', {});
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+      perm = await cap.nativePromise('PushNotifications', 'requestPermissions', {});
+    }
+    if (perm.receive !== 'granted') return;
+    cap.nativeCallback('PushNotifications', 'addListener', { eventName: 'registration' }, async (data) => {
+      if (!data?.value) return;
+      _pushToken = data.value;
+      _pushTokenEmailKey = emailKey;
+      try {
+        await window._set(window._ref(window._db, `pushTokens/${emailKey}/${data.value}`),
+          { platform: 'ios', updatedAt: Date.now() });
+      } catch(e) { console.warn('Saving push token failed:', e); }
+    });
+    await cap.nativePromise('PushNotifications', 'register', {});
+  } catch(e) {
+    console.warn('Push registration failed:', e);
+  }
+}
+
+// On sign-out, stop this phone getting the old account's notifications. Runs
+// before Firebase sign-out, while the write is still authorised.
+async function unregisterNativePush() {
+  if (!_pushToken || !_pushTokenEmailKey) return;
+  try { await window._remove(window._ref(window._db, `pushTokens/${_pushTokenEmailKey}/${_pushToken}`)); } catch(e) {}
+  _pushToken = _pushTokenEmailKey = null;
+  _pushRegistered = false;
+}
+
 window.signInWithGoogle = async function() {
   const provider = new window._GoogleAuthProvider();
   const isNativeApp = !!window.Capacitor?.isNativePlatform?.();
@@ -2316,6 +2358,7 @@ window.signInWithGoogle = async function() {
 };
 
 window.signOutAndReset = async function() {
+  await unregisterNativePush();
   try { await window._signOut(window._auth); } catch(e) {}
 };
 
@@ -2516,6 +2559,7 @@ window.lockApp = async function() {
       document.getElementById('tripChangesPanel').classList.contains('active')) {
     switchTripTab('itinerary', document.querySelector('.tab-btn'));
   }
+  await unregisterNativePush();
   try { await window._signOut(window._auth); } catch(e) {}
   showToast('Signed out');
 };
