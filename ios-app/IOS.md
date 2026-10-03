@@ -24,6 +24,13 @@ the Firebase console (bundle ID `com.erikhardin.trips`); its
 `REVERSED_CLIENT_ID` is the URL scheme in `ios/App/App/Info.plist`. The app
 does **not** need `GoogleService-Info.plist`.
 
+Sign in with Apple uses the same plugin. Apple's native sheet returns an ID
+token, which the site hands to Firebase with a nonce. It needs the **Sign in
+with Apple** capability on the App target: Xcode → **Signing & Capabilities** →
+**+ Capability** → *Sign in with Apple*. This adds `App.entitlements`; commit
+it. `providers.apple` is turned on in `capacitor.config.json`. Run
+`npx cap sync ios` after pulling.
+
 ---
 
 ## One-time setup (on the Mac)

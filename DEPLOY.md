@@ -158,6 +158,35 @@ Each flight, hotel and car also becomes a checked line, with its confirmation nu
 trip's Logistics booking checklist. **Paste a confirmation instead** does the
 same thing for a booking that only exists in an app.
 
+## Sign-in options (Google, Apple, email and password)
+
+The login screen offers Google, Apple, and email and password. Access is still
+decided by **Admin → User Access**, keyed by email, so whichever way someone
+signs in, their email has to be on that list. Firebase setup, once:
+
+1. Firebase console → **Authentication → Sign-in method**:
+   - **Email/Password:** enable it. Leave "Email link" off.
+   - **Apple:** enable it. Fill in the fields from step 2.
+2. Apple Developer → **Certificates, Identifiers & Profiles**:
+   - **Identifiers → App IDs →** `com.erikhardin.trips`: tick **Sign in with Apple**.
+   - **Identifiers → + → Services IDs:** create one, e.g. `com.erikhardin.trips.web`.
+     Turn on Sign in with Apple for it. Domain: `hardin-trips.firebaseapp.com`.
+     Return URL: `https://hardin-trips.firebaseapp.com/__/auth/handler`.
+   - **Keys → +:** tick **Sign in with Apple** and download the `.p8` key.
+   - Back in Firebase's Apple provider, enter the Services ID, your Team ID, the
+     Key ID, and the key's contents.
+3. Authentication → **Settings → Authorized domains**: make sure
+   `ech-technicalsolutions.com` is listed. It already is if Google sign-in works.
+4. Deploy `database.rules.json`. The rules require a verified email, which
+   Google and Apple always provide. Password accounts get one after clicking the
+   verification email. The rules also let people delete their own User Access
+   entry (**🔒 → Delete account**).
+   Someone who signs in without being on the list leaves a request under
+   `accessRequests/`. Admins approve it in **User Access → Waiting for access**.
+   A new request also posts to the ntfy topic (`NTFY_TOPIC`).
+5. iOS app: add the Sign in with Apple capability (see `ios-app/IOS.md`) and
+   upload a new TestFlight build.
+
 ## "This project is disconnected from your Git account"
 
 A banner saying this can appear in the Builds section even when the repository

@@ -31,8 +31,22 @@ export function getStorage() { return {}; }
 export { ref as sRefUnused };
 export async function uploadBytes() { return {}; }
 export async function getDownloadURL() { return ''; }
-export function getAuth() { return { currentUser: W.__fakeUser || null }; }
-export class GoogleAuthProvider {}
+// Fake users count as verified unless a test sets emailVerified:false.
+const fakeUser = () => W.__fakeUser ? Object.assign({ emailVerified: true, providerData: [{ providerId: 'google.com' }], reload: async () => {}, getIdToken: async () => '' }, W.__fakeUser) : null;
+export function getAuth() { return { get currentUser() { return fakeUser(); } }; }
+export class GoogleAuthProvider { static credential() { return {}; } }
+export class OAuthProvider { constructor(id) { this.providerId = id; } addScope() {} credential() { return {}; } static credentialFromResult() { return null; } }
+export class EmailAuthProvider { static credential() { return {}; } }
 export async function signInWithPopup() {}
-export function onAuthStateChanged(a, cb) { setTimeout(() => cb(W.__fakeUser || null), 0); return () => {}; }
+export async function signInWithCredential() {}
+export async function createUserWithEmailAndPassword() { return { user: fakeUser() }; }
+export async function signInWithEmailAndPassword() {}
+export async function sendEmailVerification() {}
+export async function sendPasswordResetEmail() {}
+export async function reauthenticateWithPopup() { return {}; }
+export async function reauthenticateWithCredential() {}
+export async function deleteUser() {}
+export async function revokeAccessToken() {}
+export async function updateProfile() {}
+export function onAuthStateChanged(a, cb) { setTimeout(() => cb(fakeUser()), 0); return () => {}; }
 export async function signOut() {}
