@@ -80,5 +80,22 @@ minutes.
 ## Every ~85 days
 
 TestFlight builds expire after 90 days. To renew: in Xcode bump **Build**
-(App target → General → Identity), then Archive → Distribute again. Testers
-get the new build automatically.
+(General → Identity) on **both** the **App** and **UpcomingWidget** targets —
+they must match — then Archive → Distribute again. Testers get the new build
+automatically.
+
+## Widgets
+
+`ios/App/UpcomingWidget/` is a WidgetKit extension: the native version of
+`widget-upcoming.js` (trip countdowns + bookings still to make), reading the
+same Worker endpoint. It's embedded in the app, so anyone with the TestFlight
+build can add it: long-press the home screen → **+** → Hardin Trips.
+
+Widgets are compiled into the build, so a change to one ships with the next
+TestFlight upload rather than with the website. iOS decides when they refresh
+(roughly hourly); tapping one opens the app.
+
+Signing: both targets need your Team under **Signing & Capabilities**. If
+`git pull` complains about local changes to `project.pbxproj`, run
+`git checkout -- ios/App/App.xcodeproj/project.pbxproj`, pull again, and
+re-pick the Team on both targets.
