@@ -1293,6 +1293,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       <input id="loginNameInput" type="text" autocomplete="name" placeholder="Your name" style="display:none;">
       <input id="loginEmailInput" type="email" autocomplete="username" placeholder="Email address" onkeydown="if(event.key==='Enter')document.getElementById('loginPasswordInput').focus()">
       <input id="loginPasswordInput" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')signInWithPassword()">
+      <input id="loginPasswordConfirmInput" type="password" autocomplete="new-password" placeholder="Confirm password" style="display:none;" onkeydown="if(event.key==='Enter')createPasswordAccount()">
       <div class="login-email-actions">
         <button class="primary" id="loginPasswordBtn" onclick="signInWithPassword()">Sign in</button>
         <button id="loginCreateBtn" onclick="createPasswordAccount()">Create account</button>
@@ -2134,7 +2135,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 320 };
+window.BUILD_INFO = { prNumber: 321 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2545,7 +2546,16 @@ function setEmailButtonsDisabled(disabled) {
   document.getElementById('loginCreateBtn').disabled = disabled;
 }
 
+// Create account reveals the name and confirm-password fields; Sign in puts
+// the form back to its plain two-field state.
+function setCreateAccountFields(show) {
+  document.getElementById('loginNameInput').style.display = show ? '' : 'none';
+  document.getElementById('loginPasswordConfirmInput').style.display = show ? '' : 'none';
+  document.getElementById('loginPasswordInput').autocomplete = show ? 'new-password' : 'current-password';
+}
+
 window.signInWithPassword = async function() {
+  setCreateAccountFields(false);
   const email = readLoginEmail(); if (!email) return;
   const password = document.getElementById('loginPasswordInput').value;
   if (!password) { showLoginError('Enter your password.'); return; }
@@ -2564,9 +2574,9 @@ window.createPasswordAccount = async function() {
   // The name field only appears for new accounts, so the admin sees who's asking.
   const nameInput = document.getElementById('loginNameInput');
   if (nameInput.style.display === 'none') {
-    nameInput.style.display = '';
+    setCreateAccountFields(true);
     nameInput.focus();
-    showLoginError('Add your name, then tap Create account again.');
+    showLoginError('Add your name and confirm your password, then tap Create account again.');
     return;
   }
   const name = nameInput.value.trim();
@@ -2574,6 +2584,8 @@ window.createPasswordAccount = async function() {
   const email = readLoginEmail(); if (!email) return;
   const password = document.getElementById('loginPasswordInput').value;
   if (password.length < 8) { showLoginError('Choose a password with at least 8 characters.'); return; }
+  const confirmInput = document.getElementById('loginPasswordConfirmInput');
+  if (confirmInput.value !== password) { showLoginError('Passwords don’t match.'); confirmInput.focus(); return; }
   document.getElementById('loginError').style.display = 'none';
   setEmailButtonsDisabled(true);
   try {
