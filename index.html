@@ -18,7 +18,9 @@
 <link rel="icon" type="image/png" href="icon-512.png">
 <meta name="theme-color" content="#c06a3d">
 <script>
-if ('serviceWorker' in navigator) {
+// Skipped inside the iOS app (ios-app/), which loads the live site and has no
+// use for the offline cache.
+if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
   navigator.serviceWorker.register('/Trips/sw.js', { scope: '/Trips/' });
 }
 </script>
@@ -1949,7 +1951,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
 import { getDatabase, ref, set, update, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithCredential, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAM2Bm8PgkCk6c6uAiySuclKLkIq06HMxQ",
@@ -1983,6 +1985,7 @@ window._uploadBytes = uploadBytes;
 window._getDownloadURL = getDownloadURL;
 window._GoogleAuthProvider = GoogleAuthProvider;
 window._signInWithPopup = signInWithPopup;
+window._signInWithCredential = signInWithCredential;
 window._onAuthStateChanged = onAuthStateChanged;
 window._signOut = signOut;
 
@@ -2075,7 +2078,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 313 };
+window.BUILD_INFO = { prNumber: 314 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2278,13 +2281,32 @@ function setupAuth() {
   });
 }
 
+// iOS app (ios-app/): Google blocks its sign-in page inside embedded web views,
+// so sign in natively and hand the Google ID token to Firebase. Only runs when
+// the page is loaded by the app; browsers keep using the popup.
+const IOS_GOOGLE_CLIENT_ID = '298565083065-j425l2o0ku65odij251ta8qq04u63b08.apps.googleusercontent.com';
+
+async function signInWithGoogleNative() {
+  const cap = window.Capacitor;
+  await cap.nativePromise('SocialLogin', 'initialize', { google: { iOSClientId: IOS_GOOGLE_CLIENT_ID, mode: 'online' } });
+  // Clear any earlier native Google session so the account chooser always shows.
+  try { await cap.nativePromise('SocialLogin', 'logout', { provider: 'google' }); } catch(e) {}
+  const res = await cap.nativePromise('SocialLogin', 'login', { provider: 'google', options: {} });
+  const idToken = res?.result?.idToken;
+  if (!idToken) throw new Error('Google sign-in returned no ID token');
+  await window._signInWithCredential(window._auth, window._GoogleAuthProvider.credential(idToken));
+}
+
 window.signInWithGoogle = async function() {
   const provider = new window._GoogleAuthProvider();
+  const isNativeApp = !!window.Capacitor?.isNativePlatform?.();
   document.getElementById('googleSignInBtn').disabled = true;
   try {
-    await window._signInWithPopup(window._auth, provider);
+    if (isNativeApp) await signInWithGoogleNative();
+    else await window._signInWithPopup(window._auth, provider);
   } catch(e) {
-    if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+    const cancelled = isNativeApp && /cancel/i.test(e.message || '');
+    if (!cancelled && e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
       document.getElementById('loginError').textContent = 'Sign-in failed — please try again.';
       document.getElementById('loginError').style.display = '';
     }
