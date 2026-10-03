@@ -2078,7 +2078,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 315 };
+window.BUILD_INFO = { prNumber: 317 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4829,8 +4829,17 @@ window.generateTripPDF = async function(tripId) {
   const btn = document.getElementById('pdfBtn-' + tripId);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing…'; }
 
+  // Open the window now, while the tap still counts as a user gesture — after the
+  // awaits below, Safari's pop-up blocker rejects it. The iOS app's web view has
+  // no pop-up windows at all, so there (or when blocked) the document is shown
+  // in an in-page overlay instead.
+  const isNativeApp = !!window.Capacitor?.isNativePlatform?.();
+  const win = isNativeApp ? null : window.open('', '_blank');
+  if (win) win.document.write('<p style="font-family:-apple-system,sans-serif;padding:24px;color:#8a7e72;">Preparing PDF…</p>');
+  const embedded = !win;
+
   const trip = allTrips[tripId];
-  if (!trip) { if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; } return; }
+  if (!trip) { if (win) win.close(); if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; } return; }
 
   // 1. Ensure AI summaries exist
   try { await ensureDaySummaries(tripId); } catch(e) { /* proceed without summaries */ }
@@ -4989,8 +4998,9 @@ window.generateTripPDF = async function(tripId) {
     (function() {
       var points = ${JSON.stringify(cityPoints)};
       if (!points.length) { document.getElementById('pdfMapWrap').style.display='none'; return; }
-      var map = L.map('pdfMap', { zoomControl: false, attributionControl: false, scrollWheelZoom: false });
-      L.tileLayer(${JSON.stringify(CARTO_TILE_URL)}, { maxZoom: 14, subdomains: 'abcd' }).addTo(map);
+      var map = L.map('pdfMap', { zoomControl: false, attributionControl: false, scrollWheelZoom: false${embedded ? ', preferCanvas: true' : ''} });
+      var tiles = L.tileLayer(${JSON.stringify(CARTO_TILE_URL)}, { maxZoom: 14, subdomains: 'abcd'${embedded ? ', crossOrigin: true' : ''} }).addTo(map);
+      window._pdfMapReady = new Promise(function(r) { tiles.once('load', r); });
       var bounds = [];
       points.forEach(function(p, i) {
         var isEnd = i === 0 || i === points.length - 1;
@@ -5010,6 +5020,8 @@ window.generateTripPDF = async function(tripId) {
     })();
   `;
 
+  // In the in-app overlay the map is flattened onto a canvas before html2pdf runs
+  // (see flattenPdfMap), which needs CORS-clean tiles and canvas-drawn route lines.
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5072,10 +5084,10 @@ window.generateTripPDF = async function(tripId) {
 </style>
 </head>
 <body>
-<div class="action-bar">
+${embedded ? '' : `<div class="action-bar">
   <button class="action-btn action-btn-save" onclick="window.print()">📥 Save as PDF</button>
   <button class="action-btn action-btn-close" onclick="window.close()">✕ Close</button>
-</div>
+</div>`}
 <div class="cover">
   <div class="cover-title">
     ${trip.emoji ? `<div class="cover-emoji">${trip.emoji}</div>` : ''}
@@ -5092,16 +5104,138 @@ ${bodyHTML}
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
-  if (!win) {
-    showToast('Allow pop-ups to generate PDFs');
-    if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; }
-    return;
+  if (win && !win.closed) {
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  } else {
+    showPdfOverlay(html, trip.name || 'Trip');
   }
-  win.document.write(html);
-  win.document.close();
   if (btn) { btn.disabled = false; btn.textContent = '📄 Create PDF'; }
 };
+
+// Replaces the Leaflet map in the PDF document with a single image of it.
+// html2canvas renders Leaflet's positioned tiles, markers and overlays unreliably,
+// so the visible pieces are drawn onto one canvas at their on-screen positions.
+async function flattenPdfMap(fwin) {
+  const doc = fwin.document;
+  const mapEl = doc.getElementById('pdfMap');
+  if (!mapEl || !fwin._pdfMapReady) return;
+  await Promise.race([fwin._pdfMapReady, new Promise(r => setTimeout(r, 8000))]);
+  const box = mapEl.getBoundingClientRect();
+  if (!box.width || !box.height) return;
+  const scale = 2;
+  const canvas = doc.createElement('canvas');
+  canvas.width = Math.round(box.width * scale);
+  canvas.height = Math.round(box.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#e8e4dc';
+  ctx.fillRect(0, 0, box.width, box.height);
+  const drawAt = el => {
+    const r = el.getBoundingClientRect();
+    try { ctx.drawImage(el, r.left - box.left, r.top - box.top, r.width, r.height); } catch(e) {}
+  };
+  mapEl.querySelectorAll('img.leaflet-tile-loaded').forEach(drawAt);
+  mapEl.querySelectorAll('.leaflet-overlay-pane canvas').forEach(drawAt); // route lines
+  mapEl.querySelectorAll('.leaflet-marker-icon > div').forEach(dot => {
+    const r = dot.getBoundingClientRect();
+    const cs = fwin.getComputedStyle(dot);
+    const border = parseFloat(cs.borderTopWidth) || 0;
+    ctx.beginPath();
+    ctx.arc(r.left - box.left + r.width / 2, r.top - box.top + r.height / 2, (r.width - border) / 2, 0, 2 * Math.PI);
+    ctx.fillStyle = cs.backgroundColor;
+    ctx.fill();
+    ctx.lineWidth = border;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+  });
+  const img = doc.createElement('img');
+  img.style.cssText = 'display:block;width:100%;height:100%;';
+  await new Promise(r => { img.onload = img.onerror = r; img.src = canvas.toDataURL('image/jpeg', 0.92); });
+  mapEl.className = '';
+  mapEl.replaceChildren(img);
+}
+
+// Shows the trip document in a full-screen overlay (the iOS app's web view has
+// no pop-up windows or window.print()). The PDF is built in the background with
+// html2pdf.js so the Share tap can open the share sheet immediately — iOS
+// rejects navigator.share() once the tap's user activation has expired.
+function showPdfOverlay(html, tripName) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#faf8f4;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);';
+  overlay.innerHTML = `
+    <div style="display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);">
+      <button data-pdf-share disabled style="flex:1;padding:12px 16px;border:none;border-radius:10px;font-size:15px;font-weight:600;background:#c06a3d;color:#fff;opacity:0.6;">⏳ Building PDF…</button>
+      <button data-pdf-close style="flex:1;padding:12px 16px;border:none;border-radius:10px;font-size:15px;font-weight:600;background:#f0ebe4;color:#2c2418;">✕ Close</button>
+    </div>
+    <iframe data-pdf-preview style="flex:1;width:100%;border:none;background:#fff;"></iframe>
+    <iframe data-pdf-source aria-hidden="true" style="position:fixed;left:-10000px;top:0;width:816px;height:1056px;border:none;"></iframe>`;
+  const shareBtn = overlay.querySelector('[data-pdf-share]');
+  const frame = overlay.querySelector('[data-pdf-preview]');
+  // The PDF is rendered from an off-screen copy at letter width (816px): html2pdf
+  // lays the page out at that width, and a map drawn at phone width comes out cropped.
+  const sourceFrame = overlay.querySelector('[data-pdf-source]');
+  let pdfFile = null;
+  let blobUrl = null;
+  overlay.querySelector('[data-pdf-close]').onclick = () => {
+    overlay.remove();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+  };
+  const setShare = (label, enabled) => {
+    shareBtn.textContent = label;
+    shareBtn.disabled = !enabled;
+    shareBtn.style.opacity = enabled ? '1' : '0.6';
+  };
+
+  shareBtn.onclick = async () => {
+    if (!pdfFile) { buildPdf(); return; } // retry after a failed build
+    if (navigator.canShare?.({ files: [pdfFile] })) {
+      try { await navigator.share({ files: [pdfFile], title: tripName }); return; }
+      catch(e) { if (e && e.name === 'AbortError') return; }
+    }
+    // No file sharing: show the PDF itself, which iOS renders with its own share menu.
+    if (!blobUrl) blobUrl = URL.createObjectURL(pdfFile);
+    frame.removeAttribute('srcdoc');
+    frame.src = blobUrl;
+  };
+
+  const buildPdf = async () => {
+    setShare('⏳ Building PDF…', false);
+    const fwin = sourceFrame.contentWindow;
+    try {
+      if (!fwin.html2pdf) await new Promise((resolve, reject) => {
+        const s = fwin.document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js';
+        s.onload = resolve;
+        s.onerror = () => { s.remove(); reject(new Error('html2pdf failed to load')); };
+        fwin.document.head.appendChild(s);
+      });
+      await flattenPdfMap(fwin);
+      // Options must be built in the iframe's realm: html2pdf checks `instanceof Array`.
+      const opts = fwin.JSON.parse(JSON.stringify({
+        margin: [10, 0, 10, 0],
+        filename: tripName + '.pdf',
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, imageTimeout: 5000 },
+        jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+        pagebreak: { mode: ['css'], before: '.day-break' },
+      }));
+      const blob = await fwin.html2pdf().set(opts).from(fwin.document.body).outputPdf('blob');
+      const safeName = tripName.replace(/[\\/:*?"<>|]/g, '').trim() || 'Trip';
+      pdfFile = new File([blob], safeName + '.pdf', { type: 'application/pdf' });
+      setShare('📤 Share PDF', true);
+    } catch(e) {
+      console.error('PDF build failed', e);
+      setShare('↻ Retry PDF', true);
+    }
+  };
+  sourceFrame.addEventListener('load', buildPdf, { once: true });
+
+  frame.srcdoc = html;
+  sourceFrame.srcdoc = html;
+  document.body.appendChild(overlay);
+}
 
 window.deleteTrip = async function(tripId) {
   if (!confirm('Delete this trip and all its data?')) return;
