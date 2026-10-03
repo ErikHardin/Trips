@@ -1,0 +1,16 @@
+{
+  "name": "hardin-trips-ios",
+  "private": true,
+  "description": "iOS shell for Hardin Trips (TestFlight). Loads the live site; see IOS.md.",
+  "scripts": {
+    "sync": "cap sync ios",
+    "open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}

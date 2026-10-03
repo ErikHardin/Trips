@@ -161,3 +161,13 @@ if __name__ == "__main__":
         icon = draw_icon(size, features)
         icon.save(f"/home/user/Trips/{name}", "PNG")
         print(f"Saved {name} ({size}×{size})")
+
+    # iOS app icon: iOS rounds the corners itself and rejects transparency,
+    # so flatten onto a full terracotta square.
+    ios_icon = Image.new("RGB", (1024, 1024), TERRACOTTA)
+    rounded = draw_icon(1024, features)
+    ios_icon.paste(rounded, mask=rounded)
+    ios_path = ("/home/user/Trips/ios-app/ios/App/App/Assets.xcassets/"
+                "AppIcon.appiconset/AppIcon-512@2x.png")
+    ios_icon.save(ios_path, "PNG")
+    print("Saved iOS app icon (1024×1024)")

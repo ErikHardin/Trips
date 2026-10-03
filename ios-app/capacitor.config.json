@@ -1,0 +1,14 @@
+{
+  "appId": "com.erikhardin.trips",
+  "appName": "Hardin Trips",
+  "webDir": "www",
+  "backgroundColor": "#faf8f4",
+  "server": {
+    "url": "https://ech-technicalsolutions.com/Trips/",
+    "errorPath": "offline.html"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#faf8f4"
+  }
+}
