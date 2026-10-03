@@ -35,7 +35,7 @@ Open the app and pick one way to sign in. Each one works with the email address 
 - **Sign in with Google**: use your Google account.
 - **Sign in with Apple**: use your Apple ID. If Apple asks, choosing **Share My Email** is simplest. If you choose **Hide My Email**, Apple makes up a private address, and Erik has to add that address instead (the app shows it to you).
 - **Email and password**, for any other email (Yahoo, Outlook, iCloud, work):
-  1. Tap **Create account**, enter your name, email and a password of at least 8 characters, then tap **Create account** again.
+  1. Tap **Create account**, enter your name, email and a password of at least 8 characters (type it twice to confirm), then tap **Create account** again.
   2. Open the verification email and tap its link.
   3. Back in the app, tap **I've verified**.
 
