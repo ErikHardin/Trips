@@ -622,6 +622,8 @@ async function handleInboundEmail(message, env) {
     status: 'pending',
     bodyExcerpt: text.slice(0, BOOKING_EXCERPT_LIMIT),
   };
+  // Whose inbox it shows in; admins see every item either way
+  if (allowed.get(sender)) item.ownerEmail = allowed.get(sender);
   try {
     Object.assign(item, await parseBookingText(env, subject, text));
   } catch (e) {
@@ -762,29 +764,33 @@ function encodeHeaderWords(s) {
   return words.map(w => '=?UTF-8?B?' + utf8Base64(w) + '?=').join('\r\n ');
 }
 
-// Lowercased addresses allowed to send: everyone with an admin or user role,
-// plus the approved senders list. Access keys are the email with '.' replaced
-// by ',' — decoded too, for records missing email.
+// Lowercased addresses allowed to send, each mapped to the app account whose
+// inbox it belongs to (or null): everyone with an admin or user role maps to
+// themselves, and an approved sender to the user it was linked to, if any.
+// Access keys are the sign-in email with '.' replaced by ',' — decoded, they
+// match the auth email the database rules compare ownerEmail against.
 async function bookingAllowedSenders(env) {
   const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
   const access = await wFetchJson(env.FIREBASE_URL + '/access.json' + auth);
-  const set = new Set();
+  const map = new Map();
   Object.entries(access || {}).forEach(([key, u]) => {
     if (!u || (u.role !== 'admin' && u.role !== 'user')) return;
-    set.add(key.replace(/,/g, '.').toLowerCase());
-    if (u.email) set.add(String(u.email).toLowerCase());
+    const owner = key.replace(/,/g, '.');
+    map.set(owner.toLowerCase(), owner);
+    if (u.email) map.set(String(u.email).toLowerCase(), owner);
   });
   // Addresses without an app account that people book from, managed in the
   // app's Booking Inbox → Approved senders. Unreadable never blocks the above.
   try {
     const extra = await wFetchJson(env.FIREBASE_URL + '/config/bookingInboxSenders.json' + auth);
     Object.entries(extra || {}).forEach(([key, s]) => {
-      set.add(String((s && s.email) || key.replace(/,/g, '.')).trim().toLowerCase());
+      const addr = String((s && s.email) || key.replace(/,/g, '.')).trim().toLowerCase();
+      if (!map.has(addr)) map.set(addr, (s && s.owner) || null);
     });
   } catch (e) {
     console.warn('Approved senders unavailable: ' + e.message);
   }
-  return set;
+  return map;
 }
 
 async function notifyBookingQueued(env, item) {
