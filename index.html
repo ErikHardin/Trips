@@ -3197,7 +3197,7 @@ async function loadNotifySettings() {
 function renderNotifyMyTrips(mine) {
   const me = ((currentUser && currentUser.email) || '').toLowerCase();
   const trips = Object.entries(allTrips || {})
-    .filter(([, t]) => t && t.status !== 'past')
+    .filter(([, t]) => t && (t.status === 'upcoming' || t.status === 'active'))
     .sort((a, b) => String(a[1].startDateISO || '9999').localeCompare(String(b[1].startDateISO || '9999')));
   document.getElementById('notifyMyTrips').innerHTML = trips.map(([id, t]) => {
     const created = String(t.ownerId || '').toLowerCase() === me;
