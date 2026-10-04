@@ -4726,6 +4726,8 @@ window.cancelNoteEdit = function() {
 };
 
 // ── Image compression ──
+// Memory photos: big enough to stay sharp when zoomed in the lightbox.
+const MEMORY_PHOTO_MAX_PX = 2560, MEMORY_PHOTO_QUALITY = 0.85;
 function compressImage(file, maxPx, quality) {
   return new Promise(resolve => {
     const img = new Image();
@@ -4786,7 +4788,7 @@ window.saveNote = async function() {
             const ext = file.name.split('.').pop() || 'mov';
             storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.${ext}`;
           } else {
-            uploadBlob = await compressImage(file, 1200, 0.8);
+            uploadBlob = await compressImage(file, MEMORY_PHOTO_MAX_PX, MEMORY_PHOTO_QUALITY);
             storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
           }
           const storageRef = window._sRef(window._storage, storePath);
@@ -4822,7 +4824,7 @@ window.saveNote = async function() {
           const ext = file.name.split('.').pop() || 'mov';
           storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.${ext}`;
         } else {
-          uploadBlob = await compressImage(file, 1200, 0.8);
+          uploadBlob = await compressImage(file, MEMORY_PHOTO_MAX_PX, MEMORY_PHOTO_QUALITY);
           storePath = `trips/${currentTripId}/notes/${Date.now()}_${i}.jpg`;
         }
         const storageRef = window._sRef(window._storage, storePath);
