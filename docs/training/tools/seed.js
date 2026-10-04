@@ -73,7 +73,7 @@ module.exports = (adminEmail) => ({
     [adminEmail.replace(/\./g, ',')]: { role: 'admin', name: 'Erik', email: adminEmail, lastOutstandingPopupAt: Date.now() },
     'sarah@example,com': { role: 'admin', name: 'Sarah', email: 'sarah@example.com', lastLogin: now - 3.6e6 * 5 },
     'grandma@example,com': { role: 'guest', name: 'Grandma', email: 'grandma@example.com', trips: { portugal: true }, lastLogin: now - 8.64e7 * 3 },
-    'alex@example,com': { role: 'user', name: 'Alex', email: 'alex@example.com', lastLogin: now - 8.64e7 * 10 },
+    'alex@example,com': { role: 'user', name: 'Alex', email: 'alex@example.com', trips: { portugal: true, japan: true }, lastLogin: now - 8.64e7 * 10 },
   },
   trips: { portugal, japan, france, iceland },
   bookingInbox: {

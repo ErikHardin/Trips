@@ -21,7 +21,15 @@ const closeModals = page => page.evaluate(() => [...document.body.children].forE
 
   // ── Signed out: login ──
   { const { browser, page } = await launch({ user: null, seed: seed() });
-    await shot(page, '01-login'); await browser.close(); }
+    await shot(page, '01-login');
+    await page.fill('#loginEmailInput', 'grandma@example.com');
+    await page.evaluate(() => createPasswordAccount()); await wait(page);
+    await shot(page, '01b-create-account');
+    await page.evaluate(() => { document.getElementById('loginError').style.display = 'none'; setLoginMode('verify', 'grandma@example.com'); document.getElementById('loginSignOutBtn').style.display = ''; }); await wait(page);
+    await shot(page, '01c-verify-email');
+    await page.evaluate(() => setLoginMode('waiting', 'Thanks! Your request to join was sent to Erik (grandma@example.com). This page opens by itself once you’re added.')); await wait(page);
+    await shot(page, '01d-request-sent');
+    await browser.close(); }
 
   // ── Admin ──
   const { browser, page } = await launch({ user: ADMIN, seed: seed() });
@@ -142,6 +150,14 @@ const closeModals = page => page.evaluate(() => [...document.body.children].forE
   { const { browser, page } = await launch({ user: { email: 'grandma@example.com', displayName: 'Grandma', uid: 'u2' }, seed: seed() });
     await page.evaluate(() => goHome()); await wait(page);
     await shot(page, '26-guest-home'); await browser.close(); }
+
+  // ── User (can create and manage their own trips) ──
+  { const { browser, page } = await launch({ user: { email: 'alex@example.com', displayName: 'Alex', uid: 'u3' }, seed: seed(), now: '2026-09-29T15:00:00+01:00' });
+    await page.evaluate(() => goHome()); await wait(page);
+    await shot(page, '32-user-home');
+    await page.evaluate(() => showScreen('screen-admin')); await wait(page);
+    await page.evaluate(() => { const b = document.getElementById('addTripSectionBody'); if (!b || b.style.display === 'none') toggleAdminSection('addTripSection'); }); await wait(page);
+    await shot(page, '33-user-add-trip'); await browser.close(); }
 
   // ── Share link (signed out) ──
   { const { browser, page } = await launch({ user: null, seed: seed(), url: 'http://127.0.0.1:8901/index.html?trip=portugal' });
