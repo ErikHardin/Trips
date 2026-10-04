@@ -34,7 +34,9 @@
     if (p === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', p);
     var dark = p === 'dark' || (p === 'auto' && mq.matches);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = dark ? '#1b1814' : '#c06a3d';
+    if (meta) meta.content = dark ? '#2c2c2e' : '#c06a3d';
+    // iOS app: recolor the native status-bar and home-indicator strips (SceneDelegate.swift)
+    try { window.webkit.messageHandlers.theme.postMessage(p); } catch (e) {}
     if (window.isDarkTheme !== dark) {
       window.isDarkTheme = dark;
       document.dispatchEvent(new Event('themechange'));
@@ -96,67 +98,67 @@ if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
 /* Dark mode: follows the device unless the user picked Light/Dark in settings */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --cream: #1b1814;
-    --warm-white: #25211c;
-    --sand: #322c25;
-    --sand-dark: #4a4137;
-    --terracotta: #cc7650;
-    --terracotta-light: #3b2a20;
-    --gold: #d2ae5c;
-    --gold-light: #312a1b;
-    --sage: #8bbb8f;
-    --sage-light: #1e2b20;
-    --blue: #7aa7d6;
-    --blue-light: #1c2836;
-    --ink: #ece5da;
-    --muted: #a39687;
-    --border: #3b342c;
+    --cream: #2c2c2e;
+    --warm-white: #3a3a3c;
+    --sand: #48484b;
+    --sand-dark: #5c5c60;
+    --terracotta: #d07a54;
+    --terracotta-light: #4a3b35;
+    --gold: #d6b25f;
+    --gold-light: #46412f;
+    --sage: #8fc093;
+    --sage-light: #334237;
+    --blue: #80aedc;
+    --blue-light: #323f4e;
+    --ink: #f2f2f3;
+    --muted: #a9a9ae;
+    --border: #4c4c50;
     --shadow-sm: 0 1px 4px rgba(0,0,0,0.30);
     --shadow-md: 0 4px 16px rgba(0,0,0,0.40);
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.50);
-    --surface: #25211c;
-    --gold-border: #5c4c28;
-    --sage-border: #34503a;
-    --sage-dark: #8bbb8f;
-    --sage-tint: #1f2a21;
-    --terracotta-tint: #3b2a20;
-    --terracotta-border: #6a3f2b;
-    --terracotta-border-soft: #6a3f2b;
-    --sand-hover: #4a4137;
-    --faint: #6b6156;
+    --surface: #3a3a3c;
+    --gold-border: #6b5c35;
+    --sage-border: #48634d;
+    --sage-dark: #8fc093;
+    --sage-tint: #353f37;
+    --terracotta-tint: #4a3b35;
+    --terracotta-border: #7a4d38;
+    --terracotta-border-soft: #7a4d38;
+    --sand-hover: #5c5c60;
+    --faint: #76767b;
     --glass: rgba(255,255,255,0.04);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --cream: #1b1814;
-  --warm-white: #25211c;
-  --sand: #322c25;
-  --sand-dark: #4a4137;
-  --terracotta: #cc7650;
-  --terracotta-light: #3b2a20;
-  --gold: #d2ae5c;
-  --gold-light: #312a1b;
-  --sage: #8bbb8f;
-  --sage-light: #1e2b20;
-  --blue: #7aa7d6;
-  --blue-light: #1c2836;
-  --ink: #ece5da;
-  --muted: #a39687;
-  --border: #3b342c;
+  --cream: #2c2c2e;
+  --warm-white: #3a3a3c;
+  --sand: #48484b;
+  --sand-dark: #5c5c60;
+  --terracotta: #d07a54;
+  --terracotta-light: #4a3b35;
+  --gold: #d6b25f;
+  --gold-light: #46412f;
+  --sage: #8fc093;
+  --sage-light: #334237;
+  --blue: #80aedc;
+  --blue-light: #323f4e;
+  --ink: #f2f2f3;
+  --muted: #a9a9ae;
+  --border: #4c4c50;
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.30);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.40);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.50);
-  --surface: #25211c;
-  --gold-border: #5c4c28;
-  --sage-border: #34503a;
-  --sage-dark: #8bbb8f;
-  --sage-tint: #1f2a21;
-  --terracotta-tint: #3b2a20;
-  --terracotta-border: #6a3f2b;
-  --terracotta-border-soft: #6a3f2b;
-  --sand-hover: #4a4137;
-  --faint: #6b6156;
+  --surface: #3a3a3c;
+  --gold-border: #6b5c35;
+  --sage-border: #48634d;
+  --sage-dark: #8fc093;
+  --sage-tint: #353f37;
+  --terracotta-tint: #4a3b35;
+  --terracotta-border: #7a4d38;
+  --terracotta-border-soft: #7a4d38;
+  --sand-hover: #5c5c60;
+  --faint: #76767b;
   --glass: rgba(255,255,255,0.04);
   color-scheme: dark;
 }
@@ -2317,7 +2319,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 333 };
+window.BUILD_INFO = { prNumber: 334 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
