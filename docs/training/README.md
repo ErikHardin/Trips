@@ -1,10 +1,22 @@
 # Hardin Trips — Training Guide
 
-A walkthrough of the Trips app for the whole family: how to sign in, find your way around a trip, add memories, and (for admins) plan and manage trips.
+A walkthrough of the Trips app for the whole family: how to sign in, find your way around a trip, and add memories<!-- only: admin user -->, plus how to plan trips<!-- /only --><!-- only: admin -->, and the admin tools for managing them<!-- /only -->.
 
-> 📄 **Printable version:** [Hardin-Trips-Training-Guide.pdf](Hardin-Trips-Training-Guide.pdf)
+<!-- only: readme -->
+> 📄 **Printable guides, one for each role:**
+> [Admin guide](Hardin-Trips-Admin-Guide.pdf) · [User guide](Hardin-Trips-User-Guide.pdf) · [Guest guide](Hardin-Trips-Guest-Guide.pdf)
 >
-> The screenshots use made-up sample trips. Your own trips and names will be different. To regenerate the screenshots after the app changes, see [`tools/README.md`](tools/README.md).
+> This page is the complete guide, the same as the admin PDF. The screenshots use made-up sample trips. Your own trips and names will be different. To regenerate the screenshots and PDFs after the app changes, see [`tools/README.md`](tools/README.md).
+<!-- /only -->
+<!-- for: admin
+> This is the **admin** edition: everything in the app, including the admin tools. The screenshots use made-up sample trips, so your own trips and names will be different.
+-->
+<!-- for: user
+> This is the **user** edition, for family members who plan their own trips. The screenshots use made-up sample trips, so your own trips and names will be different.
+-->
+<!-- for: guest
+> This is the **guest** edition, for family members Erik has shared trips with. The screenshots use made-up sample trips, so your own trips and names will be different.
+-->
 
 ## Contents
 
@@ -19,11 +31,12 @@ A walkthrough of the Trips app for the whole family: how to sign in, find your w
 9. [The Changes tab](#9-the-changes-tab)
 10. [The Wishlist tab](#10-the-wishlist-tab)
 11. [Sharing a trip](#11-sharing-a-trip)
-12. [Editing a trip](#12-editing-a-trip)
-13. [The world map](#13-the-world-map)
-14. [The admin screen](#14-the-admin-screen)
-15. [The iPhone app](#15-the-iphone-app)
-16. [Tips and FAQ](#16-tips-and-faq)
+12. [Creating a trip](#12-creating-a-trip)
+13. [Editing a trip](#13-editing-a-trip)
+14. [The world map](#14-the-world-map)
+15. [The admin screen](#15-the-admin-screen)
+16. [The iPhone app](#16-the-iphone-app)
+17. [Tips and FAQ](#17-tips-and-faq)
 
 ---
 
@@ -31,42 +44,63 @@ A walkthrough of the Trips app for the whole family: how to sign in, find your w
 
 <img src="img/01-login.png" width="280" align="right" alt="Login screen">
 
-Open the app and pick one way to sign in. Each one works with the email address Erik gave access to:
+Open the app and choose how to sign in. There are three ways, and each one works with the email address Erik gave access to:
 
-- **Sign in with Google**: use your Google account.
-- **Sign in with Apple**: use your Apple ID. If Apple asks, choosing **Share My Email** is simplest. If you choose **Hide My Email**, Apple makes up a private address, and Erik has to add that address instead (the app shows it to you).
-- **Email and password**, for any other email (Yahoo, Outlook, iCloud, work):
-  1. Tap **Create account**, enter your name, email and a password of at least 8 characters (type it twice to confirm), then tap **Create account** again.
-  2. Open the verification email and tap its link.
-  3. Back in the app, tap **I've verified**.
+- **Sign in with Google**: tap it and pick your Google account.
+- **Sign in with Apple**: tap it and use your Apple ID. If Apple asks, choosing **Share My Email** is simplest. If you choose **Hide My Email**, Apple makes up a private address, and Erik has to add that address instead (the app shows it to you).
+- **Email and password**, for any other email (Yahoo, Outlook, iCloud, work). Use the boxes under *or use your email*. The first time, you create an account (below). After that, type your email and password and tap **Sign in**.
 
-  Next time, just tap **Sign in**. If you forget the password, enter your email and tap **Forgot password?**.
-
-If your email hasn't been added yet, the app sends Erik a request for you and shows *"Thanks! Your request to join was sent…"*. Leave the page open, or come back later: it opens by itself once an admin approves you. To try another account, tap **Sign in with a different account**.
-
-- **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon. Family members Erik has invited can also use the real iPhone app instead ([section 15](#15-the-iphone-app)).
-- **To sign out**, tap the 🔒 lock in the top-right corner of the home screen, then **Sign out**.
-- **To delete your account**, tap the 🔒 lock, then **Delete account**. You confirm with your sign-in one more time. This removes your sign-in and your access. Trips you created stay in the app for everyone else.
+If you forget your password, type your email and tap **Forgot password?**. The app emails you a link to choose a new one.
 
 <br clear="all">
 
+### Creating an email and password account
+
+| 1. Fill in the form | 2. Verify your email | 3. Wait for Erik |
+|:-:|:-:|:-:|
+| <img src="img/01b-create-account.png" width="220" alt="Create account form"> | <img src="img/01c-verify-email.png" width="220" alt="Verify your email"> | <img src="img/01d-request-sent.png" width="220" alt="Request sent"> |
+
+1. Type your email and a password, then tap **Create account**. Two more boxes appear: **Your name** and **Confirm password**. Fill them in (the password needs at least 8 characters) and tap **Create account** again.
+2. The app sends you a verification email. Open it, tap its link, then come back to the app and tap **I've verified**. Didn't get it? Tap **Resend email**.
+3. If Erik already added your email, the app opens. If not, the app sends him a request for you and shows *"Thanks! Your request to join was sent…"*. Leave the page open, or come back later: it opens by itself once you're approved.
+
+The request step works the same way with Google and Apple. To try another account, tap **Sign in with a different account**.
+
+### Installing, signing out and deleting your account
+
+- **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon. You can also use the real iPhone app ([section 16](#16-the-iphone-app)).
+- **To sign out**, tap the 🔒 lock in the top-right corner of the home screen, then **Sign out**.
+- **To delete your account**, tap the 🔒 lock, then **Delete account**. You confirm with your sign-in one more time. This removes your sign-in and your access. Trips you created stay in the app for everyone else.
+
 ## 2. Who can do what
 
-Every account has one of three roles. Admins set roles under **Admin → User Access** ([section 14](#user-access)).
+Every account has one of three roles. <!-- only: admin -->Admins set roles under **Admin → User Access** ([section 15](#user-access)).<!-- /only --><!-- for: user guest
+Erik sets each person's role.
+-->
 
 | | Guest | User | Admin |
 |---|:-:|:-:|:-:|
 | See trips | Only trips they've been given | Their own trips, plus any shared with them | All trips |
 | Add memories, wishlist ideas, quick activity edits | ✅ on their trips | ✅ | ✅ |
+| Share a trip link | ✅ | ✅ | ✅ |
 | Create new trips | — | ✅ (their own) | ✅ |
-| Edit trip details, Logistics tab | — | ✅ on their own trips | ✅ |
-| Admin tools (AI assistant, users, PDFs, CSV import…) | — | — | ✅ |
+| Edit trip details, Logistics tab | — | ✅ on their own trips and trips shared with them | ✅ |
+| World map | — | — | ✅ |
+| Admin tools (booking inbox, AI assistant, users, PDFs…) | — | — | ✅ |
 
 ---
 
 ## 3. The home screen
 
+<!-- only: admin -->
 <img src="img/02-home.png" width="280" align="right" alt="Home screen">
+<!-- /only -->
+<!-- for: user
+<img src="img/32-user-home.png" width="280" align="right" alt="Home screen">
+-->
+<!-- for: guest
+<img src="img/26-guest-home.png" width="280" align="right" alt="Home screen">
+-->
 
 The home screen lists your trips as cards:
 
@@ -76,17 +110,29 @@ The home screen lists your trips as cards:
 
 Tap a card to open the trip. **When a trip is in progress, the app opens straight to it.** Tap **‹** to get back to the list.
 
+<!-- for: user
+The header shows your own name (*"Alex's Trips"*). Tap 🔒 to sign out or delete your account.
+-->
+<!-- for: guest
+The header shows your own name (*"Grandma's Trips"*). Tap 🔒 to sign out or delete your account.
+-->
+<!-- only: admin -->
 Header buttons:
 
-- 🌏 **World Map**: every place you've been ([section 13](#13-the-world-map)).
-- ⚙️ **Admin**: admins only ([section 14](#14-the-admin-screen)). A number on the gear counts bookings waiting in the [Booking Inbox](#booking-inbox).
+- 🌏 **World Map**: every place you've been ([section 14](#14-the-world-map)).
+- ⚙️ **Admin**: the admin tools ([section 15](#15-the-admin-screen)). A number on the gear counts bookings waiting in the [Booking Inbox](#booking-inbox).
 - 🔒 **Sign out**.
+<!-- /only -->
 
-**＋ Add New Trip** takes admins and users to the trip-creation form.
+<!-- only: admin user -->
+**＋ Add New Trip** at the bottom starts a new trip ([section 12](#12-creating-a-trip)).
+<!-- /only -->
 
 <br clear="all">
 
+<!-- only: admin -->
 <img src="img/03-home-past-trips.png" width="280" alt="Past trips expanded">
+<!-- /only -->
 
 ---
 
@@ -94,7 +140,9 @@ Header buttons:
 
 <img src="img/04-itinerary-top.png" width="280" align="right" alt="Itinerary tab">
 
-Opening a trip shows the **Itinerary** tab. Along the top are the other tabs: **Overview**, **Logistics**, **Changes** and **Wishlist**. Which tabs you see depends on your role and the trip's status.
+Opening a trip shows the **Itinerary** tab. Along the top are the other tabs: <!-- only: admin user -->**Overview**, **Logistics**, **Changes** and **Wishlist**. Which tabs you see depends on your role and the trip's status.<!-- /only --><!-- for: guest
+**Overview**, **Changes** and **Wishlist**.
+-->
 
 From top to bottom:
 
@@ -104,7 +152,7 @@ From top to bottom:
 - **Region headers** (*Lisbon*, *Alentejo*…) group days by area, with the region's dates and a **pill showing the current local time there**.
 - **Day cards**: date, what the day is about, the hotel, the city, and a **weather pill** (forecast high/low for upcoming days, actual weather for past days). A 🗣️ chip appears on days in a foreign-language country; tap it for useful local phrases.
 
-In the header, 🔄 refreshes the current tab and ✏️ opens the full trip editor (admins and trip owners).
+In the header, 🔄 refreshes the current tab<!-- only: admin user --> and ✏️ opens the full trip editor ([section 13](#13-editing-a-trip))<!-- /only -->.
 
 <br clear="all">
 
@@ -131,7 +179,9 @@ Tap a day card to expand it. **Today's** card is outlined and marked *TODAY*, an
 - **📍** opens the place in Google Maps or Waze (see below).
 - **📝** opens that activity's memories. The small number underneath counts how many there are.
 - **🔔** (in-progress trips, activities with a time): sets a phone reminder telling you when to leave. It uses the drive time when one is known, otherwise 30 minutes early. Reminders can only be set up to 3 days ahead.
-- **💰 Daily spend** (trip owner only): tap **+ add** to log what you spent that day. The trip total appears in Logistics.
+<!-- only: admin -->
+- **💰 Daily spend** (Erik's account only): tap **+ add** to log what you spent that day. The trip total appears in Logistics.
+<!-- /only -->
 - The green bar at the bottom shows that night's **hotel**.
 - **✏️** on the day card opens the quick activity editor ([section 6](#6-quick-editing-a-days-activities)).
 
@@ -161,9 +211,11 @@ Tap **📝** next to an activity, or **Day Memories** on a day card, to open its
 - Use **✏️ Edit** or **🗑️ Delete** on your saved memories.
 - Tap any photo to view it full-screen. Swipe or use the arrows to move between photos.
 - **Zoom in on a photo** by pinching with two fingers or double-tapping the spot you want to see. Drag with one finger to look around while zoomed, and double-tap again (or pinch back out) to return. On a computer, use the scroll wheel or double-click, and drag to pan. Photos are saved at high resolution, so they stay sharp when zoomed.
+<!-- only: admin -->
 - **Recommend this activity** (admins): marks the activity with ⭐ *Recommended* in the trip's Memories and in shared links.
+<!-- /only -->
 
-Adding photos needs an internet connection. See [Tips and FAQ](#16-tips-and-faq) for offline use.
+Adding photos needs an internet connection. See [Tips and FAQ](#17-tips-and-faq) for offline use.
 
 <br clear="all">
 
@@ -194,7 +246,9 @@ Every change is recorded in the **Changes** tab.
 - **Discard changes**: throws them away.
 - **Keep editing**: goes back to the editor.
 
-The same prompt appears in the day editor and the full trip editor ([section 12](#12-editing-a-trip)).
+<!-- only: admin user -->
+The same prompt appears in the day editor and the full trip editor ([section 13](#13-editing-a-trip)).
+<!-- /only -->
 
 <br clear="all">
 
@@ -223,13 +277,16 @@ Further down:
 
 ---
 
+<!-- only: admin user -->
 ## 8. The Logistics tab
 
 <img src="img/11-logistics.png" width="280" align="right" alt="Logistics tab">
 
 **Logistics** is for getting ready. It appears on upcoming and in-progress trips for people who can manage the trip.
 
-- **Trip Spend**: total of the daily spend entries, with a rough US-dollar conversion.
+<!-- only: admin -->
+- **Trip Spend** (Erik's account only): total of the daily spend entries, with a rough US-dollar conversion.
+<!-- /only -->
 - **Booking Checklist**: tick off Flights, Hotels and Car Rental. Tap **＋** on a row to add individual items (for example, one line per hotel). The bar shows how much is booked.
 - **Packing List**: one list per person (next screenshot).
 
@@ -242,13 +299,19 @@ Tap a person to open their packing list:
 - Tick items as you pack. The badge shows *% packed*.
 - **Add item…** at the bottom of each section adds something new. ✏️ renames an item and ✕ removes it.
 - Tap the round avatar to change that person's picture.
+<!-- only: admin -->
 - **Clear list & regenerate** replaces the lists with a fresh copy of the family template. Admins edit that template under **Admin → Logistics Packing List**.
 
 New trips created by an admin start with the family's packing template automatically.
+<!-- /only -->
+<!-- for: user
+- If a trip has no packing list yet, tap **Start a Packing List**. **Clear list & regenerate** starts the lists over.
+-->
 
 <br clear="all">
 
 ---
+<!-- /only -->
 
 ## 9. The Changes tab
 
@@ -267,7 +330,9 @@ New trips created by an admin start with the family's packing template automatic
 **Wishlist** is a shared scratchpad of places and ideas that aren't on the itinerary yet.
 
 - Enter an emoji, a name, and optional notes or a link, then tap **＋ Add to Wishlist**.
+<!-- only: admin user -->
 - **→ Add to Day** (people who can manage the trip) moves the idea onto a specific day of the itinerary.
+<!-- /only -->
 - **Edit** and **Remove** do what they say.
 
 <br clear="all">
@@ -289,13 +354,42 @@ Anyone with the link can view the trip **without signing in**, read-only. The sh
 
 ---
 
-## 12. Editing a trip
+<!-- only: admin user -->
+## 12. Creating a trip
+
+<!-- only: admin -->
+<img src="img/19-admin-add-trip.png" width="280" align="right" alt="Add New Trip">
+
+Tap **＋ Add New Trip** at the bottom of the home screen, or open **Admin → Add New Trip**.
+<!-- /only -->
+<!-- for: user
+<img src="img/33-user-add-trip.png" width="280" align="right" alt="Add New Trip">
+
+Tap **＋ Add New Trip** at the bottom of the home screen.
+-->
+
+1. Enter a **trip name** and a **cover emoji** (flags work well).
+2. Choose the **status**: *Upcoming*, *Active* or *Past*.
+3. Pick the **start and end dates**. The app previews how many days it will create.
+4. Tap **Create Trip & Generate Days**.
+
+You get one blank day per date. Fill them in with the trip editor ([section 13](#13-editing-a-trip))<!-- only: admin -->, the AI assistant ([section 15](#ai-trip-assistant)), the Booking Inbox, or a CSV import<!-- /only -->.
+
+<!-- for: user
+Trips you create are yours: you can edit them, and they appear only for you and the admins until you share a link.
+-->
+
+<br clear="all">
+
+---
+
+## 13. Editing a trip
 
 <img src="img/15-edit-trip.png" width="280" align="right" alt="Edit trip — details">
 
-Tap **✏️** in a trip's header (or **Edit** under **Admin → Manage Existing Trips**) to open the full editor.
+Tap **✏️** in a trip's header<!-- only: admin --> (or **Edit** under **Admin → Manage Existing Trips**)<!-- /only --> to open the full editor.
 
-**Trip Details**: name, year, date text, cover emoji (use two flags for a multi-country trip, like 🇮🇹🇫🇷), status (*Upcoming*, *Active (in progress)* or *Past*), currency symbol for daily spend, and whether the trip appears on the world map.
+**Trip Details**: name, year, date text, cover emoji (use two flags for a multi-country trip, like 🇮🇹🇫🇷), status (*Upcoming*, *Active (in progress)* or *Past*), currency symbol for daily spend<!-- only: admin -->, and whether the trip appears on the world map<!-- /only -->.
 
 **Flights**: tap **＋ Add Flight**, enter flight numbers and dates, then tap **Look Up All**. The app fills in routes and times automatically. Flights are sorted into Outbound, Return and In-trip. You can add a traveler's name to a flight when family members fly separately.
 
@@ -314,28 +408,30 @@ Tap **Save** (top-right) or **Save Trip Details** to keep your changes. If you t
 <br clear="all">
 
 ---
+<!-- /only -->
 
-## 13. The world map
+<!-- only: admin -->
+## 14. The world map
 
 <img src="img/17-world-map.png" width="280" align="right" alt="World map">
 
 Tap 🌏 on the home screen to see every city from every trip on one map. The totals appear along the bottom. Tap a dot to see what trip it was.
 
-Admins can hide a trip from the map with the **Show on world map** checkbox in the trip editor.
+Admins can hide a trip from the map with the **Show on world map** checkbox in the trip editor. Trips created by users are left off the map.
 
 <br clear="all">
 
 ---
 
-## 14. The admin screen
+## 15. The admin screen
 
 <img src="img/18-admin.png" width="280" align="right" alt="Admin screen">
 
 Tap ⚙️ on the home screen. Each section opens and closes with **＋ / −**. The PR number of the currently deployed version is shown at the very bottom.
 
 **Trips**
-- Booking Inbox (admins only)
-- Add New Trip
+- Booking Inbox
+- Add New Trip ([section 12](#12-creating-a-trip))
 - Manage Existing Trips
 - AI Trip Assistant
 - Travel for Trips
@@ -348,7 +444,7 @@ Tap ⚙️ on the home screen. Each section opens and closes with **＋ / −**.
 - Logistics Packing List
 - Create Trip PDF
 
-Users (not just admins) see **Add New Trip** here too.
+Users see this screen with only **Add New Trip** in it, when they tap **＋ Add New Trip** on the home screen.
 
 <br clear="all">
 
@@ -394,19 +490,6 @@ If a card says the app *couldn't read this email*, tap **Read Again**, or fix it
 - **Inbox address**: the email address to forward bookings to. It's shown in the summary line, so you can see it without opening it. To change it, tap **Edit**, type the new address, then tap **Save**.
 - **Approved senders**: anyone in User Access can forward bookings. If you book from an address that doesn't have an app account (a personal Yahoo account, say), add it here so its emails are accepted. Emails from anyone else are refused.
 - **Paste a confirmation instead**: paste the text of a confirmation and tap **✨ Read Booking**. It appears as a card just like a forwarded email.
-
-<br clear="all">
-
-### Add a new trip
-
-<img src="img/19-admin-add-trip.png" width="280" align="right" alt="Add New Trip">
-
-1. Enter a **trip name** and a **cover emoji** (flags work well).
-2. Choose the **status**: *Upcoming*, *Active* or *Past*.
-3. Pick the **start and end dates**. The app previews how many days it will create.
-4. Tap **Create Trip & Generate Days**.
-
-You get one blank day per date. Fill them in with the trip editor, the AI assistant (next), or a CSV import.
 
 <br clear="all">
 
@@ -486,8 +569,9 @@ Use **Edit** to change someone's role or trips, and **Remove** to revoke access.
 <img src="img/25-admin-pdf.png" width="280" alt="Create Trip PDF">
 
 ---
+<!-- /only -->
 
-## 15. The iPhone app
+## 16. The iPhone app
 
 Besides opening the website in Safari, there's a real **Hardin Trips** app for iPhone. It's shared through Apple's **TestFlight** app rather than the App Store.
 
@@ -513,22 +597,36 @@ The widget refreshes about once an hour. Tap it to open the app.
 
 ---
 
-## 16. Tips and FAQ
+## 17. Tips and FAQ
 
+<!-- only: admin -->
 <img src="img/26-guest-home.png" width="280" align="right" alt="What a guest sees">
 
-**What does a guest see?** Only the trips they've been given, with no ⚙️ Admin button. The header uses their own name ("*Grandma's* Trips"). Guests can read everything on their trips and add memories and wishlist ideas.
+**What does a guest see?** Only the trips they've been given, with no ⚙️ Admin button or world map. The header uses their own name ("*Grandma's* Trips"). Guests can read everything on their trips and add memories and wishlist ideas. Users see the same, plus their own trips and **＋ Add New Trip**.
+<!-- /only -->
 
 **Does it work offline?** Mostly. The app keeps a copy of your trips on the phone. With no signal, a banner reads *📴 Offline — viewing saved data*. You can still read everything, and edits you make are sent when you're back online. Photo uploads and maps need a connection.
 
 **I don't see my change.** Tap 🔄 in the trip header to refresh the current tab.
 
+<!-- only: admin user -->
 **Why can't I see the Logistics tab?** It only appears on upcoming and in-progress trips, and only for people who can manage the trip.
+<!-- /only -->
+<!-- for: user
+**I can't find a trip.** You see the trips you created plus the ones Erik has shared with you. Ask him to share the one you're missing.
+-->
+<!-- for: guest
+**I can't find a trip.** You see only the trips Erik has shared with you. Ask him to share the one you're missing.
+-->
 
 **Can I undo a change?** There's no undo button, but the **Changes** tab shows what the value was, so you can put it back by hand.
 
 **A place is pinned in the wrong spot on the map.** Fix it with the Pin option in the Maps sheet ([section 4](#opening-a-place-in-maps)).
 
+<!-- only: admin user -->
 **The weather or local time is for the wrong place.** The app may have matched the day's city to a different place with the same name (for example, *Kona* in India instead of Hawaii). Make the city more specific in the day editor (*Kailua-Kona*). The weather pill and the region's clock update to the new place.
+<!-- /only -->
 
+<!-- only: admin -->
 <br clear="all">
+<!-- /only -->

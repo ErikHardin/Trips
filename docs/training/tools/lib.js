@@ -24,7 +24,7 @@ function curl0(u) {
     res({ body, meta });
   }));
 }
-async function launch({ user, seed, url = 'http://127.0.0.1:8901/index.html', w = 390, h = 844 }) {
+async function launch({ user, seed, url = 'http://127.0.0.1:8901/index.html', w = 390, h = 844, now }) {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, timezoneId: 'Europe/Lisbon', locale: 'en-US', serviceWorkers: 'block' });
   await ctx.route('**/*', route => {
@@ -35,6 +35,9 @@ async function launch({ user, seed, url = 'http://127.0.0.1:8901/index.html', w 
     blocked.add(new URL(u).host);
     return route.abort();
   });
+  // A fixed clock keeps "Night 6 of 8" style counters on the sample trip's dates.
+  // Only for screens without weather or map tiles, which stall with a frozen clock.
+  if (now) await ctx.clock.setFixedTime(new Date(now));
   await ctx.addInitScript(({ user, seed }) => {
     window.__fakeUser = user;
     window.__fake = { root: seed, listeners: [], keyN: 0 };
