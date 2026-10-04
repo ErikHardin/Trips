@@ -1427,18 +1427,18 @@ async function driveEtaSeconds(env, from, to) {
   return null;
 }
 
-// People (with a registered device) who are on this trip: its creator, anyone
-// ticked under Edit Trip → Who's going (trip.travelers), and guests/users who
-// were given it. Being an admin alone doesn't count — admins can see every trip.
-function tripRecipients(access, tokens, trip, tripId) {
+// People (with a registered device) who are on this trip: its creator, guests
+// and users given it in User Access, and admins who ticked it under Settings →
+// Notifications → Trips I'm on (notifyPrefs/{key}/trips). Being an admin alone
+// doesn't count — admins can see every trip.
+function tripRecipients(access, tokens, trip, tripId, prefsAll) {
   const owner = String(trip.ownerId || '').toLowerCase();
-  const travelers = trip.travelers || {};
   return Object.keys(tokens || {}).filter(key => {
     const u = access[key];
     if (!u) return false;
     if (owner && owner === key.replace(/,/g, '.')) return true;
-    if (travelers[key]) return true;
-    return u.role !== 'admin' && !!(u.trips && u.trips[tripId]);
+    if (u.role === 'admin') return !!(((prefsAll || {})[key] || {}).trips || {})[tripId];
+    return !!(u.trips && u.trips[tripId]);
   });
 }
 
@@ -1464,7 +1464,7 @@ async function runPushCron(env) {
 
   for (const [tripId, trip] of Object.entries(trips)) {
     if (!trip || !trip.days || trip.status === 'past') continue;
-    const recipients = tripRecipients(access, tokens, trip, tripId);
+    const recipients = tripRecipients(access, tokens, trip, tripId, prefsAll);
     if (!recipients.length) continue;
     for (const [dayId, day] of Object.entries(trip.days)) {
       const dateISO = day && (day.dateISO || dayDateISO(day, trip.year));
@@ -1565,7 +1565,7 @@ async function runPushCron(env) {
   // Flights and trip-change digests, per trip
   for (const [tripId, trip] of Object.entries(trips)) {
     if (!trip || trip.status === 'past') continue;
-    const recipients = tripRecipients(access, tokens, trip, tripId);
+    const recipients = tripRecipients(access, tokens, trip, tripId, prefsAll);
     if (!recipients.length) continue;
     try { await runFlightAlerts(env, tripId, trip, recipients, prefsOf, state.flights || {}, send, now); }
     catch (e) { console.warn('flights ' + tripId + ': ' + e.message); }
