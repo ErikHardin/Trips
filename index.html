@@ -2402,6 +2402,7 @@ async function handleSignedInUser(user) {
     if (userRole === 'admin') checkOutstandingBookings();
     if (userRole === 'admin' || userRole === 'user') startBookingInboxListener();
     if (userRole === 'admin') announcePendingAccessRequests();
+    loadActivityMutes();
     initApp();
     registerForPush(true);
   } catch(e) {
@@ -2892,6 +2893,36 @@ const NOTIFY_TYPES = [
 ];
 let _pushToken = null;
 let _pushListenersAdded = false;
+let _activityMutes = {};   // pushActId -> true, for the signed-in person
+
+// Stable id for an activity's reminders. Same FNV-1a as pushActId() in worker.js.
+function pushActId(tripId, dateISO, a) {
+  const str = tripId + '|' + dateISO + '|' + (a.text || '') + '|' + (a.time || '');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return 'a' + h.toString(16).padStart(8, '0');
+}
+
+async function loadActivityMutes() {
+  const key = pushEmailKey();
+  if (!key) return;
+  try { _activityMutes = (await window._get(window._ref(window._db, `activityMutes/${key}`))).val() || {}; }
+  catch(e) { _activityMutes = {}; }
+}
+
+// The Worker's cron can't re-run the app's geocoding, so the app saves each
+// day's drive stops (and where each drive starts from) for leave-by alerts.
+// Written only when they change, and only for current trips.
+const _pushGeoSaved = {};
+function savePushGeo(tripId, dayId, stops) {
+  const trip = allTrips[tripId];
+  if (!tripId || !trip || !currentUser || !userRole || (trip.status !== 'active' && trip.status !== 'upcoming')) return;
+  const val = stops.length ? { stops, updatedAt: Date.now() } : null;
+  const sig = JSON.stringify(stops);
+  if (_pushGeoSaved[tripId + '/' + dayId] === sig) return;
+  _pushGeoSaved[tripId + '/' + dayId] = sig;
+  window._set(window._ref(window._db, `pushGeo/${tripId}/${dayId}`), val).catch(e => console.warn('savePushGeo failed:', e));
+}
 let _notifyPrefs = null;
 
 const pushEmailKey = () => {
@@ -3074,6 +3105,7 @@ window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function(toastMsg) {
   await forgetPushDevice();
+  _activityMutes = {};
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
   userOwnerEmails = null; userOwnerEmailsPromise = null;
   outstandingBookingsCheckStarted = false;
@@ -3167,6 +3199,7 @@ window.deleteMyAccount = async function() {
     await window._remove(window._ref(window._db, `access/${emailKey}`));
     try { await window._remove(window._ref(window._db, `pushTokens/${emailKey}`)); } catch(e) {}
     try { await window._remove(window._ref(window._db, `notifyPrefs/${emailKey}`)); } catch(e) {}
+    try { await window._remove(window._ref(window._db, `activityMutes/${emailKey}`)); } catch(e) {}
   } catch(e) {
     console.error('deleteMyAccount: removing access failed:', e);
     showToast('Couldn’t delete your account — please try again');
@@ -3595,7 +3628,10 @@ function renderTripItinerary(trip) {
               style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;opacity:0.5;">📝</button>
             ${actNoteCount > 0 ? `<div class="activity-notes-count">${actNoteCount}</div>` : ''}
           </div>
-          ${canEditCurrentTrip() && time && trip.status === 'active' ? `<button class="act-bell-btn" title="Set reminder" onclick="onBellClick(event)">🔔</button>` : ''}
+          ${currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming') ? (() => {
+            const muted = !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
+            return `<button class="act-bell-btn${muted ? '' : ' reminded'}" title="${muted ? 'Reminder off — tap to turn on' : 'Reminder on — tap to turn off'}" onclick="onBellClick(event)">${muted ? '🔕' : '🔔'}</button>`;
+          })() : ''}
         </div>`;
     }).join('');
 
@@ -3733,7 +3769,8 @@ function renderTripItinerary(trip) {
     const _driveDays = trip.status === 'active'
       ? days.filter(([, d]) => { const iso = _dayISO(d); return !iso || iso >= _todayISO; })
       : days;
-    setTimeout(() => fetchTripDriveTimes(_driveDays, days), 200);
+    const _driveTripId = currentTripId;
+    setTimeout(() => fetchTripDriveTimes(_driveDays, days, _driveTripId), 200);
   }
   if (trip.status === 'active') setTimeout(() => highlightToday(trip), 50);
   // Return flights
@@ -3769,90 +3806,36 @@ function highlightToday(trip) {
   }
 }
 
-let _ntfyCfg = null;
-async function getNtfyConfig() {
-  if (_ntfyCfg) return _ntfyCfg;
-  const res = await fetch('https://hardin-trips-ai.erikchardin.workers.dev/ntfy-config', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
-  });
-  _ntfyCfg = await res.json();
-  return _ntfyCfg;
-}
-
+// 🔔 on an activity: reminders (and leave-by alerts) are on by default for
+// every timed activity; the bell mutes or unmutes this one for you. Muted
+// activities are kept at activityMutes/{emailKey}/{pushActId}.
 async function onBellClick(e) {
+  e.stopPropagation();
   const btn = e.currentTarget;
   const item = btn.closest('.activity-item');
-  const dayId = item.dataset.day;
-  const actText = item.dataset.text;
-  const actTime = item.dataset.time;
-  if (!actTime) return;
-
-  const startMin = parseActivityStartMinutes(actTime);
-  if (startMin == null) { alert('Could not parse activity time.'); return; }
-
-  // Use cached drive leg duration if available, otherwise default to 30 min
-  const legs = (window._dayLegs || {})[dayId] || [];
-  let leadMin = 30;
-  let driveMin = null;
-  if (legs.length) {
-    const card = document.getElementById('dc-' + dayId);
-    const driveItems = card ? Array.from(card.querySelectorAll('.activity-item[data-drive="true"]')) : [];
-    const idx = driveItems.indexOf(item);
-    if (idx >= 0 && idx < legs.length) {
-      driveMin = Math.ceil(legs[idx].seconds / 60);
-      leadMin = driveMin + 10;
-    }
-  }
-
-  let actDateISO = item.dataset.date;
-  if (!actDateISO) {
-    const dn = item.dataset.datenum, dm = item.dataset.datemonth, dy = item.dataset.year;
-    actDateISO = dayISO({dateNum: dn, dateMonth: dm}, dy);
-  }
-  const base = actDateISO ? isoToDate(actDateISO) : new Date();
-  const fireDate = new Date(base.getFullYear(), base.getMonth(), base.getDate(),
-    Math.floor(startMin / 60), startMin % 60, 0, 0);
-  fireDate.setMinutes(fireDate.getMinutes() - leadMin);
-
-  if (fireDate <= new Date()) { alert('The "leave by" time for this activity has already passed.'); return; }
-  const msUntil = fireDate - Date.now();
-  if (msUntil > 3 * 24 * 60 * 60 * 1000) {
-    const earliest = new Date(fireDate.getTime() - 3 * 24 * 60 * 60 * 1000);
-    const earliestStr = earliest.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    alert(`ntfy only supports scheduling up to 3 days in advance.\n\nCome back on ${earliestStr} to set this reminder.`);
+  const key = pushEmailKey();
+  if (!key || !currentTripId) return;
+  const trip = allTrips[currentTripId];
+  const day = trip && trip.days && trip.days[item.dataset.day];
+  const acts = day && day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+  const a = acts[parseInt(item.dataset.idx, 10)];
+  if (!a || typeof a !== 'object') return;
+  const id = pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a);
+  const muting = !_activityMutes[id];
+  const r = window._ref(window._db, `activityMutes/${key}/${id}`);
+  try {
+    if (muting) { await window._set(r, true); _activityMutes[id] = true; }
+    else { await window._remove(r); delete _activityMutes[id]; }
+  } catch(err) {
+    showToast('Couldn’t save — try again');
     return;
   }
-
-  const timeStr = fireDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const dateStr = actDateISO ? new Date(actDateISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : null;
-  const driveNote = driveMin ? ` · 🚗 ${driveMin} min drive` : ` · leave ${leadMin} min early`;
-  const whenStr = dateStr ? `${dateStr} at ${timeStr}` : `at ${timeStr}`;
-  if (!confirm(`Send a push notification ${whenStr}?\n"${actText}" starts at ${actTime}${driveNote}`)) return;
-
-  btn.disabled = true; btn.textContent = '⏳';
-  const msgBody = `"${actText}" starts at ${actTime}${driveNote}`;
-  const mapsQuery = item.querySelector('[data-mapsq]')?.dataset.mapsq || '';
-  const clickUrl = mapsQuery ? 'https://maps.google.com/?q=' + encodeURIComponent(mapsQuery) : '';
-  try {
-    const cfg = await getNtfyConfig();
-    if (!cfg.ok) throw new Error(cfg.error || 'ntfy not configured');
-    const ntfyHeaders = {
-      'Title': 'Time to leave!',
-      'Delay': Math.floor(fireDate.getTime() / 1000).toString(),
-      'Priority': 'high',
-      'Tags': 'alarm_clock',
-      'Content-Type': 'text/plain'
-    };
-    if (clickUrl) ntfyHeaders['Click'] = clickUrl;
-    if (cfg.token) ntfyHeaders['Authorization'] = 'Bearer ' + cfg.token;
-    const res = await fetch(`https://ntfy.sh/${cfg.topic}`, { method: 'POST', headers: ntfyHeaders, body: msgBody });
-    const ntfyBody = await res.text();
-    if (res.ok) { btn.textContent = '🔔'; btn.classList.add('reminded'); btn.title = `Reminder set for ${timeStr}`; }
-    else throw new Error(`ntfy ${res.status}: ${ntfyBody}`);
-  } catch(err) {
-    btn.textContent = '🔔'; btn.disabled = false;
-    alert('Failed to schedule reminder: ' + err.message);
-  }
+  btn.textContent = muting ? '🔕' : '🔔';
+  btn.classList.toggle('reminded', !muting);
+  btn.title = muting ? 'Reminder off — tap to turn on' : 'Reminder on — tap to turn off';
+  showToast(muting ? 'Reminder off for this activity' : (isNativeApp() || _pushToken
+    ? 'Reminder on — you’ll get a notification before it starts'
+    : 'Reminder on — notifications arrive in the Hardin Trips iPhone app'));
 }
 
 // Copies `url` to the clipboard, falling back to a selectable prompt so the
@@ -11299,7 +11282,7 @@ function parseActivityDurationMinutes(timeStr) {
   return m ? parseInt(m[1]) : null;
 }
 
-async function fetchTripDriveTimes(days, allDays) {
+async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
   // Shared promise cache — deduplicates concurrent geocoding requests across days
   const coordCache = {};
   const inFlight = {};
@@ -11391,8 +11374,10 @@ async function fetchTripDriveTimes(days, allDays) {
       const actPinnedCoords = [];
       const actRawTexts = [];
       const actContexts = [];
+      const actTimes = [];
       for (const a of acts) {
         if (a && a.drive && a.text) {
+          actTimes.push(a.time || '');
           const place = extractPlaceFromActivity(a.text);
           const locationHint = extractActivityLocation(a.text);
           const context = locationHint || activityContext;
@@ -11427,6 +11412,18 @@ async function fetchTripDriveTimes(days, allDays) {
       }
 
       const actCoords = actPinnedCoords.map((pinned, j) => pinned || actGeoCoords[j]);
+
+      // For leave-by pushes: each timed drive, and where it starts from (the
+      // previous drive stop, else last night's hotel)
+      const pushStops = [];
+      let from = prevEndpoint.coord ? { name: prevEndpoint.name || '', lat: prevEndpoint.coord[0], lng: prevEndpoint.coord[1] } : null;
+      actCoords.forEach((c, j) => {
+        if (!c) return;
+        const here = { name: actNames[j] || '', lat: c[0], lng: c[1] };
+        if (actTimes[j] && from) pushStops.push(Object.assign({ text: actRawTexts[j], time: actTimes[j], from }, here));
+        from = here;
+      });
+      savePushGeo(tripIdForPush, dayId, pushStops);
 
       // Assemble full route: [hotel/city start, ...activities, hotel/city end]
       const paired = [

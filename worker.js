@@ -100,18 +100,6 @@ export default {
       });
     }
 
-    // Return ntfy config so the browser can call ntfy.sh directly (avoids Cloudflare IP rate limits)
-    if (url.pathname === '/ntfy-config') {
-      if (!env.NTFY_TOPIC) {
-        return new Response(JSON.stringify({ ok: false, error: 'NTFY_TOPIC not configured' }), {
-          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-        });
-      }
-      return new Response(JSON.stringify({ ok: true, topic: env.NTFY_TOPIC, token: env.NTFY_TOKEN || null }), {
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-      });
-    }
-
     // Parse pasted booking text — the same parser the email handler uses. It
     // only parses: the app is signed in and writes the result to bookingInbox
     // itself, so this route can't be used to put anything in the database.
@@ -163,6 +151,12 @@ export default {
   // bookingInbox/ for the app to assign to a trip.
   async email(message, env, ctx) {
     return handleInboundEmail(message, env);
+  },
+
+  // Cron (wrangler.toml [triggers]): every 5 minutes, scheduled pushes —
+  // activity reminders and leave-by alerts.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runPushCron(env).catch(e => console.error('Push cron failed: ' + (e && e.stack || e))));
   }
 }
 
@@ -366,7 +360,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-04.2';
+const WORKER_VERSION = '2026-10-04.3';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -375,13 +369,13 @@ const WORKER_ENV_KEYS = [
   'FIREBASE_URL',
   'FIREBASE_SECRET',
   'AERODATABOX_KEY',
-  'NTFY_TOPIC',
-  'NTFY_TOKEN',
   'ADMIN_PIN',
   'ADMIN_PIN_2',
   'APNS_KEY_P8',
   'APNS_KEY_ID',
   'APPLE_TEAM_ID',
+  'MAPS_KEY_P8',
+  'MAPS_KEY_ID',
 ];
 
 const WORKER_ROUTES = [
@@ -390,7 +384,6 @@ const WORKER_ROUTES = [
   '/widget-upcoming',
   '/verify-pin',
   '/flight-lookup',
-  '/ntfy-config',
   '/booking-parse',
   '/push/test',
   '/push/access-request',
@@ -1294,4 +1287,265 @@ async function handlePushAccessApproved(env, body) {
     route: { screen: 'home' },
   });
   return jsonResponse({ sent: r.sent });
+}
+
+// ── Scheduled pushes (cron) ──────────────────────────────────────────────────
+// Every 5 minutes: for trips with a day from yesterday to tomorrow, find timed
+// activities in the day's own time zone and push
+//   • a reminder `activityLeadMin` before each one, and
+//   • for drives, "Leave by …" from a live-traffic ETA (Apple Maps Server API,
+//     OSRM without traffic as the fallback), re-checked as the time nears,
+//     with a follow-up if traffic gets 10+ minutes worse.
+// Drive stops come from the app, which geocodes each day's drive activities
+// and saves them to pushGeo/{tripId}/{dayId}. pushSent/ records what went
+// out so nothing repeats; pushState/ caches ETAs and time zones.
+
+const PUSH_LEAVE_BUFFER_MIN = 10;   // arrive this early
+const PUSH_ETA_HORIZON_MIN  = 180;  // start checking traffic 3h ahead
+
+// FNV-1a, hex. Same as pushActId() in index.html — mutes are keyed by it.
+function fnv1a(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+const pushActId = (tripId, dateISO, a) => 'a' + fnv1a(tripId + '|' + dateISO + '|' + (a.text || '') + '|' + (a.time || ''));
+
+// Start minute of a free-text time ("7:30pm", "10am–2pm", "10-11am").
+// Mirrors parseActivityStartMinutes() in index.html.
+function wActStartMinutes(timeStr) {
+  const s = String(timeStr || '').trim().toLowerCase();
+  let m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if (!m) {
+    const range = s.match(/^(\d{1,2})(?::(\d{2}))?\s*[-–]/);
+    const ap = s.match(/(am|pm)\s*$/);
+    if (range && ap) m = [null, range[1], range[2], ap[1]];
+  }
+  if (!m) {
+    const h24 = s.match(/^(\d{1,2}):(\d{2})(?!\s*[ap])/);   // "19:30"
+    if (h24 && +h24[1] < 24) return +h24[1] * 60 + +h24[2];
+    return null;
+  }
+  let h = parseInt(m[1], 10);
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  if (h > 12 || min > 59) return null;
+  if (m[3] === 'pm' && h !== 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+// Offset (ms) of `tz` from UTC at instant `ms`
+function tzOffsetMs(ms, tz) {
+  const p = {};
+  new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(ms)).forEach(x => { p[x.type] = x.value; });
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
+}
+// UTC ms for local wall time dateISO + minutes in tz
+function zonedToUtc(dateISO, minutes, tz) {
+  const [y, mo, d] = dateISO.split('-').map(Number);
+  const guess = Date.UTC(y, mo - 1, d, Math.floor(minutes / 60), minutes % 60);
+  let t = guess - tzOffsetMs(guess, tz);
+  t = guess - tzOffsetMs(t, tz);   // second pass settles DST edges
+  return t;
+}
+const fmtLocalTime = (ms, tz) => new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+  .format(new Date(ms)).replace(' AM', 'am').replace(' PM', 'pm');
+function localHHMM(ms, tz) {
+  const s = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).format(new Date(ms));
+  return s.replace(/^24/, '00');
+}
+function inQuietHours(prefs, ms, tz) {
+  if (!prefs.quietHours) return false;
+  const t = localHHMM(ms, tz), a = prefs.quietStart || '22:00', b = prefs.quietEnd || '07:00';
+  return a <= b ? (t >= a && t < b) : (t >= a || t < b);
+}
+
+// IANA zone for a day: from its first saved drive stop, else its city
+async function wDayTimeZone(env, day, geo, cache) {
+  let coord = null, slug = null;
+  const stop = geo && (geo.stops || [])[0];
+  if (stop) coord = { lat: stop.lat, lon: stop.lng };
+  else {
+    const city = [day.city, day.region].map(wCleanCity).find(c => c && !wIsNonPlace(c));
+    if (!city) return null;
+    slug = 'c_' + city.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (slug in cache) return cache[slug];
+    coord = await wCityCoords(city, env);
+  }
+  if (!coord) return null;
+  const ck = slug || ('p_' + coord.lat.toFixed(1) + '_' + coord.lon.toFixed(1)).replace(/[.-]/g, m => m === '.' ? 'd' : 'm');
+  if (ck in cache) return cache[ck];
+  let tz = null;
+  try {
+    const r = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + coord.lat + '&longitude=' + coord.lon + '&timezone=auto');
+    if (r && typeof r.timezone === 'string' && r.timezone !== 'GMT') tz = r.timezone;
+  } catch (e) {}
+  if (tz) { cache[ck] = tz; await fbWrite(env, 'PUT', 'pushState/tz/' + ck, tz).catch(() => {}); }
+  return tz;
+}
+
+// Apple Maps Server API: a 30-minute access token from the Maps key (or the
+// APNs key, if it has MapKit enabled too).
+let _mapsToken = null;
+async function appleMapsToken(env) {
+  const p8 = env.MAPS_KEY_P8 || env.APNS_KEY_P8, kid = env.MAPS_KEY_ID || env.APNS_KEY_ID;
+  if (!p8 || !kid || !env.APPLE_TEAM_ID) return null;
+  if (_mapsToken && Date.now() < _mapsToken.until) return _mapsToken.token;
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = await appleJwt(env, p8, kid, { exp: now + 1800 });
+  const r = await fetch('https://maps-api.apple.com/v1/token', { headers: { authorization: 'Bearer ' + jwt } });
+  if (!r.ok) throw new Error('Maps token status ' + r.status);
+  const j = await r.json();
+  _mapsToken = { token: j.accessToken, until: Date.now() + ((j.expiresInSeconds || 1800) - 120) * 1000 };
+  return _mapsToken.token;
+}
+
+// Driving seconds from → to, leaving now: { sec, src }
+async function driveEtaSeconds(env, from, to) {
+  try {
+    const token = await appleMapsToken(env);
+    if (token) {
+      const r = await fetch('https://maps-api.apple.com/v1/etas?transportType=Automobile&origin=' + from.lat + ',' + from.lng +
+        '&destinations=' + to.lat + ',' + to.lng, { headers: { authorization: 'Bearer ' + token } });
+      if (r.ok) {
+        const e = ((await r.json()).etas || [])[0];
+        if (e && e.expectedTravelTimeSeconds) return { sec: Math.round(e.expectedTravelTimeSeconds), src: 'apple' };
+      } else console.warn('Apple Maps ETA status ' + r.status);
+    }
+  } catch (e) { console.warn('Apple Maps ETA failed: ' + e.message); }
+  try {
+    const r = await wFetchJson('https://router.project-osrm.org/route/v1/driving/' + from.lng + ',' + from.lat + ';' + to.lng + ',' + to.lat + '?overview=false');
+    const sec = r.routes && r.routes[0] && r.routes[0].duration;
+    if (sec) return { sec: Math.round(sec), src: 'osrm' };
+  } catch (e) {}
+  return null;
+}
+
+// People (with a registered device) who can see this trip
+function tripRecipients(access, tokens, trip, tripId) {
+  return Object.keys(tokens || {}).filter(key => {
+    const u = access[key];
+    if (!u) return false;
+    return u.role === 'admin' || (u.trips && u.trips[tripId]) || (trip.ownerId && trip.ownerId.toLowerCase() === key.replace(/,/g, '.'));
+  });
+}
+
+async function runPushCron(env) {
+  if (!pushConfigured(env)) return;
+  const now = Date.now();
+  const [trips, access, tokens, prefsAll, mutesAll, sent, geoAll, state] = await Promise.all([
+    fbGet(env, 'trips'), fbGet(env, 'access'), fbGet(env, 'pushTokens'), fbGet(env, 'notifyPrefs'),
+    fbGet(env, 'activityMutes'), fbGet(env, 'pushSent'), fbGet(env, 'pushGeo'), fbGet(env, 'pushState'),
+  ].map(p => p.then(v => v || {})));
+  const prefsOf = key => Object.assign({}, NOTIFY_DEFAULTS, prefsAll[key] || {});
+  const tzCache = Object.assign({}, state.tz || {});
+  const etaState = state.eta || {};
+  const sentNow = {};
+  const isoDay = ms => new Date(ms).toISOString().slice(0, 10);
+  const window3 = [isoDay(now - 864e5), isoDay(now), isoDay(now + 864e5)];
+
+  const send = async (dedupe, key, msg) => {
+    if (sent[dedupe] || sentNow[dedupe]) return;
+    sentNow[dedupe] = now;
+    await sendPushToUser(env, key, msg).catch(e => console.warn('push ' + dedupe + ': ' + e.message));
+  };
+
+  for (const [tripId, trip] of Object.entries(trips)) {
+    if (!trip || !trip.days || trip.status === 'past') continue;
+    const recipients = tripRecipients(access, tokens, trip, tripId);
+    if (!recipients.length) continue;
+    for (const [dayId, day] of Object.entries(trip.days)) {
+      const dateISO = day && (day.dateISO || dayDateISO(day, trip.year));
+      if (!dateISO || !window3.includes(dateISO)) continue;
+      const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+      if (!acts.some(a => a && a.time)) continue;
+      const geo = (geoAll[tripId] || {})[dayId] || null;
+      const tz = await wDayTimeZone(env, day, geo, tzCache);
+      if (!tz) continue;
+
+      for (const a of acts) {
+        if (!a || typeof a !== 'object' || !a.time || !a.text) continue;
+        const startMin = wActStartMinutes(a.time);
+        if (startMin == null) continue;
+        const start = zonedToUtc(dateISO, startMin, tz);
+        if (start <= now || start - now > PUSH_ETA_HORIZON_MIN * 60000) continue;
+        const actId = pushActId(tripId, dateISO, a);
+        const route = { screen: 'trip', tripId };
+        const who = recipients.filter(k => !((mutesAll[k] || {})[actId]));
+        if (!who.length) continue;
+
+        // Leave-by for drives with a saved stop and origin
+        let leave = null;
+        const stop = a.drive && geo && (geo.stops || []).find(s => s.text === a.text && (s.time || '') === (a.time || '') && s.from);
+        if (stop) {
+          let st = etaState[actId];
+          const age = st ? now - st.at : Infinity;
+          const due = (start - now <= 90 * 60000) ? 15 * 60000 : 60 * 60000;
+          if (age >= due) {
+            const eta = await driveEtaSeconds(env, stop.from, stop);
+            if (eta) {
+              st = Object.assign({}, st || {}, eta, { at: now });
+              etaState[actId] = st;
+              await fbWrite(env, 'PUT', 'pushState/eta/' + actId, st).catch(() => {});
+            }
+          }
+          if (st && st.sec) {
+            const leaveAt = start - st.sec * 1000 - PUSH_LEAVE_BUFFER_MIN * 60000;
+            leave = { st, leaveAt, mins: Math.max(1, Math.round(st.sec / 60)) };
+          }
+        }
+
+        for (const key of who) {
+          const prefs = prefsOf(key);
+          if (leave && prefs.leaveBy) {
+            const { st, leaveAt, mins } = leave;
+            const traffic = st.src === 'apple' ? ' with current traffic' : '';
+            const dest = (stop.name || a.text);
+            if (now >= leaveAt - 5 * 60000) {
+              const late = now >= leaveAt;
+              const sentKey = 'leave_' + actId + '_' + key;
+              if (!sent[sentKey]) {
+                await send(sentKey, key, {
+                  title: late ? '🚗 Time to leave' : '🚗 Leave by ' + fmtLocalTime(leaveAt, tz),
+                  body: dest + ' at ' + a.time + ' · ' + mins + ' min drive' + traffic,
+                  route, threadId: tripId, timeSensitive: true, collapseId: actId,
+                });
+                await fbWrite(env, 'PUT', 'pushState/eta/' + actId + '/notifiedSec', st.sec).catch(() => {});
+              } else if (st.notifiedSec && st.sec >= st.notifiedSec + 600) {
+                await send('worse_' + actId + '_' + key, key, {
+                  title: '🚦 Traffic got worse',
+                  body: dest + ': now ' + mins + ' min — leave ' + (late ? 'now' : 'by ' + fmtLocalTime(leaveAt, tz)),
+                  route, threadId: tripId, timeSensitive: true, collapseId: actId,
+                });
+              }
+            }
+            continue;   // the leave-by covers this activity
+          }
+          if (!prefs.activities) continue;
+          const lead = parseInt(prefs.activityLeadMin, 10) || 30;
+          if (now < start - lead * 60000) continue;
+          if (inQuietHours(prefs, now, tz)) continue;   // held; sent when quiet hours end, if still ahead
+          const mins = Math.max(1, Math.round((start - now) / 60000));
+          await send('act_' + actId + '_' + key, key, {
+            title: (a.emoji ? a.emoji + ' ' : '') + a.text,
+            body: 'Starts at ' + a.time + ' — in ' + mins + ' min',
+            route, threadId: tripId, collapseId: actId,
+          });
+        }
+      }
+    }
+  }
+
+  if (Object.keys(sentNow).length) await fbWrite(env, 'PATCH', 'pushSent', sentNow).catch(e => console.warn('pushSent: ' + e.message));
+
+  // Hourly: forget scheduled-push records older than 3 days (and their ETAs)
+  if (new Date(now).getUTCMinutes() < 5) {
+    const old = {};
+    for (const [k, t] of Object.entries(sent)) if (/^(act|leave|worse)_/.test(k) && t < now - 3 * 864e5) old[k] = null;
+    if (Object.keys(old).length) await fbWrite(env, 'PATCH', 'pushSent', old).catch(() => {});
+    const oldEta = {};
+    for (const [k, v] of Object.entries(etaState)) if (!v || v.at < now - 864e5) oldEta[k] = null;
+    if (Object.keys(oldEta).length) await fbWrite(env, 'PATCH', 'pushState/eta', oldEta).catch(() => {});
+  }
 }
