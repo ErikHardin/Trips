@@ -2179,7 +2179,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 329 };
+window.BUILD_INFO = { prNumber: 330 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2436,8 +2436,8 @@ function showLoginError(msg) {
 
 // ── Access requests ──
 // Someone signs in (any provider, verified email) but isn't in User Access:
-// leave a request at accessRequests/{emailKey} for an admin to approve, ping
-// the admin ntfy topic once, and open the app as soon as access appears.
+// leave a request at accessRequests/{emailKey} for an admin to approve, push
+// it to admins' phones once, and open the app as soon as access appears.
 async function requestAccess(user, email, emailKey) {
   const reqRef = window._ref(window._db, `accessRequests/${emailKey}`);
   try {
@@ -2452,19 +2452,17 @@ async function requestAccess(user, email, emailKey) {
     console.warn('requestAccess failed:', e);
     return false;
   }
-  notifyAdminOfAccessRequest(user.displayName || email);
+  notifyAdminOfAccessRequest();
   return true;
 }
 
-async function notifyAdminOfAccessRequest(who) {
+// The Worker reads the saved request and pushes to admins' phones
+async function notifyAdminOfAccessRequest() {
   try {
-    const cfg = await getNtfyConfig();
-    if (!cfg.ok) return;
-    const headers = { 'Title': 'New access request', 'Tags': 'wave', 'Content-Type': 'text/plain',
-      'Click': location.origin + location.pathname };
-    if (cfg.token) headers['Authorization'] = 'Bearer ' + cfg.token;
-    await fetch(`https://ntfy.sh/${cfg.topic}`, { method: 'POST', headers,
-      body: `${who} wants to join. Open Admin → User Access to choose a role and trips.` });
+    await fetch(PUSH_WORKER_URL + '/push/access-request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await window._auth.currentUser.getIdToken() }),
+    });
   } catch(e) { console.warn('notifyAdminOfAccessRequest failed:', e); }
 }
 
@@ -6079,6 +6077,16 @@ async function renderUserManagement() {
   }
 }
 
+// Push "You're in" to someone just added (the Worker sends it once per person)
+async function notifyAccessApproved(emailKey) {
+  try {
+    await fetch(PUSH_WORKER_URL + '/push/access-approved', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await window._auth.currentUser.getIdToken(), emailKey }),
+    });
+  } catch(e) { console.warn('notifyAccessApproved failed:', e); }
+}
+
 window.addUser = async function() {
   const name = document.getElementById('newUserName').value.trim();
   const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
@@ -6099,6 +6107,7 @@ window.addUser = async function() {
     await window._set(window._ref(window._db, `access/${emailKey}`), data);
     try { await window._remove(window._ref(window._db, `accessRequests/${emailKey}`)); } catch(e) {}
     const wasEditing = !!_editingUserKey;
+    if (!wasEditing) notifyAccessApproved(emailKey);
     cancelEditUser();
     await renderUserManagement();
     showToast(wasEditing ? 'User updated ✓' : 'User added ✓');

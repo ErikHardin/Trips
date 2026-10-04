@@ -132,6 +132,14 @@ export default {
     if (url.pathname === '/push/test') {
       return handlePushTest(env, body);
     }
+    // Push: tell admins about the caller's new access request
+    if (url.pathname === '/push/access-request') {
+      return handlePushAccessRequest(env, body);
+    }
+    // Push: an admin approved someone — tell them they're in
+    if (url.pathname === '/push/access-approved') {
+      return handlePushAccessApproved(env, body);
+    }
 
     // AI proxy (unchanged)
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -358,7 +366,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-04.1';
+const WORKER_VERSION = '2026-10-04.2';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -385,6 +393,8 @@ const WORKER_ROUTES = [
   '/ntfy-config',
   '/booking-parse',
   '/push/test',
+  '/push/access-request',
+  '/push/access-approved',
 ];
 
 async function handleVersion(env) {
@@ -802,18 +812,18 @@ async function bookingAllowedSenders(env) {
   return map;
 }
 
+// Push to the booking's owner and to admins, each per their own settings
 async function notifyBookingQueued(env, item) {
-  if (!env.NTFY_TOPIC) return;
-  // Header values must be plain ASCII; the emoji-bearing summary goes in the body
-  const headers = { 'Title': 'New booking in inbox', 'Tags': 'inbox_tray', 'Content-Type': 'text/plain' };
-  if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
   try {
-    await fetch('https://ntfy.sh/' + env.NTFY_TOPIC, {
-      method: 'POST',
-      headers,
-      body: (item.status === 'error' ? 'Could not read: ' : '') + (item.summary || item.subject || 'Booking'),
+    const keys = new Set(await adminKeys(env));
+    if (item.ownerEmail) keys.add(String(item.ownerEmail).toLowerCase().replace(/\./g, ','));
+    await pushToKeys(env, [...keys], 'bookingInbox', {
+      title: item.status === 'error' ? 'Booking inbox: couldn’t read an email' : '📥 New booking in your inbox',
+      body: (item.summary || item.subject || 'Booking') + ' — tap to add it to a trip',
+      route: { screen: 'inbox' },
+      threadId: 'inbox',
     });
-  } catch (e) { /* a missed push never loses the booking */ }
+  } catch (e) { console.warn('Booking push failed: ' + e.message); /* a missed push never loses the booking */ }
 }
 
 // Ask Claude for structured bookings. Returns { kind, summary, parsed }.
@@ -1220,4 +1230,68 @@ async function handlePushTest(env, body) {
     collapseId: 'test',
   });
   return new Response(JSON.stringify(result), { headers: CORS_JSON });
+}
+
+async function adminKeys(env) {
+  const access = (await fbGet(env, 'access')) || {};
+  return Object.keys(access).filter(k => access[k] && access[k].role === 'admin');
+}
+
+// Sends msg to each person whose notifyPrefs[prefKey] is on (all, without a prefKey)
+async function pushToKeys(env, keys, prefKey, msg) {
+  let sent = 0;
+  await Promise.all(keys.map(async key => {
+    if (prefKey && !(await notifyPrefs(env, key))[prefKey]) return;
+    sent += (await sendPushToUser(env, key, msg)).sent;
+  }));
+  return sent;
+}
+
+const jsonResponse = (obj, status) => new Response(JSON.stringify(obj), {
+  status: status || 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+});
+
+// POST /push/access-request { idToken }. The text comes from the request the
+// caller saved at accessRequests/{their key}, never from the POST body, and
+// pushSent/ makes it one push per request however often this is called.
+async function handlePushAccessRequest(env, body) {
+  let who;
+  try { who = await verifyFirebaseIdToken(env, body.idToken); }
+  catch (e) { return jsonResponse({ error: 'Not signed in: ' + e.message }, 401); }
+  const req = await fbGet(env, 'accessRequests/' + who.emailKey);
+  if (!req || !req.requestedAt) return jsonResponse({ error: 'No request' }, 404);
+  const dedupe = 'pushSent/accessRequest:' + who.emailKey + ':' + req.requestedAt;
+  if (await fbGet(env, dedupe)) return jsonResponse({ sent: 0, duplicate: true });
+  await fbWrite(env, 'PUT', dedupe, Date.now());
+  const name = String(req.name || '').trim();
+  const sent = await pushToKeys(env, await adminKeys(env), 'accessRequests', {
+    title: '👋 New access request',
+    body: (name ? name + ' (' + who.email + ')' : who.email) + ' wants to join. Tap to pick a role and trips.',
+    route: { screen: 'users' },
+    threadId: 'access',
+  });
+  return jsonResponse({ sent });
+}
+
+// POST /push/access-approved { idToken, emailKey }. Caller must be an admin
+// and the person must now have access. One push per person.
+async function handlePushAccessApproved(env, body) {
+  let who;
+  try { who = await verifyFirebaseIdToken(env, body.idToken); }
+  catch (e) { return jsonResponse({ error: 'Not signed in: ' + e.message }, 401); }
+  const caller = await fbGet(env, 'access/' + who.emailKey);
+  if (!caller || caller.role !== 'admin') return jsonResponse({ error: 'Admins only' }, 403);
+  const key = String(body.emailKey || '');
+  if (!/^[^/.#$\[\]]+$/.test(key)) return jsonResponse({ error: 'Bad emailKey' }, 400);
+  const access = await fbGet(env, 'access/' + key);
+  if (!access) return jsonResponse({ error: 'No access record' }, 404);
+  const dedupe = 'pushSent/accessApproved:' + key;
+  if (await fbGet(env, dedupe)) return jsonResponse({ sent: 0, duplicate: true });
+  await fbWrite(env, 'PUT', dedupe, Date.now());
+  const r = await sendPushToUser(env, key, {
+    title: 'You’re in 🎉',
+    body: 'You now have access to Hardin Trips. Tap to open your trips.',
+    route: { screen: 'home' },
+  });
+  return jsonResponse({ sent: r.sent });
 }

@@ -156,8 +156,8 @@ senders. Admins still see every item, labelled "For {name}" when it belongs to
 a user.
 
 **Using it:** forward the confirmation email as is. It lands in the inbox
-within a few seconds, with a trip already suggested from its dates. If
-`NTFY_TOPIC` is set, a push notification is sent too. **Add to Trip** writes
+within a few seconds, with a trip already suggested from its dates. Its owner
+and admins get a push (Settings → Notifications → Booking inbox). **Add to Trip** writes
 the booking into the trip:
 
 - **Flights** go into the outbound, return or in-trip flight lists that Edit
@@ -198,7 +198,8 @@ signs in, their email has to be on that list. Firebase setup, once:
    entry (**🔒 → Delete account**).
    Someone who signs in without being on the list leaves a request under
    `accessRequests/`. Admins approve it in **User Access → Waiting for access**.
-   A new request also posts to the ntfy topic (`NTFY_TOPIC`).
+   A new request is pushed to admins' phones (Settings → Notifications →
+   Access requests), and the person gets a push once they're added.
 5. iOS app: add the Sign in with Apple capability (see `ios-app/IOS.md`) and
    upload a new TestFlight build.
 
