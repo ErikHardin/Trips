@@ -67,7 +67,7 @@ const iceland = { name: 'Iceland Ring Road', year: 2025, dates: 'Jul 5 – Jul 1
   days: mkDays('2025-07-05', [{ city: 'Reykjavik', region: 'Reykjavik', color: '#4a7fb5', hotel: 'Hotel Borg', acts: ['Blue Lagoon'] }, { city: 'Vík', region: 'South Coast', color: '#6d9b72', hotel: 'Hotel Vík', acts: ['Reynisfjara beach'] }]) };
 
 module.exports = (adminEmail) => ({
-  config: { appName: 'Hardin', bookingInboxAddress: 'trips@hardintrips.com', bookingInboxSenders: { 'sarah,personal@yahoo,com': { email: 'sarah.personal@yahoo.com' } } },
+  config: { appName: 'Hardin', bookingInboxAddress: 'trips@hardintrips.com', bookingInboxSenders: { 'sarah,personal@yahoo,com': { email: 'sarah.personal@yahoo.com' }, 'alex,travel@gmail,com': { email: 'alex.travel@gmail.com', owner: 'alex@example.com' } } },
   geocache: Object.fromEntries(Object.entries({ lisbon:[38.7223,-9.1393], sintra:[38.8029,-9.3817], _vora:[38.5714,-7.9135], monsaraz:[38.4431,-7.3806], porto:[41.1579,-8.6291], gaia:[41.1336,-8.6174], tokyo:[35.6762,139.6503], kyoto:[35.0116,135.7681], lyon:[45.764,4.8357], annecy:[45.8992,6.1294], paris:[48.8566,2.3522], reykjavik:[64.1466,-21.9426], v_k:[63.4186,-19.006] }).map(([k,[lat,lng]]) => [k, { lat, lng, v: 3 }])),
   access: {
     [adminEmail.replace(/\./g, ',')]: { role: 'admin', name: 'Erik', email: adminEmail, lastOutstandingPopupAt: Date.now() },
@@ -83,7 +83,7 @@ module.exports = (adminEmail) => ({
         { flightNumber: 'NH 11', from: 'DEN', to: 'HND', dateISO: '2027-03-27', depTime: '12:40', arrTime: '16:05', confirmation: 'K7QZ4M' },
         { flightNumber: 'NH 10', from: 'KIX', to: 'DEN', dateISO: '2027-04-08', depTime: '17:30', arrTime: '13:10', confirmation: 'K7QZ4M' },
       ] } },
-    b2: { receivedAt: now - 3.6e6 * 20, from: 'erikchardin@gmail.com', subject: 'Reservation confirmed: Sushi Saito', source: 'email', status: 'pending', kind: 'activity',
+    b2: { receivedAt: now - 3.6e6 * 20, from: 'alex@example.com', ownerEmail: 'alex@example.com', subject: 'Reservation confirmed: Sushi Saito', source: 'email', status: 'pending', kind: 'activity',
       summary: 'Dinner at Sushi Saito · Mar 29',
       parsed: { activities: [{ title: 'Dinner at Sushi Saito', venue: 'Sushi Saito', dateISO: '2027-03-29', time: '7:30pm', partySize: 2, paid: false, confirmation: 'OMK-2219' }] } },
     b3: { receivedAt: now - 8.64e7 * 2, from: 'erikchardin@gmail.com', subject: 'Fwd: Hoshinoya Kyoto booking', source: 'email', status: 'assigned', assignedTripId: 'japan', assignedAt: now - 8.64e7 * 0.5, kind: 'hotel',

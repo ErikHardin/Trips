@@ -156,7 +156,13 @@ const closeModals = page => page.evaluate(() => [...document.body.children].forE
     await page.evaluate(() => goHome()); await wait(page);
     await shot(page, '32-user-home');
     await page.evaluate(() => showScreen('screen-admin')); await wait(page);
-    await page.evaluate(() => { const b = document.getElementById('addTripSectionBody'); if (!b || b.style.display === 'none') toggleAdminSection('addTripSection'); }); await wait(page);
+    await shot(page, '34-user-settings');
+    await page.evaluate(() => toggleAdminSection('bookingInbox')); await wait(page, 800);
+    await scrollTo(page, '#bookingInboxHeader', 10);
+    await shot(page, '35-user-booking-inbox');
+    await page.evaluate(() => toggleAdminSection('bookingInbox')); await wait(page);
+    await page.evaluate(() => toggleAdminSection('addTripSection')); await wait(page);
+    await scrollTo(page, '#addTripSectionHeader', 10);
     await shot(page, '33-user-add-trip'); await browser.close(); }
 
   // ── Share link (signed out) ──
