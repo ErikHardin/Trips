@@ -87,6 +87,20 @@
         ".read": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey",
         ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
       }
+    },
+    "activityMutes": {
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey",
+        ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
+      }
+    },
+    "pushGeo": {
+      "$tripId": {
+        "$dayId": {
+          ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).exists()",
+          ".validate": "!newData.exists() || newData.hasChildren(['stops', 'updatedAt'])"
+        }
+      }
     }
   }
 }

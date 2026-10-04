@@ -39,9 +39,10 @@ While you're on that screen, note the **compatibility date** (Settings →
 Runtime) and match it in `wrangler.toml` if it differs from what's there.
 
 The Worker reads: `ANTHROPIC_KEY`, `FIREBASE_URL`, `FIREBASE_SECRET`,
-`AERODATABOX_KEY`, `NTFY_TOPIC`, `NTFY_TOKEN`, `ADMIN_PIN`, `ADMIN_PIN_2`,
-and for push notifications `APNS_KEY_P8`, `APNS_KEY_ID`, `APPLE_TEAM_ID`
-(see below).
+`AERODATABOX_KEY`, `ADMIN_PIN`, `ADMIN_PIN_2`, and for push notifications
+`APNS_KEY_P8`, `APNS_KEY_ID`, `APPLE_TEAM_ID` and optionally `MAPS_KEY_P8`,
+`MAPS_KEY_ID` (see below). `NTFY_TOPIC` and `NTFY_TOKEN` are no longer used and
+can be deleted.
 
 ### 2. Connect the repo
 
@@ -91,7 +92,7 @@ curl https://hardin-trips-ai.erikchardin.workers.dev/version
 {
   "version": "2026-09-06",
   "routes": ["/version", "/widget-data", "/widget-upcoming",
-             "/verify-pin", "/flight-lookup", "/ntfy-config", "/booking-parse"],
+             "/verify-pin", "/flight-lookup", "/booking-parse", "/push/test", …],
   "firebase": { "urlConfigured": true, "secretConfigured": true, "status": 200, "ok": true }
 }
 ```
@@ -219,6 +220,19 @@ The Worker sends to APNs directly.
 3. Deploy `database.rules.json` (it adds `pushTokens` and `notifyPrefs`).
 4. `/version` should list `/push/test` and show the three keys as configured.
    In the app: Settings → Notifications → **Send a test**.
+
+**Scheduled pushes:** `wrangler.toml` adds a cron trigger (every 5 minutes)
+that sends activity reminders and leave-by alerts. You can see it in the
+dashboard under Workers → `hardin-trips-ai` → Settings → Triggers, and its runs
+under Logs. Each person picks a lead time in Settings → Notifications, and the
+🔔 on an activity mutes it for that person.
+
+**Leave-by with live traffic** uses the Apple Maps Server API. Either enable
+**MapKit JS** on the APNs key (Keys → edit → tick MapKit JS; it then needs a
+Maps ID under Identifiers → Maps IDs), or create a separate MapKit key and add
+it as `MAPS_KEY_P8` / `MAPS_KEY_ID`. Without either, leave-by falls back to
+OSRM drive times, which ignore traffic. Drive stops come from the app: opening
+a current trip saves each drive's location to `pushGeo/`.
 
 ## "This project is disconnected from your Git account"
 
