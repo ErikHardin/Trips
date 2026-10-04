@@ -91,6 +91,7 @@ if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
   --sand-hover: #d4c9b8;
   --faint: #ccc;
   --glass: rgba(255,255,255,0.3);
+  --cover-bg: linear-gradient(135deg, #f5e8e0, #f7f0e0);
   --radius: 16px;
   --radius-sm: 10px;
   color-scheme: light;
@@ -127,6 +128,7 @@ if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
     --sand-hover: #5c5c60;
     --faint: #76767b;
     --glass: rgba(255,255,255,0.04);
+    --cover-bg: linear-gradient(135deg, #48484b, #3f3f42);
     color-scheme: dark;
   }
 }
@@ -160,6 +162,7 @@ if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
   --sand-hover: #5c5c60;
   --faint: #76767b;
   --glass: rgba(255,255,255,0.04);
+  --cover-bg: linear-gradient(135deg, #48484b, #3f3f42);
   color-scheme: dark;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -231,7 +234,7 @@ body {
 .trip-card:active { transform: scale(0.985); box-shadow: var(--shadow-sm); }
 .trip-card-cover {
   height: 130px;
-  background: linear-gradient(135deg, var(--terracotta-light), var(--gold-light));
+  background: var(--cover-bg);
   display: flex; align-items: center; justify-content: center;
   font-size: 58px;
   position: relative;
@@ -5547,7 +5550,7 @@ async function renderAdminTripList() {
         <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name||'Untitled'}</div>
         <div style="font-size:12px;color:var(--muted);">${t.year||''} · ${t.dates||''}</div>
       </div>
-      <button onclick="openEditTrip('${k}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;">Edit</button>
+      <button onclick="openEditTrip('${k}')" style="background:var(--terracotta-light);border:1px solid var(--terracotta-border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;">Edit</button>
       <button onclick="deleteTrip('${k}')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);">🗑️</button>
     </div>`;
   }
@@ -5602,7 +5605,7 @@ function renderPDFTripList() {
         <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name||'Untitled'}</div>
         <div style="font-size:12px;color:var(--muted);">${t.year||''} · ${t.dates||''}</div>
       </div>
-      <button id="pdfBtn-${k}" onclick="generateTripPDF('${k}')" style="background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">📄 Create PDF</button>
+      <button id="pdfBtn-${k}" onclick="generateTripPDF('${k}')" style="background:var(--terracotta-light);border:1px solid var(--terracotta-border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;">📄 Create PDF</button>
     </div>`;
   }
 
@@ -6814,7 +6817,7 @@ function renderEditDaysList(trip) {
     var monStyle = 'font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;';
     var cityStyle = 'font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
     var subStyle = 'font-size:11px;color:var(--muted);';
-    var btnStyle = 'background:var(--terracotta-light);border:1px solid #e8c0aa;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;';
+    var btnStyle = 'background:var(--terracotta-light);border:1px solid var(--terracotta-border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:500;color:var(--terracotta);cursor:pointer;white-space:nowrap;';
     return '<div class="admin-card" style="display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:8px;">'
       + '<div style="text-align:center;min-width:44px;">'
         + '<div style="' + numStyle + '">' + (day.dateNum||'–') + '</div>'
