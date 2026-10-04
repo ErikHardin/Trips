@@ -11,22 +11,28 @@ function setAt(p, v) {
   for (const s of ss.slice(0, -1)) { if (n[s] == null || typeof n[s] !== 'object') n[s] = {}; n = n[s]; }
   if (v === null || v === undefined) delete n[ss.at(-1)]; else n[ss.at(-1)] = clone(v);
 }
-function snap(path, key) { const v = path === '.info/connected' ? true : clone(getAt(path)); return { key, val: () => v, exists: () => v != null, forEach(cb) { Object.entries(v || {}).forEach(([k, x]) => cb({ key: k, val: () => x })); } }; }
+function snap(path, key, where) {
+  let v = path === '.info/connected' ? true : clone(getAt(path));
+  // query(ref, orderByChild(k), equalTo(x)): keep only children whose k is x
+  if (where && v && typeof v === 'object') v = Object.fromEntries(Object.entries(v).filter(([, c]) => c && c[where.child] === where.value)); return { key, val: () => v, exists: () => v != null, forEach(cb) { Object.entries(v || {}).forEach(([k, x]) => cb({ key: k, val: () => x })); } }; }
 function notify(p) {
   const P = segs(p).join('/');
-  S.listeners.forEach(l => { const L = segs(l.path).join('/'); if (L === P || P.startsWith(L + '/') || L.startsWith(P + '/') || L === '' ) setTimeout(() => l.cb(snap(l.path)), 0); });
+  S.listeners.forEach(l => { const L = segs(l.path).join('/'); if (L === P || P.startsWith(L + '/') || L.startsWith(P + '/') || L === '' ) setTimeout(() => l.cb(snap(l.path, undefined, l.where)), 0); });
 }
 W.__fakeWrites = W.__fakeWrites || [];
 export function initializeApp() { return {}; }
 export function getDatabase() { return { fake: true }; }
 export function ref(db, path) { return { path: path || '', key: segs(path).at(-1) }; }
+export function orderByChild(child) { return { child }; }
+export function equalTo(value) { return { value }; }
+export function query(r, ...constraints) { return { ...r, where: Object.assign({}, ...constraints) }; }
 const same = (p, v) => JSON.stringify(getAt(p)) === JSON.stringify(v === undefined ? null : v);
 export async function set(r, v) { W.__fakeWrites.push(['set', r.path]); if (same(r.path, v)) return; setAt(r.path, v); notify(r.path); }
 export async function update(r, obj) { for (const [k, v] of Object.entries(obj)) { const p = segs(r.path).concat(segs(k)).join('/'); if (same(p, v)) continue; setAt(p, v); notify(p); } }
 export function push(r, v) { const key = '-fake' + (++S.keyN).toString().padStart(5, '0'); const p = segs(r.path).concat(key).join('/'); const res = { path: p, key }; const pr = v === undefined ? Promise.resolve(res) : set(res, v).then(() => res); return Object.assign(pr, res); }
 export async function remove(r) { if (getAt(r.path) == null) return; setAt(r.path, null); notify(r.path); }
-export async function get(r) { return snap(r.path, r.key); }
-export function onValue(r, cb) { const l = { path: r.path, cb }; S.listeners.push(l); setTimeout(() => cb(snap(r.path)), 0); return () => { S.listeners = S.listeners.filter(x => x !== l); }; }
+export async function get(r) { return snap(r.path, r.key, r.where); }
+export function onValue(r, cb) { const l = { path: r.path, cb, where: r.where }; S.listeners.push(l); setTimeout(() => cb(snap(r.path, undefined, r.where)), 0); return () => { S.listeners = S.listeners.filter(x => x !== l); }; }
 export function getStorage() { return {}; }
 export { ref as sRefUnused };
 export async function uploadBytes() { return {}; }

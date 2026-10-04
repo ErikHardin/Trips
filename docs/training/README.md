@@ -1,6 +1,6 @@
 # Hardin Trips — Training Guide
 
-A walkthrough of the Trips app for the whole family: how to sign in, find your way around a trip, and add memories<!-- only: admin user -->, plus how to plan trips<!-- /only --><!-- only: admin -->, and the admin tools for managing them<!-- /only -->.
+A walkthrough of the Trips app for the whole family: how to sign in, find your way around a trip, and add memories<!-- only: admin user -->, plus how to plan trips with the booking inbox and AI assistant<!-- /only --><!-- only: admin -->, and the admin tools for managing them<!-- /only -->.
 
 <!-- only: readme -->
 > 📄 **Printable guides, one for each role:**
@@ -33,10 +33,12 @@ A walkthrough of the Trips app for the whole family: how to sign in, find your w
 11. [Sharing a trip](#11-sharing-a-trip)
 12. [Creating a trip](#12-creating-a-trip)
 13. [Editing a trip](#13-editing-a-trip)
-14. [The world map](#14-the-world-map)
-15. [The admin screen](#15-the-admin-screen)
-16. [The iPhone app](#16-the-iphone-app)
-17. [Tips and FAQ](#17-tips-and-faq)
+14. [The Booking Inbox](#14-the-booking-inbox)
+15. [The AI Trip Assistant](#15-the-ai-trip-assistant)
+16. [The world map](#16-the-world-map)
+17. [The admin screen](#17-the-admin-screen)
+18. [The iPhone app](#18-the-iphone-app)
+19. [Tips and FAQ](#19-tips-and-faq)
 
 ---
 
@@ -68,13 +70,13 @@ The request step works the same way with Google and Apple. To try another accoun
 
 ### Installing, signing out and deleting your account
 
-- **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon. You can also use the real iPhone app ([section 16](#16-the-iphone-app)).
+- **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon. You can also use the real iPhone app ([section 18](#18-the-iphone-app)).
 - **To sign out**, tap the 🔒 lock in the top-right corner of the home screen, then **Sign out**.
 - **To delete your account**, tap the 🔒 lock, then **Delete account**. You confirm with your sign-in one more time. This removes your sign-in and your access. Trips you created stay in the app for everyone else.
 
 ## 2. Who can do what
 
-Every account has one of three roles. <!-- only: admin -->Admins set roles under **Admin → User Access** ([section 15](#user-access)).<!-- /only --><!-- for: user guest
+Every account has one of three roles. <!-- only: admin -->Admins set roles under **Admin → User Access** ([section 17](#user-access)).<!-- /only --><!-- for: user guest
 Erik sets each person's role.
 -->
 
@@ -86,7 +88,8 @@ Erik sets each person's role.
 | Create new trips | — | ✅ (their own) | ✅ |
 | Edit trip details, Logistics tab | — | ✅ on their own trips and trips shared with them | ✅ |
 | World map | — | — | ✅ |
-| Admin tools (booking inbox, AI assistant, users, PDFs…) | — | — | ✅ |
+| Booking inbox and AI assistant | — | ✅ (their own bookings, on trips they can edit) | ✅ |
+| Admin tools (users, packing template, PDFs, CSV import…) | — | — | ✅ |
 
 ---
 
@@ -111,7 +114,16 @@ The home screen lists your trips as cards:
 Tap a card to open the trip. **When a trip is in progress, the app opens straight to it.** Tap **‹** to get back to the list.
 
 <!-- for: user
-The header shows your own name (*"Alex's Trips"*). Tap 🔒 to sign out or delete your account.
+The header shows your own name (*"Alex's Trips"*). Header buttons:
+
+- ⚙️ **Settings**: opens **My Trips**, with your Booking Inbox ([section 14](#14-the-booking-inbox)), Add New Trip ([section 12](#12-creating-a-trip)) and the AI Trip Assistant ([section 15](#15-the-ai-trip-assistant)). A number on the gear counts bookings waiting in your inbox.
+- 🔒 **Sign out** or delete your account.
+
+<br clear="all">
+
+<img src="img/34-user-settings.png" width="280" align="right" alt="Settings screen">
+
+Your **Settings** screen. Tap a section's **＋** to open it.
 -->
 <!-- for: guest
 The header shows your own name (*"Grandma's Trips"*). Tap 🔒 to sign out or delete your account.
@@ -119,8 +131,8 @@ The header shows your own name (*"Grandma's Trips"*). Tap 🔒 to sign out or de
 <!-- only: admin -->
 Header buttons:
 
-- 🌏 **World Map**: every place you've been ([section 14](#14-the-world-map)).
-- ⚙️ **Admin**: the admin tools ([section 15](#15-the-admin-screen)). A number on the gear counts bookings waiting in the [Booking Inbox](#booking-inbox).
+- 🌏 **World Map**: every place you've been ([section 16](#16-the-world-map)).
+- ⚙️ **Admin**: the admin tools ([section 17](#17-the-admin-screen)). A number on the gear counts bookings waiting in the Booking Inbox ([section 14](#14-the-booking-inbox)).
 - 🔒 **Sign out**.
 <!-- /only -->
 
@@ -215,7 +227,7 @@ Tap **📝** next to an activity, or **Day Memories** on a day card, to open its
 - **Recommend this activity** (admins): marks the activity with ⭐ *Recommended* in the trip's Memories and in shared links.
 <!-- /only -->
 
-Adding photos needs an internet connection. See [Tips and FAQ](#17-tips-and-faq) for offline use.
+Adding photos needs an internet connection. See [Tips and FAQ](#19-tips-and-faq) for offline use.
 
 <br clear="all">
 
@@ -365,7 +377,7 @@ Tap **＋ Add New Trip** at the bottom of the home screen, or open **Admin → A
 <!-- for: user
 <img src="img/33-user-add-trip.png" width="280" align="right" alt="Add New Trip">
 
-Tap **＋ Add New Trip** at the bottom of the home screen.
+Tap **＋ Add New Trip** at the bottom of the home screen, or tap ⚙️ and open **Add New Trip**.
 -->
 
 1. Enter a **trip name** and a **cover emoji** (flags work well).
@@ -373,7 +385,7 @@ Tap **＋ Add New Trip** at the bottom of the home screen.
 3. Pick the **start and end dates**. The app previews how many days it will create.
 4. Tap **Create Trip & Generate Days**.
 
-You get one blank day per date. Fill them in with the trip editor ([section 13](#13-editing-a-trip))<!-- only: admin -->, the AI assistant ([section 15](#ai-trip-assistant)), the Booking Inbox, or a CSV import<!-- /only -->.
+You get one blank day per date. Fill them in with the trip editor ([section 13](#13-editing-a-trip)), the Booking Inbox ([section 14](#14-the-booking-inbox)) or the AI assistant ([section 15](#15-the-ai-trip-assistant))<!-- only: admin -->, or with a CSV import<!-- /only -->.
 
 <!-- for: user
 Trips you create are yours: you can edit them, and they appear only for you and the admins until you share a link.
@@ -410,47 +422,15 @@ Tap **Save** (top-right) or **Save Trip Details** to keep your changes. If you t
 ---
 <!-- /only -->
 
+<!-- only: admin user -->
+## 14. The Booking Inbox
+
 <!-- only: admin -->
-## 14. The world map
-
-<img src="img/17-world-map.png" width="280" align="right" alt="World map">
-
-Tap 🌏 on the home screen to see every city from every trip on one map. The totals appear along the bottom. Tap a dot to see what trip it was.
-
-Admins can hide a trip from the map with the **Show on world map** checkbox in the trip editor. Trips created by users are left off the map.
-
-<br clear="all">
-
----
-
-## 15. The admin screen
-
-<img src="img/18-admin.png" width="280" align="right" alt="Admin screen">
-
-Tap ⚙️ on the home screen. Each section opens and closes with **＋ / −**. The PR number of the currently deployed version is shown at the very bottom.
-
-**Trips**
-- Booking Inbox
-- Add New Trip ([section 12](#12-creating-a-trip))
-- Manage Existing Trips
-- AI Trip Assistant
-- Travel for Trips
-
-**Utilities**
-- User Access
-- App Name
-- Translations
-- Import from CSV
-- Logistics Packing List
-- Create Trip PDF
-
-Users see this screen with only **Add New Trip** in it, when they tap **＋ Add New Trip** on the home screen.
-
-<br clear="all">
-
-### Booking Inbox
-
 <img src="img/29-admin-booking-inbox.png" width="280" align="right" alt="Booking Inbox">
+<!-- /only -->
+<!-- for: user
+<img src="img/35-user-booking-inbox.png" width="280" align="right" alt="Booking Inbox">
+-->
 
 Instead of typing bookings in by hand, **forward the confirmation email** to the inbox address. The app reads it and fills in the details for you. It understands:
 
@@ -459,11 +439,18 @@ Instead of typing bookings in by hand, **forward the confirmation email** to the
 - 🚗 **Rental cars**: company, pick-up and drop-off
 - 🎟️ **Activities and reservations**: restaurants, tours, tastings, tickets, shows, spa bookings
 
-Each forwarded email appears here as a card, and the ⚙️ button shows how many are waiting. Admins also get a push on the ntfy reminders topic.
+Each forwarded email appears here as a card, and the ⚙️ button shows how many are waiting.<!-- only: admin --> Admins also get a push on the ntfy reminders topic.<!-- /only -->
+
+<!-- only: admin -->
+Admins see every forwarded booking. Bookings that belong to a user also show in that user's own inbox, and are marked *For Alex* (their name) here.
+<!-- /only -->
+<!-- for: user
+**You see only your own bookings:** ones forwarded from the email you sign in with, or from another address an admin has linked to you (see the end of this section). The trip menu lists only trips you can edit.
+-->
 
 **To add a booking to a trip:**
 
-1. Open **Admin → Booking Inbox**.
+1. Tap ⚙️ on the home screen, then **Booking Inbox**.
 2. Check the details the app read from the email, and the confirmation number.
 3. The app picks the trip whose dates match. Choose a different one from the menu if needed.
 4. Tap **Add to Trip**.
@@ -487,9 +474,80 @@ If a card says the app *couldn't read this email*, tap **Read Again**, or fix it
 
 **The settings at the top of the inbox** (tap each to open it):
 
-- **Inbox address**: the email address to forward bookings to. It's shown in the summary line, so you can see it without opening it. To change it, tap **Edit**, type the new address, then tap **Save**.
-- **Approved senders**: anyone in User Access can forward bookings. If you book from an address that doesn't have an app account (a personal Yahoo account, say), add it here so its emails are accepted. Emails from anyone else are refused.
+- **Inbox address**: the email address to forward bookings to. It's shown in the summary line, so you can see it without opening it.<!-- only: admin --> To change it, tap **Edit**, type the new address, then tap **Save**. Only admins can change it.<!-- /only -->
+<!-- only: admin -->
+- **Approved senders** (admins only): anyone in User Access can forward bookings. If someone books from an address that doesn't have an app account (a personal Yahoo account, say), add it here so its emails are accepted. Emails from anyone else are refused. To send that address's bookings to a user's inbox, choose them in the **Belongs to** menu before tapping **Add**. Otherwise its bookings go only to admins.
+<!-- /only -->
+<!-- for: user
+- **Booking from another email?** Forward from the address you sign in with. If you book with a different address, ask Erik to add it as an approved sender linked to you.
+-->
 - **Paste a confirmation instead**: paste the text of a confirmation and tap **✨ Read Booking**. It appears as a card just like a forwarded email.
+
+<br clear="all">
+
+---
+
+## 15. The AI Trip Assistant
+
+<img src="img/21-admin-ai.png" width="280" align="right" alt="AI Trip Assistant">
+
+Tap ⚙️ on the home screen, then **AI Trip Assistant**. Pick an upcoming or in-progress trip, then describe a change in plain English:
+
+- *"Add dinner at Le Bernardin at 7:30pm on day 3"*
+- *"Update outbound flight to UA100 DEN-LIS 8am-10pm"*
+- *"Move the wine tasting on May 26 to 3pm"*
+
+<!-- for: user
+The trip menu lists only trips you can edit.
+-->
+Tap **✨ Ask Assistant**. The proposed changes appear in a preview. Nothing is saved until you tap **Apply Changes**.
+
+**If the trip has no itinerary yet**, the assistant offers two other modes:
+
+- **✍️ Describe & Generate**: enter your travel style, pace, things to avoid and must-dos, then tap **🗺️ Generate Itinerary**.
+- **📋 Paste My Notes**: paste notes you've already written (dates, hotels, plans) and tap **📋 Parse My Notes** to turn them into days.
+
+<br clear="all">
+
+---
+
+<!-- /only -->
+
+<!-- only: admin -->
+## 16. The world map
+
+<img src="img/17-world-map.png" width="280" align="right" alt="World map">
+
+Tap 🌏 on the home screen to see every city from every trip on one map. The totals appear along the bottom. Tap a dot to see what trip it was.
+
+Admins can hide a trip from the map with the **Show on world map** checkbox in the trip editor. Trips created by users are left off the map.
+
+<br clear="all">
+
+---
+
+## 17. The admin screen
+
+<img src="img/18-admin.png" width="280" align="right" alt="Admin screen">
+
+Tap ⚙️ on the home screen. Each section opens and closes with **＋ / −**. The PR number of the currently deployed version is shown at the very bottom.
+
+**Trips**
+- Booking Inbox ([section 14](#14-the-booking-inbox))
+- Add New Trip ([section 12](#12-creating-a-trip))
+- Manage Existing Trips
+- AI Trip Assistant ([section 15](#15-the-ai-trip-assistant))
+- Travel for Trips
+
+**Utilities**
+- User Access
+- App Name
+- Translations
+- Import from CSV
+- Logistics Packing List
+- Create Trip PDF
+
+Users get the ⚙️ button too. Theirs opens **Settings → My Trips**, with only the Booking Inbox, Add New Trip and the AI Trip Assistant.
 
 <br clear="all">
 
@@ -498,25 +556,6 @@ If a card says the app *couldn't read this email*, tap **Read Again**, or fix it
 <img src="img/20-admin-manage-trips.png" width="280" align="right" alt="Manage Existing Trips">
 
 Trips are grouped into Active, Upcoming and Past. Tap **Edit** to open the trip editor, or 🗑️ to delete a trip. You'll be asked to confirm, and deleting can't be undone.
-
-<br clear="all">
-
-### AI Trip Assistant
-
-<img src="img/21-admin-ai.png" width="280" align="right" alt="AI Trip Assistant">
-
-Pick a trip, then describe a change in plain English:
-
-- *"Add dinner at Le Bernardin at 7:30pm on day 3"*
-- *"Update outbound flight to UA100 DEN-LIS 8am-10pm"*
-- *"Move the wine tasting on May 26 to 3pm"*
-
-Tap **✨ Ask Assistant**. The proposed changes appear in a preview. Nothing is saved until you tap **Apply Changes**.
-
-**If the trip has no itinerary yet**, the assistant offers two other modes:
-
-- **✍️ Describe & Generate**: enter your travel style, pace, things to avoid and must-dos, then tap **🗺️ Generate Itinerary**.
-- **📋 Paste My Notes**: paste notes you've already written (dates, hotels, plans) and tap **📋 Parse My Notes** to turn them into days.
 
 <br clear="all">
 
@@ -571,7 +610,7 @@ Use **Edit** to change someone's role or trips, and **Remove** to revoke access.
 ---
 <!-- /only -->
 
-## 16. The iPhone app
+## 18. The iPhone app
 
 Besides opening the website in Safari, there's a real **Hardin Trips** app for iPhone. It's shared through Apple's **TestFlight** app rather than the App Store.
 
@@ -597,12 +636,12 @@ The widget refreshes about once an hour. Tap it to open the app.
 
 ---
 
-## 17. Tips and FAQ
+## 19. Tips and FAQ
 
 <!-- only: admin -->
 <img src="img/26-guest-home.png" width="280" align="right" alt="What a guest sees">
 
-**What does a guest see?** Only the trips they've been given, with no ⚙️ Admin button or world map. The header uses their own name ("*Grandma's* Trips"). Guests can read everything on their trips and add memories and wishlist ideas. Users see the same, plus their own trips and **＋ Add New Trip**.
+**What does a guest see?** Only the trips they've been given, with no ⚙️ Admin button or world map. The header uses their own name ("*Grandma's* Trips"). Guests can read everything on their trips and add memories and wishlist ideas. Users see the same, plus their own trips, **＋ Add New Trip**, and a ⚙️ **Settings** screen with their own Booking Inbox and the AI assistant.
 <!-- /only -->
 
 **Does it work offline?** Mostly. The app keeps a copy of your trips on the phone. With no signal, a banner reads *📴 Offline — viewing saved data*. You can still read everything, and edits you make are sent when you're back online. Photo uploads and maps need a connection.
