@@ -2135,7 +2135,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 321 };
+window.BUILD_INFO = { prNumber: 322 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -10241,6 +10241,11 @@ async function fetchTripWeather(days, tripYear) {
       storedWeather = snap.val() || {};
       for (const [dayId, wx] of Object.entries(storedWeather)) {
         const day = daysMap.get(dayId);
+        const city = day ? (day.city || '').replace(/[🛬🚗✈️🏠]/g,'').trim() : '';
+        // Weather was fetched for a different city (the day's city was edited, or
+        // an entry predates the city being recorded) — past and far-future
+        // entries are never refreshed otherwise, so drop it and refetch.
+        if (day && wx.city !== city) { delete storedWeather[dayId]; continue; }
         const dateISO = day ? dateISOForDay(day) : null;
         if (dateISO) {
           const d = new Date(dateISO + 'T00:00:00');
@@ -10252,7 +10257,6 @@ async function fetchTripWeather(days, tripYear) {
           // below overwrites the chip and the stored value.
           if (!wx.avg && d >= today && d <= forecastCutoff) delete storedWeather[dayId];
         }
-        const city = day ? (day.city || '').replace(/[🛬🚗✈️🏠]/g,'').trim() : '';
         const coords = city ? await getCityCoords(city) : null;
         tripWeatherByDay[dayId] = { wx, coords, city };
         injectWeatherChip('dc-' + dayId, wx, coords, city);
@@ -10289,10 +10293,10 @@ async function fetchTripWeather(days, tripYear) {
   }
 
   // Helper: persist weather to Firebase
-  const saveWeather = (dayId, wx) => {
+  const saveWeather = (dayId, wx, city) => {
     if (!currentTripId) return;
     window._set(window._ref(window._db, `trips/${currentTripId}/dayWeather/${dayId}`),
-      { code: wx.code, hi: wx.hi, lo: wx.lo, avg: wx.avg || false })
+      { code: wx.code, hi: wx.hi, lo: wx.lo, avg: wx.avg || false, city })
       .catch(e => console.warn('Weather save failed:', e));
   };
 
@@ -10325,7 +10329,7 @@ async function fetchTripWeather(days, tripYear) {
         injectWeatherChip(cardId, wx, [lat, lon], city);
         tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
         injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
-        saveWeather(dayId, wx);
+        saveWeather(dayId, wx, city);
       }
     } catch(e) { console.warn('Historical fetch failed for', city, e); }
   }
@@ -10359,7 +10363,7 @@ async function fetchTripWeather(days, tripYear) {
         injectWeatherChip(cardId, wx, [lat, lon], city);
         tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
         injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
-        saveWeather(dayId, wx);
+        saveWeather(dayId, wx, city);
       }
     } catch(e) { console.warn('Forecast fetch failed for', city, e); }
   }
@@ -10409,7 +10413,7 @@ async function fetchTripWeather(days, tripYear) {
           injectWeatherChip(cardId, wx, [lat, lon], city);
           tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
           injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
-          saveWeather(dayId, wx);
+          saveWeather(dayId, wx, city);
         }
       }
     } catch(e) { console.warn('Climate fetch failed for', city, e); }
@@ -10650,11 +10654,15 @@ const TZ_MAX_CITY_TRIES = 4;
 async function resolveRegionTimezone(regionName, cities) {
   const slug = regionSlug(regionName);
   if (!slug) return null;
-  if (_tzMem.has(slug)) return _tzMem.get(slug);
+  // A zone resolved from a city that is no longer one of this region's days
+  // (the city was edited, e.g. a misgeocoded "Kona" fixed to "Kailua-Kona") is
+  // stale — re-resolve rather than keep showing the old place's time.
+  const viaStale = via => !!via && via !== regionName && !(cities || []).includes(via);
+  if (_tzMem.has(slug) && !viaStale(_tzVia.get(slug))) return _tzMem.get(slug);
   if (_tzInFlight.has(slug)) return _tzInFlight.get(slug);
 
   const disk = _tzDiskRead()[slug];
-  if (disk && Date.now() - (disk.ts || 0) < (disk.tz ? TZ_TTL_MS : TZ_TTL_NEG_MS)) {
+  if (disk && !viaStale(disk.via) && Date.now() - (disk.ts || 0) < (disk.tz ? TZ_TTL_MS : TZ_TTL_NEG_MS)) {
     _tzMem.set(slug, disk.tz || null);
     if (disk.via) _tzVia.set(slug, disk.via);
     return disk.tz || null;
