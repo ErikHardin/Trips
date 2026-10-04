@@ -72,6 +72,21 @@
           ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
         }
       }
+    },
+    "pushTokens": {
+      "$emailKey": {
+        ".read": "(auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey) || (auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin')",
+        ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey",
+        "$token": {
+          ".validate": "!newData.exists() || newData.hasChildren(['platform', 'updatedAt'])"
+        }
+      }
+    },
+    "notifyPrefs": {
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey",
+        ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
+      }
     }
   }
 }

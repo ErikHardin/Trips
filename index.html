@@ -1618,6 +1618,43 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
 
+    <!-- NOTIFICATIONS (iOS app push; everyone with Settings) -->
+    <div class="admin-section user-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="notifySectionHeader" onclick="toggleAdminSection('notifySection')">
+          <div class="admin-section-title">Notifications</div>
+          <span class="admin-panel-toggle" id="notifySectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="notifySectionBody" style="display:none;">
+          <div class="inbox-howto" id="notifyStatus"></div>
+          <div style="display:flex;gap:8px;margin:10px 0 4px;">
+            <button class="form-btn" id="notifyEnableBtn" style="display:none;" onclick="enablePushNotifications()">🔔 Turn on notifications</button>
+            <button class="form-btn secondary" id="notifyTestBtn" style="display:none;" onclick="sendTestPush()">Send a test</button>
+          </div>
+          <label class="form-label" style="margin-top:12px;">Notify me about</label>
+          <div id="notifyPrefsList"></div>
+          <label class="form-label" style="margin-top:12px;">Activity reminder</label>
+          <select class="form-input" id="notifyLeadSelect" onchange="saveNotifyPref('activityLeadMin', parseInt(this.value, 10))">
+            <option value="15">15 minutes before</option>
+            <option value="30">30 minutes before</option>
+            <option value="60">1 hour before</option>
+          </select>
+          <label class="form-label">Morning brief at (trip's local time)</label>
+          <input class="form-input" type="time" id="notifyBriefTime" onchange="saveNotifyPref('briefTime', this.value || '07:30')">
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+            <input type="checkbox" id="notifyQuietHours" style="width:16px;height:16px;accent-color:var(--terracotta);" onchange="saveNotifyPref('quietHours', this.checked)">
+            <span style="font-size:14px;color:var(--ink);">Quiet hours</span>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="form-input" type="time" id="notifyQuietStart" style="margin:0;" onchange="saveNotifyPref('quietStart', this.value || '22:00')">
+            <span style="color:var(--muted);font-size:13px;">to</span>
+            <input class="form-input" type="time" id="notifyQuietEnd" style="margin:0;" onchange="saveNotifyPref('quietEnd', this.value || '07:00')">
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">Quiet hours hold reminders until the morning. "Leave now" and flight changes still come through.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- UTILITIES GROUP -->
     <div class="admin-group-header admin-only-section">Utilities</div>
 
@@ -2142,7 +2179,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 328 };
+window.BUILD_INFO = { prNumber: 329 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2347,7 +2384,7 @@ async function handleSignedInUser(user) {
         }
         document.getElementById('loginSignOutBtn').style.display = '';
         showScreen('screen-login');
-        if (requested) watchForAccessApproval(user, emailKey);
+        if (requested) { watchForAccessApproval(user, emailKey); registerForPush(true); }
         return;
       }
     }
@@ -2366,6 +2403,7 @@ async function handleSignedInUser(user) {
     if (userRole === 'admin' || userRole === 'user') startBookingInboxListener();
     if (userRole === 'admin') announcePendingAccessRequests();
     initApp();
+    registerForPush(true);
   } catch(e) {
     console.error('Auth lookup failed:', e);
     document.documentElement.style.visibility = '';
@@ -2833,6 +2871,182 @@ window.goBackFromEdit = async function() {
   }
 };
 
+// ── Push notifications (iOS app) ──
+// The app registers with APNs through @capacitor/push-notifications; each
+// device token is saved at pushTokens/{emailKey}/{token} and the Worker sends
+// pushes to it directly. Choices live at notifyPrefs/{emailKey} — not in
+// access/, which an admin edit overwrites. Keep NOTIFY_DEFAULTS in step with
+// the copy in worker.js.
+const PUSH_WORKER_URL = 'https://hardin-trips-ai.erikchardin.workers.dev';
+const NOTIFY_DEFAULTS = {
+  accessRequests: true, bookingInbox: true, activities: true, leaveBy: true,
+  brief: true, flights: true, tripEdits: true,
+  activityLeadMin: 30, briefTime: '07:30', quietHours: false, quietStart: '22:00', quietEnd: '07:00',
+};
+const NOTIFY_TYPES = [
+  { key: 'activities',     label: 'Upcoming activities',  hint: 'Before each timed activity' },
+  { key: 'leaveBy',        label: 'Time to leave',        hint: 'Leave-by time for drives, with live traffic' },
+  { key: 'brief',          label: 'Morning brief',        hint: 'Your day at a glance on trip days' },
+  { key: 'flights',        label: 'Flights',              hint: 'Check-in, delays, gate changes, cancellations' },
+  { key: 'tripEdits',      label: 'Trip changes',         hint: 'When someone else edits a trip you’re on' },
+  { key: 'bookingInbox',   label: 'Booking inbox',        hint: 'A forwarded confirmation is ready to assign' },
+  { key: 'accessRequests', label: 'Access requests',      hint: 'Someone asked to join', adminOnly: true },
+];
+let _pushToken = null;
+let _pushListenersAdded = false;
+let _notifyPrefs = null;
+
+const pushEmailKey = () => {
+  const email = ((currentUser && currentUser.email) || '').toLowerCase();
+  return email ? email.replace(/\./g, ',') : null;
+};
+
+function addPushListeners() {
+  if (_pushListenersAdded) return;
+  _pushListenersAdded = true;
+  const cap = window.Capacitor;
+  cap.addListener('PushNotifications', 'registration', data => { if (data && data.value) savePushToken(data.value); });
+  cap.addListener('PushNotifications', 'registrationError', (data, err) => console.warn('Push registration failed:', err || data));
+  // Fires for a tap on a notification, including the one that launched the app
+  cap.addListener('PushNotifications', 'pushNotificationActionPerformed', data => {
+    const route = data && data.notification && data.notification.data && data.notification.data.route;
+    if (route) handlePushRoute(route);
+  });
+}
+
+// Returns 'granted', 'denied', 'prompt' or 'unsupported' (not the iOS app).
+// With prompt=false it never shows the iOS permission alert — it only
+// re-registers when permission was already given, to refresh the token.
+async function registerForPush(prompt) {
+  if (!isNativeApp()) return 'unsupported';
+  const cap = window.Capacitor;
+  try {
+    let perm = (await cap.nativePromise('PushNotifications', 'checkPermissions', {})).receive;
+    if (perm !== 'granted' && perm !== 'denied' && prompt) {
+      perm = (await cap.nativePromise('PushNotifications', 'requestPermissions', {})).receive;
+    }
+    if (perm !== 'granted') return perm === 'denied' ? 'denied' : 'prompt';
+    addPushListeners();
+    await cap.nativePromise('PushNotifications', 'register', {});
+    return 'granted';
+  } catch(e) {
+    console.warn('registerForPush failed:', e);
+    return 'unsupported';
+  }
+}
+
+async function savePushToken(token) {
+  _pushToken = token;
+  const key = pushEmailKey();
+  if (!key) return;
+  try {
+    await window._update(window._ref(window._db, `pushTokens/${key}/${token}`), { platform: 'ios', updatedAt: Date.now() });
+  } catch(e) { console.warn('savePushToken failed:', e); }
+}
+
+// Sign-out: stop this phone getting the signed-out person's notifications
+async function forgetPushDevice() {
+  const key = pushEmailKey();
+  if (!key || !_pushToken) return;
+  // Offline, a database write never settles — don't let that block sign-out
+  const done = window._remove(window._ref(window._db, `pushTokens/${key}/${_pushToken}`)).catch(() => {});
+  await Promise.race([done, new Promise(r => setTimeout(r, 1500))]);
+  _pushToken = null;
+}
+
+function openAdminPanel(sectionId) {
+  showScreen('screen-admin');
+  const body = document.getElementById(sectionId + 'Body');
+  if (!body || body.style.display !== 'none') return;
+  if (sectionId === 'userAccessSection') toggleUserAccessSection();
+  else toggleAdminSection(sectionId);
+  setTimeout(() => body.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+// A push carries { screen, tripId?, dayId? }. A tap can arrive before the
+// app has signed in and loaded trips, so wait (briefly) for what it needs.
+function handlePushRoute(route, tries) {
+  tries = tries || 0;
+  const ready = currentUser && userRole && (route.screen !== 'trip' || (typeof allTrips !== 'undefined' && allTrips[route.tripId]));
+  if (!ready) {
+    if (tries < 40) setTimeout(() => handlePushRoute(route, tries + 1), 250);
+    return;
+  }
+  if (route.screen === 'trip') openTrip(route.tripId, route.tab || 'itinerary');
+  else if (route.screen === 'inbox') openAdminPanel('bookingInbox');
+  else if (route.screen === 'users' && userRole === 'admin') openAdminPanel('userAccessSection');
+  else if (route.screen === 'settings') openAdminPanel('notifySection');
+}
+
+async function loadNotifySettings() {
+  const key = pushEmailKey();
+  if (!key) return;
+  try { _notifyPrefs = Object.assign({}, NOTIFY_DEFAULTS, (await window._get(window._ref(window._db, `notifyPrefs/${key}`))).val() || {}); }
+  catch(e) { _notifyPrefs = Object.assign({}, NOTIFY_DEFAULTS); }
+  const p = _notifyPrefs;
+  document.getElementById('notifyPrefsList').innerHTML = NOTIFY_TYPES
+    .filter(t => !t.adminOnly || userRole === 'admin')
+    .map(t => `<label style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer;">
+        <input type="checkbox" ${p[t.key] ? 'checked' : ''} style="width:16px;height:16px;margin-top:2px;accent-color:var(--terracotta);" onchange="saveNotifyPref('${t.key}', this.checked)">
+        <span><span style="font-size:14px;color:var(--ink);">${t.label}</span><br><span style="font-size:12px;color:var(--muted);">${t.hint}</span></span>
+      </label>`).join('');
+  document.getElementById('notifyLeadSelect').value = String(p.activityLeadMin);
+  document.getElementById('notifyBriefTime').value = p.briefTime;
+  document.getElementById('notifyQuietHours').checked = !!p.quietHours;
+  document.getElementById('notifyQuietStart').value = p.quietStart;
+  document.getElementById('notifyQuietEnd').value = p.quietEnd;
+  await renderPushStatus();
+}
+
+async function renderPushStatus() {
+  const state = await registerForPush(false);
+  const status = document.getElementById('notifyStatus');
+  const enableBtn = document.getElementById('notifyEnableBtn');
+  enableBtn.style.display = state === 'prompt' ? '' : 'none';
+  document.getElementById('notifyTestBtn').style.display = state === 'granted' ? '' : 'none';
+  status.textContent = {
+    granted: 'Notifications are on for this iPhone. Choose what you hear about below.',
+    prompt: 'Turn on notifications to hear about upcoming activities, when to leave, flight changes and more.',
+    denied: 'Notifications are turned off for Hardin Trips. Turn them on in the iPhone Settings app → Notifications → Hardin Trips.',
+    unsupported: 'Notifications come through the Hardin Trips iPhone app. Your choices here apply to every phone you sign in on.',
+  }[state];
+}
+
+window.enablePushNotifications = async function() {
+  await registerForPush(true);
+  await renderPushStatus();
+};
+
+window.saveNotifyPref = async function(key, value) {
+  const k = pushEmailKey();
+  if (!k) return;
+  if (_notifyPrefs) _notifyPrefs[key] = value;
+  try {
+    await window._set(window._ref(window._db, `notifyPrefs/${k}/${key}`), value);
+  } catch(e) {
+    console.warn('saveNotifyPref failed:', e);
+    showToast('Couldn’t save — try again');
+  }
+};
+
+window.sendTestPush = async function() {
+  const btn = document.getElementById('notifyTestBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(PUSH_WORKER_URL + '/push/test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await window._auth.currentUser.getIdToken() }),
+    });
+    const r = await res.json();
+    if (r.sent) showToast('Test sent — it should arrive in a few seconds');
+    else showToast('Couldn’t send: ' + ((r.errors && r.errors[0]) || r.error || 'no devices registered yet'));
+  } catch(e) {
+    showToast('Couldn’t reach the server — try again');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 // ════════════════════════════════════════
 //  NAVIGATION
 // ════════════════════════════════════════
@@ -2861,6 +3075,7 @@ function showScreen(id) {
 window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function(toastMsg) {
+  await forgetPushDevice();
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
   userOwnerEmails = null; userOwnerEmailsPromise = null;
   outstandingBookingsCheckStarted = false;
@@ -2952,6 +3167,8 @@ window.deleteMyAccount = async function() {
   const emailKey = (user.email || '').toLowerCase().replace(/\./g, ',');
   try {
     await window._remove(window._ref(window._db, `access/${emailKey}`));
+    try { await window._remove(window._ref(window._db, `pushTokens/${emailKey}`)); } catch(e) {}
+    try { await window._remove(window._ref(window._db, `notifyPrefs/${emailKey}`)); } catch(e) {}
   } catch(e) {
     console.error('deleteMyAccount: removing access failed:', e);
     showToast('Couldn’t delete your account — please try again');
@@ -9951,6 +10168,9 @@ window.toggleAdminSection = function(sectionId) {
   }
   if (sectionId === 'travelTracker' && opening) {
     initTravelTracker();
+  }
+  if (sectionId === 'notifySection' && opening) {
+    loadNotifySettings();
   }
   if (sectionId === 'bookingInbox' && opening) {
     loadBookingInboxAddress();
