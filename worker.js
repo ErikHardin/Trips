@@ -360,7 +360,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-04.3';
+const WORKER_VERSION = '2026-10-04.4';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -1292,6 +1292,7 @@ async function handlePushAccessApproved(env, body) {
 // ── Scheduled pushes (cron) ──────────────────────────────────────────────────
 // Every 5 minutes: for trips with a day from yesterday to tomorrow, find timed
 // activities in the day's own time zone and push
+//   • a morning brief at each person's `briefTime` on trip days,
 //   • a reminder `activityLeadMin` before each one, and
 //   • for drives, "Leave by …" from a live-traffic ETA (Apple Maps Server API,
 //     OSRM without traffic as the fallback), re-checked as the time nears,
@@ -1299,6 +1300,8 @@ async function handlePushAccessApproved(env, body) {
 // Drive stops come from the app, which geocodes each day's drive activities
 // and saves them to pushGeo/{tripId}/{dayId}. pushSent/ records what went
 // out so nothing repeats; pushState/ caches ETAs and time zones.
+// Per trip it also sends flight alerts and a digest of other people's edits
+// (runFlightAlerts, runEditDigest below).
 
 const PUSH_LEAVE_BUFFER_MIN = 10;   // arrive this early
 const PUSH_ETA_HORIZON_MIN  = 180;  // start checking traffic 3h ahead
@@ -1459,10 +1462,24 @@ async function runPushCron(env) {
       const dateISO = day && (day.dateISO || dayDateISO(day, trip.year));
       if (!dateISO || !window3.includes(dateISO)) continue;
       const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
-      if (!acts.some(a => a && a.time)) continue;
       const geo = (geoAll[tripId] || {})[dayId] || null;
       const tz = await wDayTimeZone(env, day, geo, tzCache);
       if (!tz) continue;
+
+      // Morning brief: on the day itself (local), from each person's briefTime
+      // for up to 3 hours (a late cron or a later sign-in still gets it)
+      if (isoInTz(now, tz) === dateISO) {
+        const localNow = localHHMM(now, tz);
+        const due = recipients.filter(k => {
+          const p = prefsOf(k);
+          return p.brief && localNow >= p.briefTime && localNow < addHHMM(p.briefTime, 180) && !sent['brief_' + tripId + '_' + dateISO + '_' + k];
+        });
+        if (due.length) {
+          const brief = await buildMorningBrief(env, trip, dayId, day, acts, dateISO, tz);
+          for (const k of due) await send('brief_' + tripId + '_' + dateISO + '_' + k, k, Object.assign({ route: { screen: 'trip', tripId }, threadId: tripId }, brief));
+        }
+      }
+      if (!acts.some(a => a && a.time)) continue;
 
       for (const a of acts) {
         if (!a || typeof a !== 'object' || !a.time || !a.text) continue;
@@ -1537,15 +1554,232 @@ async function runPushCron(env) {
     }
   }
 
+  // Flights and trip-change digests, per trip
+  for (const [tripId, trip] of Object.entries(trips)) {
+    if (!trip || trip.status === 'past') continue;
+    const recipients = tripRecipients(access, tokens, trip, tripId);
+    if (!recipients.length) continue;
+    try { await runFlightAlerts(env, tripId, trip, recipients, prefsOf, state.flights || {}, send, now); }
+    catch (e) { console.warn('flights ' + tripId + ': ' + e.message); }
+    try { await runEditDigest(env, tripId, trip, recipients, access, prefsOf, (state.editCursor || {})[tripId], send, now); }
+    catch (e) { console.warn('edits ' + tripId + ': ' + e.message); }
+  }
+
   if (Object.keys(sentNow).length) await fbWrite(env, 'PATCH', 'pushSent', sentNow).catch(e => console.warn('pushSent: ' + e.message));
 
   // Hourly: forget scheduled-push records older than 3 days (and their ETAs)
   if (new Date(now).getUTCMinutes() < 5) {
     const old = {};
-    for (const [k, t] of Object.entries(sent)) if (/^(act|leave|worse)_/.test(k) && t < now - 3 * 864e5) old[k] = null;
+    for (const [k, t] of Object.entries(sent)) if (/^(act|leave|worse|brief|checkin|flt|edits)_/.test(k) && t < now - 3 * 864e5) old[k] = null;
     if (Object.keys(old).length) await fbWrite(env, 'PATCH', 'pushSent', old).catch(() => {});
     const oldEta = {};
     for (const [k, v] of Object.entries(etaState)) if (!v || v.at < now - 864e5) oldEta[k] = null;
     if (Object.keys(oldEta).length) await fbWrite(env, 'PATCH', 'pushState/eta', oldEta).catch(() => {});
+  }
+}
+
+const isoInTz = (ms, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+function addHHMM(hhmm, mins) {
+  const [h, m] = String(hhmm || '07:30').split(':').map(Number);
+  const t = Math.min(h * 60 + m + mins, 24 * 60 - 1);
+  return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+}
+
+// WMO weather codes (Open-Meteo), condensed — same groups as the app's icons
+function wWeatherText(code) {
+  if (code === 0) return '☀️ Clear';
+  if (code <= 2) return '🌤️ Partly cloudy';
+  if (code === 3) return '☁️ Cloudy';
+  if (code <= 48) return '🌫️ Fog';
+  if (code <= 57) return '🌦️ Drizzle';
+  if (code <= 67) return '🌧️ Rain';
+  if (code <= 77) return '🌨️ Snow';
+  if (code <= 82) return '🌧️ Showers';
+  if (code <= 86) return '🌨️ Snow showers';
+  return '⛈️ Storms';
+}
+
+// "☀️ Day 3 in Lyon" / "4 plans · first: 🍽️ Lunch at Bocuse, 12:30pm ·
+// 🏨 Hotel X · ☀️ Clear, 81°/60°"
+async function buildMorningBrief(env, trip, dayId, day, acts, dateISO, tz) {
+  const ordered = Object.entries(trip.days).map(([id, d]) => [id, d.dateISO || dayDateISO(d, trip.year) || '']).sort((a, b) => a[1].localeCompare(b[1]));
+  const dayNum = ordered.findIndex(([id]) => id === dayId) + 1;
+  const city = wCleanCity(day.city) || wCleanCity(day.region) || trip.name || 'your trip';
+  const parts = [];
+  const plans = acts.filter(a => a && (typeof a === 'string' || a.text));
+  const timed = plans.filter(a => typeof a === 'object' && wActStartMinutes(a.time) != null)
+    .sort((a, b) => wActStartMinutes(a.time) - wActStartMinutes(b.time));
+  if (plans.length) {
+    let line = plans.length + (plans.length === 1 ? ' plan' : ' plans');
+    if (timed.length) line += ' · first: ' + (timed[0].emoji ? timed[0].emoji + ' ' : '') + timed[0].text + ', ' + timed[0].time;
+    parts.push(line);
+  } else parts.push('Nothing planned — a free day');
+  if (day.hotel) parts.push('🏨 ' + day.hotel);
+  try {
+    const place = wCleanCity(day.city) || wCleanCity(day.region);
+    const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
+    if (c) {
+      const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
+        '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + dateISO);
+      const d = w && w.daily;
+      if (d && d.weathercode && d.weathercode.length) {
+        parts.push(wWeatherText(d.weathercode[0]) + ', ' + Math.round(d.temperature_2m_max[0]) + '°/' + Math.round(d.temperature_2m_min[0]) + '°');
+      }
+    }
+  } catch (e) {}
+  return { title: '☀️ Day ' + (dayNum || '') + ' in ' + city, body: parts.join(' · '), collapseId: 'brief_' + dateISO };
+}
+
+// ── Flights ──
+// Legs come from trip.flightOut / flightReturn (one "UA100 DEN → LIS · 8:00am
+// – 10:00pm" per line) and each day's flightInfo. A day before departure the
+// Worker looks the leg up on AeroDataBox (same source as /flight-lookup) to
+// learn its real times; it polls again only in the 4 hours before departure,
+// so a leg costs about ten lookups.
+
+function tripFlightLegs(trip) {
+  const legs = [];
+  const add = (formatted, dateISO, idx) => {
+    const m = String(formatted || '').trim().match(/^([A-Z0-9]{2}\s?\d{1,4}[A-Z]?)\b/i);
+    if (m && /^\d{4}-\d{2}-\d{2}$/.test(dateISO || '')) legs.push({ num: m[1].replace(/\s+/g, '').toUpperCase(), dateISO, idx, formatted });
+  };
+  const named = (label, fallback) => {
+    if (!label) return fallback;
+    const [mon, num] = String(label).trim().split(/\s+/);
+    return dayDateISO({ dateMonth: mon, dateNum: num }, trip.year) || fallback;
+  };
+  const outISO = named(trip.flightOutDate, wTripStartISO(trip));
+  const retISO = named(trip.flightReturnDate, wTripEndISO(trip));
+  String(trip.flightOut || '').split('\n').filter(Boolean).forEach((f, i) => add(f, outISO, i));
+  String(trip.flightReturn || '').split('\n').filter(Boolean).forEach((f, i) => add(f, retISO, i));
+  Object.values(trip.days || {}).forEach(d => {
+    if (!d || !d.flightInfo) return;
+    (Array.isArray(d.flightInfo) ? d.flightInfo : [d.flightInfo]).forEach((fi, i) => fi && add(fi.formatted, d.dateISO || dayDateISO(d, trip.year), i));
+  });
+  return legs;
+}
+
+const aeroUtc = t => { const m = String(t || '').match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/); return m ? Date.parse(m[1] + 'T' + m[2] + ':00Z') : null; };
+const aeroLocal = t => {
+  const m = String(t || '').match(/[ T](\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const h = +m[1];
+  return (h % 12 || 12) + ':' + m[2] + (h < 12 ? 'am' : 'pm');
+};
+
+async function lookupFlight(env, num, dateISO) {
+  if (!env.AERODATABOX_KEY) return null;
+  const r = await fetch('https://aerodatabox.p.rapidapi.com/flights/number/' + encodeURIComponent(num) + '/' + dateISO,
+    { headers: { 'X-RapidAPI-Key': env.AERODATABOX_KEY, 'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com' } });
+  if (!r.ok) return null;
+  const list = await r.json().catch(() => null);
+  const f = Array.isArray(list) ? list[0] : list;
+  if (!f || !f.departure) return null;
+  const dep = f.departure, arr = f.arrival || {};
+  const best = x => (x.revisedTime || x.predictedTime || x.scheduledTime || {});
+  return {
+    from: (dep.airport && dep.airport.iata) || '', to: (arr.airport && arr.airport.iata) || '',
+    schedUtc: aeroUtc((dep.scheduledTime || {}).utc), depUtc: aeroUtc(best(dep).utc),
+    schedLocal: aeroLocal((dep.scheduledTime || {}).local), depLocal: aeroLocal(best(dep).local),
+    gate: dep.gate || '', terminal: dep.terminal || '',
+    status: String(f.status || ''),
+  };
+}
+
+async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightState, send, now) {
+  const who = recipients.filter(k => prefsOf(k).flights);
+  if (!who.length) return;
+  const today = new Date(now).toISOString().slice(0, 10);
+  for (const leg of tripFlightLegs(trip)) {
+    const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
+    let st = flightState[key] || null;
+    // Only legs from yesterday (still in the air) to tomorrow (check-in)
+    const dayDiff = (Date.parse(leg.dateISO) - Date.parse(today)) / 864e5;
+    if (dayDiff < -1 || dayDiff > 1) continue;
+    if (st && st.depUtc && now > st.depUtc + 3 * 3600e3) continue;   // long gone
+
+    const depAt = st && (st.depUtc || st.schedUtc);
+    const pollEvery = depAt && depAt - now <= 4 * 3600e3 && now <= depAt + 30 * 60000 ? 20 * 60000 : 12 * 3600e3;
+    if (!st || now - (st.at || 0) >= pollEvery) {
+      let info = await lookupFlight(env, leg.num, leg.dateISO).catch(() => null);
+      // A later leg of a connection can leave the next day
+      if (!info && leg.idx > 0) {
+        const next = new Date(Date.parse(leg.dateISO) + 864e5).toISOString().slice(0, 10);
+        info = await lookupFlight(env, leg.num, next).catch(() => null);
+      }
+      const prev = st || {};
+      st = Object.assign({}, prev, info || {}, { at: now });
+      await fbWrite(env, 'PUT', 'pushState/flights/' + key, st).catch(() => {});
+      if (info) {
+        const label = leg.num + ' ' + (info.from && info.to ? info.from + ' → ' + info.to : '');
+        const route = { screen: 'trip', tripId };
+        const msgs = [];
+        const delayMin = info.depUtc && info.schedUtc ? Math.round((info.depUtc - info.schedUtc) / 60000) : 0;
+        if (/cancel/i.test(info.status) && !/cancel/i.test(prev.status || '')) {
+          msgs.push(['flt_cancel_' + key, { title: '❌ ' + leg.num + ' canceled', body: label + ' was canceled. Check the airline app to rebook.', timeSensitive: true }]);
+        } else {
+          if (delayMin >= 15 && Math.abs(delayMin - (prev.notifiedDelay || 0)) >= 15) {
+            msgs.push(['flt_delay_' + key + '_' + delayMin, { title: '⏱️ ' + leg.num + ' delayed ' + delayMin + ' min',
+              body: label + ' now departs ' + info.depLocal + ' (was ' + info.schedLocal + ')', timeSensitive: true }]);
+            st.notifiedDelay = delayMin;
+          } else if (prev.notifiedDelay >= 15 && delayMin < 15) {
+            msgs.push(['flt_ontime_' + key + '_' + now, { title: '✅ ' + leg.num + ' back on time', body: label + ' departs ' + info.depLocal }]);
+            st.notifiedDelay = 0;
+          }
+          if (info.gate && prev.gate && info.gate !== prev.gate) {
+            msgs.push(['flt_gate_' + key + '_' + info.gate, { title: '🚪 ' + leg.num + ' gate change: ' + info.gate,
+              body: label + ' — gate ' + prev.gate + ' → ' + info.gate + (info.terminal ? ' (terminal ' + info.terminal + ')' : ''), timeSensitive: true }]);
+          } else if (info.gate && !prev.gate && info.depUtc && info.depUtc - now < 4 * 3600e3) {
+            msgs.push(['flt_gate_' + key + '_' + info.gate, { title: '🚪 ' + leg.num + ' departs from gate ' + info.gate,
+              body: label + (info.terminal ? ' · terminal ' + info.terminal : '') + ' · ' + info.depLocal }]);
+          }
+        }
+        for (const [id, msg] of msgs) for (const k of who) await send(id + '_' + k, k, Object.assign({ route, threadId: 'flt_' + key, collapseId: 'flt_' + key }, msg));
+        if (msgs.length) await fbWrite(env, 'PUT', 'pushState/flights/' + key, st).catch(() => {});
+      }
+    }
+
+    // Check-in opens ~24h before departure
+    const dep = st && (st.depUtc || st.schedUtc);
+    if (dep && now >= dep - 24 * 3600e3 && now < dep - 3 * 3600e3) {
+      for (const k of who) await send('checkin_' + key + '_' + k, k, {
+        title: '✈️ Check in for ' + leg.num,
+        body: (st.from && st.to ? st.from + ' → ' + st.to + ' · ' : '') + 'departs ' + (st.depLocal || st.schedLocal || '') + ' (local). Online check-in is usually open now.',
+        route: { screen: 'trip', tripId }, threadId: 'flt_' + key,
+      });
+    }
+  }
+}
+
+// ── Trip-change digest ──
+// trips/{id}/changeLog entries ({ts, action, detail, user, by}) are bundled:
+// once nobody has edited a trip for 10 minutes, everyone else on it gets one
+// push for the batch. `by` (the editor's email) is newer; older entries only
+// carry a display name, matched against access names.
+async function runEditDigest(env, tripId, trip, recipients, access, prefsOf, cursor, send, now) {
+  const log = Object.values(trip.changeLog || {}).filter(e => e && e.ts);
+  if (cursor == null) {   // first sight of this trip: start from now, don't replay history
+    await fbWrite(env, 'PUT', 'pushState/editCursor/' + tripId, now);
+    return;
+  }
+  const fresh = log.filter(e => e.ts > cursor).sort((a, b) => a.ts - b.ts);
+  if (!fresh.length || fresh[fresh.length - 1].ts > now - 10 * 60000) return;   // still being edited
+  await fbWrite(env, 'PUT', 'pushState/editCursor/' + tripId, fresh[fresh.length - 1].ts);
+  const tripName = trip.name || 'a trip';
+  for (const k of recipients) {
+    if (!prefsOf(k).tripEdits) continue;
+    const myEmail = k.replace(/,/g, '.');
+    const myName = String((access[k] || {}).name || '').toLowerCase();
+    const others = fresh.filter(e => e.by ? String(e.by).toLowerCase() !== myEmail : String(e.user || '').toLowerCase() !== myName);
+    if (!others.length) continue;
+    const names = [...new Set(others.map(e => e.user || 'Someone'))];
+    const lines = others.slice(0, 3).map(e => e.action + (e.detail ? ': ' + e.detail : ''));
+    if (others.length > 3) lines.push('+' + (others.length - 3) + ' more');
+    await send('edits_' + tripId + '_' + fresh[fresh.length - 1].ts + '_' + k, k, {
+      title: '✏️ ' + names.join(' & ') + (others.length === 1 ? ' updated ' : ' made ' + others.length + ' changes to ') + tripName,
+      body: lines.join('\n'),
+      route: { screen: 'trip', tripId, tab: 'changes' },
+      threadId: tripId,
+    });
   }
 }

@@ -8534,7 +8534,9 @@ async function logChange(tripId, action, detail) {
   if (!tripId) return;
   try {
     const r = window._push(window._ref(window._db, 'trips/' + tripId + '/changeLog'));
-    await window._set(r, { ts: Date.now(), action, detail: detail || '', user: adminUser || 'Admin' });
+    // `by` lets the Worker leave the editor out of the trip-change push
+    await window._set(r, { ts: Date.now(), action, detail: detail || '', user: adminUser || 'Admin',
+      by: ((currentUser && currentUser.email) || '').toLowerCase() });
   } catch(e) { console.warn('logChange failed', e); }
 }
 

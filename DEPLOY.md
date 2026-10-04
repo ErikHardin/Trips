@@ -234,6 +234,14 @@ it as `MAPS_KEY_P8` / `MAPS_KEY_ID`. Without either, leave-by falls back to
 OSRM drive times, which ignore traffic. Drive stops come from the app: opening
 a current trip saves each drive's location to `pushGeo/`.
 
+The same cron also sends:
+- **The morning brief** on trip days.
+- **Flight alerts** for the trip's outbound and return flights and any in-trip
+  flights: a check-in reminder, delays, gate changes and cancellations. These
+  use `AERODATABOX_KEY`, at about ten lookups per flight leg.
+- **A digest of other people's edits**, from the trip's change log, sent
+  10 minutes after the last edit.
+
 ## "This project is disconnected from your Git account"
 
 A banner saying this can appear in the Builds section even when the repository
