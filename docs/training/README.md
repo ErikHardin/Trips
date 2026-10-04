@@ -22,7 +22,8 @@ A walkthrough of the Trips app for the whole family: how to sign in, find your w
 12. [Editing a trip](#12-editing-a-trip)
 13. [The world map](#13-the-world-map)
 14. [The admin screen](#14-the-admin-screen)
-15. [Tips and FAQ](#15-tips-and-faq)
+15. [The iPhone app](#15-the-iphone-app)
+16. [Tips and FAQ](#16-tips-and-faq)
 
 ---
 
@@ -43,7 +44,7 @@ Open the app and pick one way to sign in. Each one works with the email address 
 
 If your email hasn't been added yet, the app sends Erik a request for you and shows *"Thanks! Your request to join was sent…"*. Leave the page open, or come back later: it opens by itself once an admin approves you. To try another account, tap **Sign in with a different account**.
 
-- **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon.
+- **Install it like an app:** in Safari, tap **Share → Add to Home Screen**. The app then opens full-screen with its own icon. Family members Erik has invited can also use the real iPhone app instead ([section 15](#15-the-iphone-app)).
 - **To sign out**, tap the 🔒 lock in the top-right corner of the home screen, then **Sign out**.
 - **To delete your account**, tap the 🔒 lock, then **Delete account**. You confirm with your sign-in one more time. This removes your sign-in and your access. Trips you created stay in the app for everyone else.
 
@@ -78,7 +79,7 @@ Tap a card to open the trip. **When a trip is in progress, the app opens straigh
 Header buttons:
 
 - 🌏 **World Map**: every place you've been ([section 13](#13-the-world-map)).
-- ⚙️ **Admin**: admins only ([section 14](#14-the-admin-screen)).
+- ⚙️ **Admin**: admins only ([section 14](#14-the-admin-screen)). A number on the gear counts bookings waiting in the [Booking Inbox](#booking-inbox).
 - 🔒 **Sign out**.
 
 **＋ Add New Trip** takes admins and users to the trip-creation form.
@@ -159,9 +160,10 @@ Tap **📝** next to an activity, or **Day Memories** on a day card, to open its
 - Tap **Save Memory**. Everyone with access to the trip will see it.
 - Use **✏️ Edit** or **🗑️ Delete** on your saved memories.
 - Tap any photo to view it full-screen. Swipe or use the arrows to move between photos.
+- **Zoom in on a photo** by pinching with two fingers or double-tapping the spot you want to see. Drag with one finger to look around while zoomed, and double-tap again (or pinch back out) to return. On a computer, use the scroll wheel or double-click, and drag to pan. Photos are saved at high resolution, so they stay sharp when zoomed.
 - **Recommend this activity** (admins): marks the activity with ⭐ *Recommended* in the trip's Memories and in shared links.
 
-Adding photos needs an internet connection. See [Tips and FAQ](#15-tips-and-faq) for offline use.
+Adding photos needs an internet connection. See [Tips and FAQ](#16-tips-and-faq) for offline use.
 
 <br clear="all">
 
@@ -177,10 +179,22 @@ The ✏️ on a day card opens a quick editor for that day's activities:
 - Change the **time** (use am/pm, like `7:30pm` or `10am–2pm`).
 - 🚗 toggles whether you're driving there. That controls the drive-time estimate.
 - The **status** menu sets the booking status (Booked, Paid, Not booked…).
-- **✕** removes an activity. **＋ Add Activity** adds one.
-- Tap **Save Activities** when done, or **Cancel** to throw away your changes.
+- **✕** removes an activity. The app asks first, and offers **Move to Wishlist** if you'd rather keep the idea for later. **＋ Add Activity** adds one.
+- Tap **Save Activities** when done.
 
 Every change is recorded in the **Changes** tab.
+
+<br clear="all">
+
+<img src="img/31-unsaved-changes.png" width="280" align="right" alt="Save your changes? prompt">
+
+**Unsaved changes are never lost by accident.** If you close the editor (or tap outside it) with changes you haven't saved, the app asks:
+
+- **Save**: keeps your changes.
+- **Discard changes**: throws them away.
+- **Keep editing**: goes back to the editor.
+
+The same prompt appears in the day editor and the full trip editor ([section 12](#12-editing-a-trip)).
 
 <br clear="all">
 
@@ -285,7 +299,7 @@ Tap **✏️** in a trip's header (or **Edit** under **Admin → Manage Existing
 
 **Flights**: tap **＋ Add Flight**, enter flight numbers and dates, then tap **Look Up All**. The app fills in routes and times automatically. Flights are sorted into Outbound, Return and In-trip. You can add a traveler's name to a flight when family members fly separately.
 
-Tap **Save** (top-right) or **Save Trip Details** to keep your changes.
+Tap **Save** (top-right) or **Save Trip Details** to keep your changes. If you tap **‹** with unsaved changes, including flight numbers you typed but haven't looked up yet, the app asks whether to **Save**, **Discard changes** or **Keep editing**. Removing a flight also asks you to confirm first.
 
 <br clear="all">
 
@@ -320,6 +334,7 @@ Admins can hide a trip from the map with the **Show on world map** checkbox in t
 Tap ⚙️ on the home screen. Each section opens and closes with **＋ / −**. The PR number of the currently deployed version is shown at the very bottom.
 
 **Trips**
+- Booking Inbox (admins only)
 - Add New Trip
 - Manage Existing Trips
 - AI Trip Assistant
@@ -334,6 +349,51 @@ Tap ⚙️ on the home screen. Each section opens and closes with **＋ / −**.
 - Create Trip PDF
 
 Users (not just admins) see **Add New Trip** here too.
+
+<br clear="all">
+
+### Booking Inbox
+
+<img src="img/29-admin-booking-inbox.png" width="280" align="right" alt="Booking Inbox">
+
+Instead of typing bookings in by hand, **forward the confirmation email** to the inbox address. The app reads it and fills in the details for you. It understands:
+
+- ✈️ **Flights**: flight numbers, routes, times and travelers
+- 🏨 **Hotels**: hotel, city, check-in and check-out dates
+- 🚗 **Rental cars**: company, pick-up and drop-off
+- 🎟️ **Activities and reservations**: restaurants, tours, tastings, tickets, shows, spa bookings
+
+Each forwarded email appears here as a card, and the ⚙️ button shows how many are waiting. Admins also get a push on the ntfy reminders topic.
+
+**To add a booking to a trip:**
+
+1. Open **Admin → Booking Inbox**.
+2. Check the details the app read from the email, and the confirmation number.
+3. The app picks the trip whose dates match. Choose a different one from the menu if needed.
+4. Tap **Add to Trip**.
+
+The booking lands in the right places: flights in the trip's outbound, return or in-trip flights; the hotel on each night's day card, with a check-in activity; rental-car pick-up and return as activities; reservations on their day with their time and a *Booked* or *Paid* status. If the day already has the same place planned (say, *Dinner at Sushi Saito*), that activity is marked booked and given its time instead of being added twice. The matching line on the Logistics **Booking Checklist** is ticked too.
+
+**Dismiss** removes a card without adding it. Added and dismissed bookings move to **Recent** at the bottom. Added ones clear after a day, and dismissed ones after a week (tap **Restore** if you dismissed one by mistake).
+
+If a card says the app *couldn't read this email*, tap **Read Again**, or fix it by hand (next).
+
+<br clear="all">
+
+<img src="img/30-admin-booking-edit.png" width="280" align="right" alt="Edit booking">
+
+**Fixing a booking before adding it:** sometimes an email is missing a flight or a detail comes through wrong. Tap **✏️ Edit booking** on the card to see everything the app read as a form:
+
+- Change any field: flight number, date, airports, times, travelers, confirmation number.
+- **✕** removes a flight, hotel, car or activity from this booking.
+- **+ Flight**, **+ Hotel**, **+ Car** and **+ Activity** add one by hand.
+- Tap **Save** to update the card, then **Add to Trip** as usual.
+
+**The settings at the top of the inbox** (tap each to open it):
+
+- **Inbox address**: the email address to forward bookings to. It's shown in the summary line, so you can see it without opening it. To change it, tap **Edit**, type the new address, then tap **Save**.
+- **Approved senders**: anyone in User Access can forward bookings. If you book from an address that doesn't have an app account (a personal Yahoo account, say), add it here so its emails are accepted. Emails from anyone else are refused.
+- **Paste a confirmation instead**: paste the text of a confirmation and tap **✨ Read Booking**. It appears as a card just like a forwarded email.
 
 <br clear="all">
 
@@ -419,7 +479,7 @@ Use **Edit** to change someone's role or trips, and **Remove** to revoke access.
 - **Translations**: choose which cities or regions get the 🗣️ phrase chip. Add a keyword that matches the day's city or region, plus the country code.
 - **Import from CSV**: bulk-load days into a trip. Pick the trip, then choose a file or paste the data. Columns: `Date, Day, City, Hotel, Activities, Region, RegionColor`. Separate activities with `|`.
 - **Logistics Packing List**: the family packing template (one list per person) that new trips start with.
-- **Create Trip PDF**: a printable itinerary for any trip (next screenshot).
+- **Create Trip PDF**: a printable itinerary for any trip (next screenshot). In the iPhone app the PDF opens inside the app. Tap **📤 Share PDF** to save it to Files, email it, AirDrop it or print it.
 
 <br clear="all">
 
@@ -427,7 +487,33 @@ Use **Edit** to change someone's role or trips, and **Remove** to revoke access.
 
 ---
 
-## 15. Tips and FAQ
+## 15. The iPhone app
+
+Besides opening the website in Safari, there's a real **Hardin Trips** app for iPhone. It's shared through Apple's **TestFlight** app rather than the App Store.
+
+**To install it:**
+
+1. Send Erik the email address of your Apple ID. He invites you as a tester.
+2. Accept the invitation email from Apple.
+3. Install **TestFlight** from the App Store, open it, and tap **Install** next to Hardin Trips.
+
+**Signing in** works the same as on the website ([section 1](#1-signing-in)). **Sign in with Google** and **Sign in with Apple** open the iPhone's own sign-in sheets.
+
+**Updates are automatic.** The app always shows the latest version of Trips, so you never need to update it for new features. Every few months TestFlight offers a new build of the app itself. Install it when asked, because older builds stop opening after 90 days.
+
+**No signal?** The app shows *Can't reach Hardin Trips* with a **Try again** button.
+
+**Upcoming Trips widget:** the app comes with a home-screen widget that shows countdowns to your next trips and the flights, hotels or cars still to book.
+
+1. Touch and hold an empty spot on the home screen until the apps jiggle.
+2. Tap **+** (or **Edit → Add Widget**) in the top corner.
+3. Search for **Hardin Trips**, pick the small or medium size, and tap **Add Widget**.
+
+The widget refreshes about once an hour. Tap it to open the app.
+
+---
+
+## 16. Tips and FAQ
 
 <img src="img/26-guest-home.png" width="280" align="right" alt="What a guest sees">
 
@@ -442,5 +528,7 @@ Use **Edit** to change someone's role or trips, and **Remove** to revoke access.
 **Can I undo a change?** There's no undo button, but the **Changes** tab shows what the value was, so you can put it back by hand.
 
 **A place is pinned in the wrong spot on the map.** Fix it with the Pin option in the Maps sheet ([section 4](#opening-a-place-in-maps)).
+
+**The weather or local time is for the wrong place.** The app may have matched the day's city to a different place with the same name (for example, *Kona* in India instead of Hawaii). Make the city more specific in the day editor (*Kailua-Kona*). The weather pill and the region's clock update to the new place.
 
 <br clear="all">
