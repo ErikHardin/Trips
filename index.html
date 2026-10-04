@@ -1421,8 +1421,8 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   <div class="app-header">
     <button class="back-btn" onclick="goHome()">‹</button>
     <div class="header-titles">
-      <div class="header-eyebrow">Admin</div>
-      <div class="header-main">Manage Trips</div>
+      <div class="header-eyebrow" id="adminScreenEyebrow">Admin</div>
+      <div class="header-main" id="adminScreenTitle">Manage Trips</div>
     </div>
   </div>
   <div class="scroll-content">
@@ -1430,8 +1430,8 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     <!-- TRIPS GROUP -->
     <div class="admin-group-header">Trips</div>
 
-    <!-- BOOKING INBOX -->
-    <div class="admin-section admin-only-section">
+    <!-- BOOKING INBOX (users see only bookings they sent) -->
+    <div class="admin-section user-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="bookingInboxHeader" onclick="toggleAdminSection('bookingInbox')">
           <div class="admin-section-title">Booking Inbox<span class="inbox-count" id="bookingInboxCount" style="display:none;"></span></div>
@@ -1440,21 +1440,25 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
         <div class="admin-panel-body" id="bookingInboxBody" style="display:none;">
           <div class="inbox-howto">
             Forward flight, hotel, rental-car and activity/reservation confirmations to the inbox address. Each one is read automatically and waits here until you pick its trip.
+            <div class="user-only-control" style="margin-top:6px;">Only bookings forwarded from the email you sign in with (or an address an admin linked to you) show here.</div>
             <details id="bookingInboxAddressDetails">
               <summary id="bookingInboxAddressSummary">Inbox address</summary>
               <div style="display:flex;gap:8px;align-items:center;margin:8px 0 4px;">
                 <input class="form-input" id="bookingInboxAddress" placeholder="trips@yourdomain.com" disabled style="margin:0;flex:1;">
-                <button class="form-btn secondary" id="bookingInboxAddressBtn" style="width:auto;padding:10px 16px;" onclick="toggleBookingInboxAddressEdit()">Edit</button>
+                <button class="form-btn secondary admin-only-control" id="bookingInboxAddressBtn" style="width:auto;padding:10px 16px;" onclick="toggleBookingInboxAddressEdit()">Edit</button>
               </div>
             </details>
-            <details id="bookingSendersDetails">
+            <details id="bookingSendersDetails" class="admin-only-control">
               <summary id="bookingSendersSummary">Approved senders</summary>
-              <div style="margin:8px 0 6px;">People with app accounts can always send. Add other addresses you book from.</div>
+              <div style="margin:8px 0 6px;">People with app accounts can always send. Add other addresses you book from; link one to a user to show its bookings in their inbox too.</div>
               <div id="bookingSendersList"></div>
               <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                 <input class="form-input" id="bookingSenderInput" type="email" placeholder="name@example.com" style="margin:0;flex:1;" onkeydown="if(event.key==='Enter')addBookingSender()">
                 <button class="form-btn secondary" style="width:auto;padding:10px 16px;" onclick="addBookingSender()">Add</button>
               </div>
+              <select class="form-input" id="bookingSenderOwner" style="margin:8px 0 0;">
+                <option value="">Belongs to — admins only</option>
+              </select>
             </details>
             <details>
               <summary>Paste a confirmation instead</summary>
@@ -1516,8 +1520,8 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
 
-    <!-- AI ASSISTANT -->
-    <div class="admin-section admin-only-section">
+    <!-- AI ASSISTANT (users see only trips they can manage) -->
+    <div class="admin-section user-section">
       <div class="admin-panel">
         <div class="admin-panel-header" id="aiSectionHeader" onclick="toggleAdminSection('aiSection')">
           <div class="admin-section-title">AI Trip Assistant</div>
@@ -1993,7 +1997,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ FIREBASE ══ -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-import { getDatabase, ref, set, update, push, onValue, remove, get } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
+import { getDatabase, ref, set, update, push, onValue, remove, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-storage.js";
 import { getAuth, GoogleAuthProvider, OAuthProvider, EmailAuthProvider, signInWithPopup, signInWithCredential, onAuthStateChanged, signOut,
   createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
@@ -2027,6 +2031,9 @@ window._push = push;
 window._onValue = onValue;
 window._remove = remove;
 window._get = get;
+window._query = query;
+window._orderByChild = orderByChild;
+window._equalTo = equalTo;
 window._uploadBytes = uploadBytes;
 window._getDownloadURL = getDownloadURL;
 window._GoogleAuthProvider = GoogleAuthProvider;
@@ -2352,9 +2359,11 @@ async function handleSignedInUser(user) {
     try { await window._set(window._ref(window._db, `access/${emailKey}/lastLogin`), Date.now()); } catch(e) {}
     renderAppName();
     document.getElementById('lockBtn').style.display = '';
-    document.getElementById('adminNavBtn').style.display = userRole === 'admin' ? '' : 'none';
+    // Users get the same ⚙️ button, opening a Settings view with just their
+    // booking inbox, trip creation and the AI assistant (see showScreen)
+    document.getElementById('adminNavBtn').style.display = (userRole === 'admin' || userRole === 'user') ? '' : 'none';
     if (userRole === 'admin') checkOutstandingBookings();
-    if (userRole === 'admin') startBookingInboxListener();
+    if (userRole === 'admin' || userRole === 'user') startBookingInboxListener();
     if (userRole === 'admin') announcePendingAccessRequests();
     initApp();
   } catch(e) {
@@ -2833,9 +2842,20 @@ function showScreen(id) {
   if (id !== 'screen-trip') stopRegionClocks();
   if (id === 'screen-admin') {
     const isAdmin = userRole === 'admin';
-    document.querySelectorAll('#screen-admin .admin-only-section').forEach(el => {
+    const isUser = userRole === 'user';
+    document.querySelectorAll('#screen-admin .admin-only-section, #screen-admin .admin-only-control').forEach(el => {
       el.style.display = isAdmin ? '' : 'none';
     });
+    // Booking inbox and AI assistant are shared with users, limited to their own
+    // bookings and the trips they can manage
+    document.querySelectorAll('#screen-admin .user-section').forEach(el => {
+      el.style.display = isAdmin || isUser ? '' : 'none';
+    });
+    document.querySelectorAll('#screen-admin .user-only-control').forEach(el => {
+      el.style.display = isUser ? '' : 'none';
+    });
+    document.getElementById('adminScreenEyebrow').textContent = isAdmin ? 'Admin' : 'Settings';
+    document.getElementById('adminScreenTitle').textContent = isAdmin ? 'Manage Trips' : 'My Trips';
   }
 }
 window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
@@ -2845,6 +2865,7 @@ window.lockApp = async function(toastMsg) {
   userOwnerEmails = null; userOwnerEmailsPromise = null;
   outstandingBookingsCheckStarted = false;
   lastOutstandingPopupAt = null;
+  stopBookingInboxListener();
   document.getElementById('adminNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripRefreshBtn').style.display = 'none';
@@ -5135,8 +5156,9 @@ function populateImportSelect() {
   const sorted = Object.entries(allTrips).sort((a,b) => (b[1].year||0)-(a[1].year||0));
   const allOpts = '<option value="">— Select trip —</option>' +
     sorted.map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
+  // The AI assistant writes to the trip, so it only offers trips this person can manage
   const upcomingOpts = '<option value="">— Select trip —</option>' +
-    sorted.filter(([k,t]) => t.status === 'upcoming' || t.status === 'active')
+    sorted.filter(([k,t]) => (t.status === 'upcoming' || t.status === 'active') && canManageTrip(k))
     .map(([k,t])=>`<option value="${k}">${t.name||'Untitled'}</option>`).join('');
   const imp = document.getElementById('importTripSelect');
   if (imp) imp.innerHTML = allOpts;
@@ -9020,7 +9042,9 @@ window.addBookingSubItem = async function(tripId, key) {
 // ════════════════════════════════════════
 // Confirmations forwarded to the inbox address reach the Worker's email()
 // handler, which reads them with Claude and queues them at bookingInbox/{id}
-// (see worker.js). Here an admin picks each one's trip, and assignInboxItem()
+// (see worker.js), tagged with ownerEmail when the sender is (or is linked to)
+// an app account. Admins see every item; a user sees only their own and only
+// the trips they can manage. Here each one's trip is picked, and assignInboxItem()
 // writes it into the structures the rest of the app already reads: trip-level
 // flight strings, day flightInfo, day hotels, activities, and a checked line on
 // the Logistics booking checklist.
@@ -9031,7 +9055,12 @@ let _bookingInboxUnsub = null;
 
 function startBookingInboxListener() {
   if (_bookingInboxUnsub) return;
-  _bookingInboxUnsub = window._onValue(window._ref(window._db, 'bookingInbox'), snap => {
+  const inboxRef = window._ref(window._db, 'bookingInbox');
+  // The database rules only let a user read bookingInbox through this exact query
+  const source = userRole === 'admin' ? inboxRef
+    : window._query(inboxRef, window._orderByChild('ownerEmail'), window._equalTo(currentUser.email));
+  if (userRole === 'admin') loadInboxUserNames();
+  _bookingInboxUnsub = window._onValue(source, snap => {
     bookingInbox = snap.val() || {};
     pruneBookingInbox();
     updateBookingInboxBadges();
@@ -9143,10 +9172,11 @@ function _inboxItemDates(it) {
   return out.filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s || '')).sort();
 }
 
-// Trips a booking can go to: everything not marked past, soonest first
+// Trips a booking can go to: everything not marked past that this person can
+// manage (every trip for an admin), soonest first
 function _inboxTripOptions() {
   return Object.entries(allTrips)
-    .filter(([, t]) => t && t.status !== 'past')
+    .filter(([id, t]) => t && t.status !== 'past' && canManageTrip(id))
     .map(([id, t]) => [id, t, _tripRangeISO(t)])
     .sort((a, b) => (a[2].start || '9').localeCompare(b[2].start || '9'));
 }
@@ -9247,7 +9277,7 @@ function renderBookingInbox() {
         '<div class="inbox-item-icon">' + (INBOX_KIND_ICON[it.kind] || '📩') + '</div>' +
         '<div style="flex:1;min-width:0;">' +
           '<div class="inbox-item-summary">' + escHtml(String(it.summary || it.subject || 'Booking')) + '</div>' +
-          '<div class="inbox-item-meta">' + escHtml([it.source === 'paste' ? 'Pasted' : it.from, _inboxWhen(it.receivedAt)].filter(Boolean).join(' · ')) +
+          '<div class="inbox-item-meta">' + escHtml([it.source === 'paste' ? 'Pasted' : it.from, _inboxOwnerLabel(it), _inboxWhen(it.receivedAt)].filter(Boolean).join(' · ')) +
             (it.subject ? '<br>' + escHtml(String(it.subject)) : '') + '</div>' +
         '</div>' +
       '</div>' +
@@ -9480,16 +9510,50 @@ window.saveInboxEdit = async function(id, btn) {
 let bookingSenders = {};
 const _bookingSenderKey = email => email.replace(/\./g, ',');
 
+// User-role accounts (sign-in email → name), for linking an approved sender to
+// a user and labelling whose inbox an item is in. Admin only — access/ isn't
+// readable by anyone else.
+let _inboxUserNames = {};
+async function loadInboxUserNames() {
+  if (userRole !== 'admin') return;
+  try {
+    const snap = await window._get(window._ref(window._db, 'access'));
+    _inboxUserNames = {};
+    Object.entries(snap.val() || {}).forEach(([key, u]) => {
+      if (u && u.role === 'user') _inboxUserNames[key.replace(/,/g, '.')] = u.name || u.email || key.replace(/,/g, '.');
+    });
+  } catch(e) { console.warn('Could not load users for the booking inbox', e); }
+  const sel = document.getElementById('bookingSenderOwner');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Belongs to — admins only</option>' +
+      Object.entries(_inboxUserNames).sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([email, name]) => '<option value="' + escHtml(email) + '">Belongs to ' + escHtml(name) + '</option>').join('');
+    sel.value = cur;
+  }
+  renderBookingSenders();
+  const body = document.getElementById('bookingInboxBody');
+  if (body && body.style.display !== 'none') renderBookingInbox();
+}
+
+// "For Megan" on an admin's view of an item in a user's inbox
+function _inboxOwnerLabel(it) {
+  if (userRole !== 'admin' || !it.ownerEmail) return '';
+  const name = _inboxUserNames[it.ownerEmail];
+  return name ? 'For ' + name : '';
+}
+
 function renderBookingSenders() {
   const list = document.getElementById('bookingSendersList');
   const summary = document.getElementById('bookingSendersSummary');
   if (!list) return;
   const rows = Object.entries(bookingSenders)
-    .map(([key, s]) => [key, (s && s.email) || key.replace(/,/g, '.')])
+    .map(([key, s]) => [key, (s && s.email) || key.replace(/,/g, '.'), s && s.owner])
     .sort((a, b) => a[1].localeCompare(b[1]));
   if (summary) summary.textContent = 'Approved senders' + (rows.length ? ' (' + rows.length + ')' : '');
   list.innerHTML = rows.length
-    ? rows.map(([key, email]) => '<div class="inbox-recent-row"><span>' + escHtml(email) + '</span>' +
+    ? rows.map(([key, email, owner]) => '<div class="inbox-recent-row"><span>' + escHtml(email) + '</span>' +
+        (owner ? '<span>→ ' + escHtml(_inboxUserNames[owner] || owner) + '</span>' : '') +
         '<a href="#" onclick="removeBookingSender(\'' + escHtml(key) + '\');return false;" title="Remove">✕</a></div>').join('')
     : '<div style="color:var(--muted);font-style:italic;">No extra addresses yet.</div>';
 }
@@ -9508,11 +9572,14 @@ window.addBookingSender = async function() {
   if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email)) { showToast('Enter a valid email address'); return; }
   const key = _bookingSenderKey(email);
   if (bookingSenders[key]) { showToast('Already approved'); input.value = ''; return; }
+  const ownerSel = document.getElementById('bookingSenderOwner');
   const record = { email, addedAt: Date.now(), addedBy: adminUser || '' };
+  if (ownerSel && ownerSel.value) record.owner = ownerSel.value;
   try {
     await window._set(window._ref(window._db, 'config/bookingInboxSenders/' + key), record);
     bookingSenders[key] = record;
     input.value = '';
+    if (ownerSel) ownerSel.value = '';
     renderBookingSenders();
     showToast('Approved ' + email + ' ✓');
   } catch(e) { showToast('Save failed — check connection'); console.error(e); }
@@ -9591,6 +9658,8 @@ window.parsePastedBooking = async function() {
     await window._set(ref, {
       receivedAt: Date.now(),
       from: (currentUser && currentUser.email) || '',
+      // Whose inbox it's in — required by the database rules for a user's paste
+      ownerEmail: (currentUser && currentUser.email) || null,
       subject: '',
       source: 'paste',
       status: 'pending',
@@ -9832,6 +9901,7 @@ window.assignInboxItem = async function(itemId) {
   if (!tripId) { showToast('Choose a trip first'); return; }
   const trip = allTrips[tripId];
   if (!trip) { showToast('Trip not found'); return; }
+  if (!canManageTrip(tripId)) { showToast('You can’t add bookings to that trip'); return; }
   let plan;
   try {
     plan = await _planInboxAssignment(itemId, it, tripId, trip);
@@ -9884,7 +9954,7 @@ window.toggleAdminSection = function(sectionId) {
   }
   if (sectionId === 'bookingInbox' && opening) {
     loadBookingInboxAddress();
-    loadBookingSenders();
+    if (userRole === 'admin') { loadBookingSenders(); loadInboxUserNames(); }
     renderBookingInbox();
   }
 };

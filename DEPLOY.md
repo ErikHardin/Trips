@@ -121,13 +121,18 @@ address can't receive mail.
    `hardin-trips-ai`.
 3. In the app, open **Admin → Booking Inbox** and enter that address in
    **Inbox address**. It is only shown there as a reminder.
-4. Deploy `database.rules.json` to the Realtime Database. It adds the
-   admin-only `bookingInbox` rule, and the Worker's secret bypasses it.
+4. Deploy `database.rules.json` to the Realtime Database. Admins can read
+   all of `bookingInbox`. A user can only read it through a query on
+   `ownerEmail` equal to their own sign-in email, and can only write their own
+   items. `config/bookingInboxAddress` and `config/bookingInboxSenders` are
+   admin-only. The Worker's secret bypasses all of this.
 
 **Who can send:** mail is accepted from an address in User Access with the
 `admin` or `user` role, and from any address in **Booking Inbox → Approved
 senders**. Use that list for personal addresses you book from that have no app
-account; it's stored at `config/bookingInboxSenders`. The Worker checks the
+account; it's stored at `config/bookingInboxSenders`. An approved sender can
+be linked to a `user` account (**Belongs to**), so its bookings show in that
+user's inbox. The Worker checks the
 envelope sender, the `From` header, and
 the account Gmail names in `X-Forwarded-For` when auto-forwarding. Anything
 else is bounced with "Sender not allowed". This keeps junk out of the queue but
@@ -139,6 +144,14 @@ it switched off. Cloudflare refuses a direct reply to a forwarded (threaded)
 email ("original email is not repliable"). Sending a fresh email instead needs
 either each recipient verified under Email Routing, or a sending service (Resend,
 or Cloudflare Email Service on the Workers Paid plan).
+
+**Users:** a `user`-role account's ⚙️ button opens a Settings view with the
+Booking Inbox and the AI Trip Assistant only. The Worker tags each item with
+`ownerEmail`: the sender's own account, or the user an approved sender is
+linked to. A user sees only items tagged with their email, and only the trips
+they own or were granted. They can't see or edit the inbox address or approved
+senders. Admins still see every item, labelled "For {name}" when it belongs to
+a user.
 
 **Using it:** forward the confirmation email as is. It lands in the inbox
 within a few seconds, with a trip already suggested from its dates. If
