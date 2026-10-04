@@ -360,7 +360,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-04.4';
+const WORKER_VERSION = '2026-10-04.5';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -805,12 +805,14 @@ async function bookingAllowedSenders(env) {
   return map;
 }
 
-// Push to the booking's owner and to admins, each per their own settings
+// Push to whoever sent the booking in (its owner). An item with no owner — an
+// approved sender not linked to anyone — goes to admins so it isn't missed.
 async function notifyBookingQueued(env, item) {
   try {
-    const keys = new Set(await adminKeys(env));
-    if (item.ownerEmail) keys.add(String(item.ownerEmail).toLowerCase().replace(/\./g, ','));
-    await pushToKeys(env, [...keys], 'bookingInbox', {
+    const keys = item.ownerEmail
+      ? [String(item.ownerEmail).toLowerCase().replace(/\./g, ',')]
+      : await adminKeys(env);
+    await pushToKeys(env, keys, 'bookingInbox', {
       title: item.status === 'error' ? 'Booking inbox: couldn’t read an email' : '📥 New booking in your inbox',
       body: (item.summary || item.subject || 'Booking') + ' — tap to add it to a trip',
       route: { screen: 'inbox' },
@@ -1425,12 +1427,18 @@ async function driveEtaSeconds(env, from, to) {
   return null;
 }
 
-// People (with a registered device) who can see this trip
-function tripRecipients(access, tokens, trip, tripId) {
+// People (with a registered device) who are on this trip: its creator, guests
+// and users given it in User Access, and admins who ticked it under Settings →
+// Notifications → Trips I'm on (notifyPrefs/{key}/trips). Being an admin alone
+// doesn't count — admins can see every trip.
+function tripRecipients(access, tokens, trip, tripId, prefsAll) {
+  const owner = String(trip.ownerId || '').toLowerCase();
   return Object.keys(tokens || {}).filter(key => {
     const u = access[key];
     if (!u) return false;
-    return u.role === 'admin' || (u.trips && u.trips[tripId]) || (trip.ownerId && trip.ownerId.toLowerCase() === key.replace(/,/g, '.'));
+    if (owner && owner === key.replace(/,/g, '.')) return true;
+    if (u.role === 'admin') return !!(((prefsAll || {})[key] || {}).trips || {})[tripId];
+    return !!(u.trips && u.trips[tripId]);
   });
 }
 
@@ -1456,7 +1464,7 @@ async function runPushCron(env) {
 
   for (const [tripId, trip] of Object.entries(trips)) {
     if (!trip || !trip.days || trip.status === 'past') continue;
-    const recipients = tripRecipients(access, tokens, trip, tripId);
+    const recipients = tripRecipients(access, tokens, trip, tripId, prefsAll);
     if (!recipients.length) continue;
     for (const [dayId, day] of Object.entries(trip.days)) {
       const dateISO = day && (day.dateISO || dayDateISO(day, trip.year));
@@ -1557,7 +1565,7 @@ async function runPushCron(env) {
   // Flights and trip-change digests, per trip
   for (const [tripId, trip] of Object.entries(trips)) {
     if (!trip || trip.status === 'past') continue;
-    const recipients = tripRecipients(access, tokens, trip, tripId);
+    const recipients = tripRecipients(access, tokens, trip, tripId, prefsAll);
     if (!recipients.length) continue;
     try { await runFlightAlerts(env, tripId, trip, recipients, prefsOf, state.flights || {}, send, now); }
     catch (e) { console.warn('flights ' + tripId + ': ' + e.message); }

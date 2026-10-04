@@ -1761,6 +1761,11 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
           </div>
           <label class="form-label" style="margin-top:12px;">Notify me about</label>
           <div id="notifyPrefsList"></div>
+          <div class="admin-only-control">
+            <label class="form-label" style="margin-top:12px;">Trips I'm on</label>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5;">You get reminders, leave-by alerts, the morning brief, flight alerts and change updates only for these. Only you see this list.</div>
+            <div id="notifyMyTrips"></div>
+          </div>
           <label class="form-label" style="margin-top:12px;">Activity reminder</label>
           <select class="form-input" id="notifyLeadSelect" onchange="saveNotifyPref('activityLeadMin', parseInt(this.value, 10))">
             <option value="15">15 minutes before</option>
@@ -2322,7 +2327,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 335 };
+window.BUILD_INFO = { prNumber: 336 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3046,7 +3051,7 @@ const NOTIFY_TYPES = [
   { key: 'brief',          label: 'Morning brief',        hint: 'Your day at a glance on trip days' },
   { key: 'flights',        label: 'Flights',              hint: 'Check-in, delays, gate changes, cancellations' },
   { key: 'tripEdits',      label: 'Trip changes',         hint: 'When someone else edits a trip you’re on' },
-  { key: 'bookingInbox',   label: 'Booking inbox',        hint: 'A forwarded confirmation is ready to assign' },
+  { key: 'bookingInbox',   label: 'Booking inbox',        hint: 'A confirmation you forwarded is ready to add to a trip' },
   { key: 'accessRequests', label: 'Access requests',      hint: 'Someone asked to join', adminOnly: true },
 ];
 let _pushToken = null;
@@ -3177,6 +3182,7 @@ async function loadNotifySettings() {
         <input type="checkbox" ${p[t.key] ? 'checked' : ''} style="width:16px;height:16px;margin-top:2px;accent-color:var(--terracotta);" onchange="saveNotifyPref('${t.key}', this.checked)">
         <span><span style="font-size:14px;color:var(--ink);">${t.label}</span><br><span style="font-size:12px;color:var(--muted);">${t.hint}</span></span>
       </label>`).join('');
+  if (userRole === 'admin') renderNotifyMyTrips(p.trips || {});
   document.getElementById('notifyLeadSelect').value = String(p.activityLeadMin);
   document.getElementById('notifyBriefTime').value = p.briefTime;
   document.getElementById('notifyQuietHours').checked = !!p.quietHours;
@@ -3184,6 +3190,32 @@ async function loadNotifySettings() {
   document.getElementById('notifyQuietEnd').value = p.quietEnd;
   await renderPushStatus();
 }
+
+// Admins can see every trip, so they choose which ones they're on for
+// notifications. Saved privately at notifyPrefs/{emailKey}/trips/{tripId}.
+// Trips they created always count.
+function renderNotifyMyTrips(mine) {
+  const me = ((currentUser && currentUser.email) || '').toLowerCase();
+  const trips = Object.entries(allTrips || {})
+    .filter(([, t]) => t && (t.status === 'upcoming' || t.status === 'active'))
+    .sort((a, b) => String(a[1].startDateISO || '9999').localeCompare(String(b[1].startDateISO || '9999')));
+  document.getElementById('notifyMyTrips').innerHTML = trips.map(([id, t]) => {
+    const created = String(t.ownerId || '').toLowerCase() === me;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+      <input type="checkbox" ${created || mine[id] ? 'checked' : ''} ${created ? 'disabled' : ''}
+        style="width:16px;height:16px;accent-color:var(--terracotta);" onchange="saveNotifyTrip('${escAttr(id)}', this.checked)">
+      <span style="font-size:14px;color:var(--ink);">${t.emoji ? escHtml(t.emoji) + ' ' : ''}${escHtml(t.name || 'Trip')}${created ? ' <span style="color:var(--muted);font-size:12px;">(you created it)</span>' : ''}</span>
+    </label>`;
+  }).join('') || '<div style="font-size:13px;color:var(--muted);">No current trips.</div>';
+}
+
+window.saveNotifyTrip = async function(tripId, on) {
+  const k = pushEmailKey();
+  if (!k) return;
+  const r = window._ref(window._db, `notifyPrefs/${k}/trips/${tripId}`);
+  try { if (on) await window._set(r, true); else await window._remove(r); }
+  catch(e) { console.warn('saveNotifyTrip failed:', e); showToast('Couldn’t save — try again'); }
+};
 
 async function renderPushStatus() {
   const state = await registerForPush(false);
