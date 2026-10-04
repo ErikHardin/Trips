@@ -52,7 +52,12 @@ const closeModals = page => page.evaluate(() => [...document.body.children].forE
   // Quick activity editor
   await mark(page);
   await page.evaluate(() => openQuickActivityEditor('d01')); await wait(page, 800);
-  await shot(page, '08-quick-edit'); await page.evaluate(() => closeQuickActivityModalDirect()); await wait(page);
+  await shot(page, '08-quick-edit');
+  await page.evaluate(() => { const t = document.querySelector('#quickActivityModal .act-time-input'); t.value = '8:30pm'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+  await mark(page);
+  await page.evaluate(() => { requestCloseQuickActivity(); }); await wait(page, 600);
+  await shot(page, '31-unsaved-changes'); await closeModals(page);
+  await page.evaluate(() => closeQuickActivityModalDirect()); await wait(page);
 
   // Overview
   await page.evaluate(() => switchTripTab('overview', document.querySelector('.tab-btn[onclick*="overview"]'))); await wait(page, 4000);
@@ -94,6 +99,13 @@ const closeModals = page => page.evaluate(() => [...document.body.children].forE
   await page.evaluate(() => { goHome(); showScreen('screen-admin'); }); await wait(page);
   await scrollTop(page, 0);
   await shot(page, '18-admin');
+  await page.evaluate(() => toggleAdminSection('bookingInbox')); await wait(page, 800);
+  await scrollTo(page, '#bookingInboxHeader', 10);
+  await shot(page, '29-admin-booking-inbox');
+  await page.evaluate(() => startInboxEdit('b1')); await wait(page, 600);
+  await scrollTo(page, '#bookingInboxList', 10);
+  await shot(page, '30-admin-booking-edit');
+  await page.evaluate(() => { cancelInboxEdit('b1'); toggleAdminSection('bookingInbox'); }); await wait(page);
   await page.evaluate(() => toggleAdminSection('addTripSection')); await wait(page);
   await page.fill('#newTripName', 'Italy Spring 2027'); await page.fill('#newTripEmoji', '🇮🇹');
   await page.fill('#newTripStart', '2027-05-10'); await page.fill('#newTripEnd', '2027-05-20');
