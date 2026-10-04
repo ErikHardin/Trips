@@ -128,6 +128,11 @@ export default {
       }
     }
 
+    // Push: a test notification to the signed-in caller's own devices
+    if (url.pathname === '/push/test') {
+      return handlePushTest(env, body);
+    }
+
     // AI proxy (unchanged)
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -353,7 +358,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-03.1';
+const WORKER_VERSION = '2026-10-04.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -366,6 +371,9 @@ const WORKER_ENV_KEYS = [
   'NTFY_TOKEN',
   'ADMIN_PIN',
   'ADMIN_PIN_2',
+  'APNS_KEY_P8',
+  'APNS_KEY_ID',
+  'APPLE_TEAM_ID',
 ];
 
 const WORKER_ROUTES = [
@@ -376,6 +384,7 @@ const WORKER_ROUTES = [
   '/flight-lookup',
   '/ntfy-config',
   '/booking-parse',
+  '/push/test',
 ];
 
 async function handleVersion(env) {
@@ -1015,4 +1024,200 @@ function mailText(mail) {
   const html = parts.filter(p => p.type === 'text/html').map(p => p.text).join('\n');
   if (html && plain.length < 400) return tidyText(htmlToText(html));
   return plain;
+}
+
+// ── Push notifications (APNs) ─────────────────────────────────────────────────
+// The iOS app (ios-app/) registers with APNs and the site saves each device
+// token at pushTokens/{emailKey}/{token}. This Worker sends straight to APNs
+// over HTTP/2 with a token-based (.p8) key — see ios-app/IOS.md and DEPLOY.md.
+// Each person's choices live at notifyPrefs/{emailKey}; unset fields fall back
+// to NOTIFY_DEFAULTS (kept in step with the copy in index.html).
+
+const NOTIFY_DEFAULTS = {
+  accessRequests: true,  // admins: someone asked to join
+  bookingInbox:   true,  // a booking landed in your inbox (admins: anyone's)
+  activities:     true,  // upcoming timed activities
+  leaveBy:        true,  // traffic-aware "leave by" for drives
+  brief:          true,  // morning brief on trip days
+  flights:        true,  // delays, gate changes, check-in
+  tripEdits:      true,  // someone else changed a trip you're on
+  activityLeadMin: 30,
+  briefTime:      '07:30',
+  quietHours:     false,
+  quietStart:     '22:00',
+  quietEnd:       '07:00',
+};
+
+const APNS_HOSTS = { production: 'https://api.push.apple.com', sandbox: 'https://api.sandbox.push.apple.com' };
+
+function fbPath(env, path) {
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  return env.FIREBASE_URL + '/' + path.replace(/[%#? ]/g, encodeURIComponent) + '.json' + auth;
+}
+async function fbGet(env, path) { return wFetchJson(fbPath(env, path)); }
+async function fbWrite(env, method, path, value) {
+  const r = await fetch(fbPath(env, path), {
+    method, headers: { 'Content-Type': 'application/json' },
+    body: value === undefined ? undefined : JSON.stringify(value),
+  });
+  if (!r.ok) throw new Error(method + ' ' + path + ': status ' + r.status);
+}
+
+function b64url(bytes) {
+  let s = '';
+  bytes = new Uint8Array(bytes);
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+const b64urlJson = o => b64url(new TextEncoder().encode(JSON.stringify(o)));
+function b64urlDecode(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(s + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+}
+
+// A .p8 pasted into the dashboard may keep its PEM lines or arrive as one
+// line with literal "\n"s — either way only the base64 body matters.
+async function importP8(pem) {
+  const body = String(pem || '').replace(/\\n/g, '\n').replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  return crypto.subtle.importKey('pkcs8', b64urlDecode(body),
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+}
+
+// ES256 JWT for Apple's token-based auth (APNs and the Maps Server API).
+// WebCrypto returns the raw r||s signature JWS wants.
+async function appleJwt(env, p8, keyId, extraClaims) {
+  const head = b64urlJson({ alg: 'ES256', kid: keyId, typ: 'JWT' });
+  const claims = b64urlJson(Object.assign({ iss: env.APPLE_TEAM_ID, iat: Math.floor(Date.now() / 1000) }, extraClaims || {}));
+  const key = await importP8(p8);
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(head + '.' + claims));
+  return head + '.' + claims + '.' + b64url(sig);
+}
+
+// APNs accepts a provider token for up to an hour and rejects one refreshed
+// more often than every 20 minutes, so reuse it across requests in an isolate.
+let _apnsJwt = null;
+async function apnsJwt(env) {
+  if (_apnsJwt && Date.now() - _apnsJwt.at < 45 * 60 * 1000) return _apnsJwt.token;
+  _apnsJwt = { token: await appleJwt(env, env.APNS_KEY_P8, env.APNS_KEY_ID), at: Date.now() };
+  return _apnsJwt.token;
+}
+
+function pushConfigured(env) {
+  return !!(env.APNS_KEY_P8 && env.APNS_KEY_ID && env.APPLE_TEAM_ID && env.FIREBASE_URL);
+}
+
+async function apnsPost(env, host, deviceToken, payload, opts) {
+  const headers = {
+    'authorization': 'bearer ' + await apnsJwt(env),
+    'apns-topic': env.APNS_TOPIC || 'com.erikhardin.trips',
+    'apns-push-type': 'alert',
+    'apns-priority': '10',
+    'content-type': 'application/json',
+  };
+  if (opts.collapseId) headers['apns-collapse-id'] = String(opts.collapseId).slice(0, 64);
+  const r = await fetch(APNS_HOSTS[host] + '/3/device/' + deviceToken, { method: 'POST', headers, body: JSON.stringify(payload) });
+  if (r.ok) return { ok: true };
+  let reason = '';
+  try { reason = (await r.json()).reason || ''; } catch (e) {}
+  return { ok: false, status: r.status, reason };
+}
+
+// msg: { title, body, route?, threadId?, collapseId?, timeSensitive? }.
+// `route` rides along in the payload; the app opens it when the push is tapped.
+// Returns { sent, tokens, errors }. Tokens APNs reports dead are removed.
+async function sendPushToUser(env, emailKey, msg) {
+  const out = { sent: 0, tokens: 0, errors: [] };
+  if (!pushConfigured(env)) { out.errors.push('APNs secrets not configured'); return out; }
+  const devices = (await fbGet(env, 'pushTokens/' + emailKey)) || {};
+  const aps = { alert: { title: msg.title, body: msg.body }, sound: 'default' };
+  if (msg.threadId) aps['thread-id'] = msg.threadId;
+  if (msg.timeSensitive) aps['interruption-level'] = 'time-sensitive';
+  const payload = { aps, route: msg.route || null };
+
+  await Promise.all(Object.entries(devices).map(async ([token, rec]) => {
+    if (!/^[0-9a-f]{32,200}$/i.test(token)) return;
+    out.tokens++;
+    // TestFlight builds use production APNs, Xcode debug builds the sandbox.
+    // The site can't tell which, so try the remembered (or likelier) host and
+    // fall back to the other on BadDeviceToken, remembering what worked.
+    const first = rec && rec.env === 'sandbox' ? 'sandbox' : 'production';
+    const second = first === 'production' ? 'sandbox' : 'production';
+    try {
+      let res = await apnsPost(env, first, token, payload, msg);
+      let used = first;
+      if (!res.ok && res.reason === 'BadDeviceToken') {
+        res = await apnsPost(env, second, token, payload, msg);
+        used = second;
+      }
+      if (res.ok) {
+        out.sent++;
+        if (!rec || rec.env !== used) await fbWrite(env, 'PATCH', 'pushTokens/' + emailKey + '/' + token, { env: used }).catch(() => {});
+      } else if (res.status === 410 || res.reason === 'BadDeviceToken' || res.reason === 'Unregistered') {
+        await fbWrite(env, 'DELETE', 'pushTokens/' + emailKey + '/' + token).catch(() => {});
+        out.errors.push('removed stale device (' + (res.reason || res.status) + ')');
+      } else {
+        out.errors.push(res.status + ' ' + res.reason);
+      }
+    } catch (e) {
+      out.errors.push(e.message);
+    }
+  }));
+  return out;
+}
+
+// Merged prefs for one person (defaults for anything unset).
+async function notifyPrefs(env, emailKey) {
+  let p = null;
+  try { p = await fbGet(env, 'notifyPrefs/' + emailKey); } catch (e) {}
+  return Object.assign({}, NOTIFY_DEFAULTS, p || {});
+}
+
+// ── Firebase ID tokens ──
+// Push routes that act for a signed-in person take their Firebase ID token and
+// verify it here, so a caller can only reach their own devices.
+let _googleJwks = null;
+async function googleJwks() {
+  if (_googleJwks && Date.now() < _googleJwks.until) return _googleJwks.keys;
+  const r = await fetch('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
+  if (!r.ok) throw new Error('JWKS status ' + r.status);
+  const maxAge = parseInt((/max-age=(\d+)/.exec(r.headers.get('cache-control') || '') || [])[1] || '3600', 10);
+  _googleJwks = { keys: (await r.json()).keys || [], until: Date.now() + maxAge * 1000 };
+  return _googleJwks.keys;
+}
+
+// Returns { email, emailKey } for a valid, verified-email token; throws otherwise.
+async function verifyFirebaseIdToken(env, idToken) {
+  const parts = String(idToken || '').split('.');
+  if (parts.length !== 3) throw new Error('malformed token');
+  const header = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[0])));
+  const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
+  if (header.alg !== 'RS256') throw new Error('bad alg');
+  const jwk = (await googleJwks()).find(k => k.kid === header.kid);
+  if (!jwk) throw new Error('unknown key');
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64urlDecode(parts[2]),
+    new TextEncoder().encode(parts[0] + '.' + parts[1]));
+  if (!ok) throw new Error('bad signature');
+  const project = env.FIREBASE_PROJECT_ID || 'hardin-trips';
+  const now = Math.floor(Date.now() / 1000);
+  if (claims.aud !== project || claims.iss !== 'https://securetoken.google.com/' + project) throw new Error('wrong project');
+  if (!(claims.exp > now) || claims.iat > now + 300 || !claims.sub) throw new Error('expired');
+  if (!claims.email || claims.email_verified !== true) throw new Error('email not verified');
+  const email = String(claims.email).toLowerCase();
+  return { email, emailKey: email.replace(/\./g, ',') };
+}
+
+// POST /push/test { idToken } — sends a test push to the caller's own devices.
+async function handlePushTest(env, body) {
+  const CORS_JSON = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  let who;
+  try { who = await verifyFirebaseIdToken(env, body.idToken); }
+  catch (e) { return new Response(JSON.stringify({ error: 'Not signed in: ' + e.message }), { status: 401, headers: CORS_JSON }); }
+  const result = await sendPushToUser(env, who.emailKey, {
+    title: 'Notifications are on ✓',
+    body: 'This is a test from Hardin Trips.',
+    route: { screen: 'settings' },
+    collapseId: 'test',
+  });
+  return new Response(JSON.stringify(result), { headers: CORS_JSON });
 }

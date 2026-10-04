@@ -39,7 +39,9 @@ While you're on that screen, note the **compatibility date** (Settings →
 Runtime) and match it in `wrangler.toml` if it differs from what's there.
 
 The Worker reads: `ANTHROPIC_KEY`, `FIREBASE_URL`, `FIREBASE_SECRET`,
-`AERODATABOX_KEY`, `NTFY_TOPIC`, `NTFY_TOKEN`, `ADMIN_PIN`, `ADMIN_PIN_2`.
+`AERODATABOX_KEY`, `NTFY_TOPIC`, `NTFY_TOKEN`, `ADMIN_PIN`, `ADMIN_PIN_2`,
+and for push notifications `APNS_KEY_P8`, `APNS_KEY_ID`, `APPLE_TEAM_ID`
+(see below).
 
 ### 2. Connect the repo
 
@@ -199,6 +201,23 @@ signs in, their email has to be on that list. Firebase setup, once:
    A new request also posts to the ntfy topic (`NTFY_TOPIC`).
 5. iOS app: add the Sign in with Apple capability (see `ios-app/IOS.md`) and
    upload a new TestFlight build.
+
+## Push notifications (iOS app)
+
+The iOS app saves each device's APNs token under `pushTokens/{emailKey}/`, and
+each person's choices (Settings → Notifications) under `notifyPrefs/{emailKey}`.
+The Worker sends to APNs directly.
+
+1. Create the APNs key in Apple Developer (steps in `ios-app/IOS.md`).
+2. Cloudflare dashboard → Workers → `hardin-trips-ai` → Settings → Variables
+   and Secrets → add these as **Secrets** (encrypted):
+   - `APNS_KEY_P8`: the whole `.p8` file contents, BEGIN/END lines included.
+   - `APNS_KEY_ID`: the 10-character Key ID.
+   - `APPLE_TEAM_ID`: your 10-character Team ID.
+   - Optional: `APNS_TOPIC`, which defaults to `com.erikhardin.trips`.
+3. Deploy `database.rules.json` (it adds `pushTokens` and `notifyPrefs`).
+4. `/version` should list `/push/test` and show the three keys as configured.
+   In the app: Settings → Notifications → **Send a test**.
 
 ## "This project is disconnected from your Git account"
 

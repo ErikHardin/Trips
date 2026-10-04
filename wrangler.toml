@@ -41,6 +41,10 @@ enabled = true
 #   NTFY_TOKEN        /ntfy-config (optional)
 #   ADMIN_PIN         /verify-pin
 #   ADMIN_PIN_2       /verify-pin
+#   APNS_KEY_P8       push: APNs auth key (.p8 contents)
+#   APNS_KEY_ID       push: its Key ID
+#   APPLE_TEAM_ID     push: Apple Developer Team ID
+#   APNS_TOPIC        push: bundle id (optional, default com.erikhardin.trips)
 #
 # IMPORTANT — check this before the first automated deploy. In the dashboard,
 # each of the above is either an encrypted "Secret" or a plain-text "Variable".
