@@ -27,9 +27,37 @@ does **not** need `GoogleService-Info.plist`.
 Sign in with Apple uses the same plugin. Apple's native sheet returns an ID
 token, which the site hands to Firebase with a nonce. It needs the **Sign in
 with Apple** capability on the App target: Xcode → **Signing & Capabilities** →
-**+ Capability** → *Sign in with Apple*. This adds `App.entitlements`; commit
-it. `providers.apple` is turned on in `capacitor.config.json`. Run
+**+ Capability** → *Sign in with Apple*. `ios/App/App/App.entitlements` is
+committed with this capability (and Push, below) already in it.
+`providers.apple` is turned on in `capacitor.config.json`. Run
 `npx cap sync ios` after pulling.
+
+## Push notifications
+
+The app registers for iOS push via `@capacitor/push-notifications`; the site
+saves each device's token to Firebase and the Worker sends pushes directly to
+APNs. `AppDelegate.swift` forwards the device token to the plugin,
+`Info.plist` turns on the *remote-notification* background mode, and
+`App.entitlements` carries `aps-environment` (Xcode switches it to production
+when you archive for TestFlight).
+
+One-time setup:
+
+1. If `git pull` refuses because a local, uncommitted `App.entitlements`
+   would be overwritten, delete the local copy and pull again — the committed
+   one already includes Sign in with Apple.
+2. Xcode → App target → **Signing & Capabilities**: confirm **Push
+   Notifications** and **Sign in with Apple** both appear (they come from the
+   entitlements file; if not, **+ Capability** → *Push Notifications*).
+3. developer.apple.com → **Certificates, IDs & Profiles** → **Keys** → **+**
+   → name it "Trips APNs", tick **Apple Push Notifications service (APNs)**
+   → Continue → Register → **Download** the `.p8` (you only get one chance).
+   Note the **Key ID** and your **Team ID** (top-right of the page).
+4. Add the key to the Worker as secrets (Cloudflare dashboard → Workers →
+   `hardin-trips-ai` → Settings → Variables and Secrets) — see `DEPLOY.md`.
+5. `npm install`, `npx cap sync ios`, bump **Build** on both targets, and
+   Archive → Distribute a new TestFlight build. Push is native, so it only
+   works once that build is installed.
 
 ---
 
