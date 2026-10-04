@@ -1986,6 +1986,11 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
             <span style="font-size:14px;color:var(--ink);">Show on world map</span>
           </label>
         </div>
+        <div id="editTripTravelersSection">
+          <label class="form-label" style="margin-top:8px;">Who's going</label>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.5;">They get this trip's reminders, leave-by alerts, morning brief, flight alerts and change updates.</div>
+          <div id="editTripTravelersList"></div>
+        </div>
       </div>
     </div>
 
@@ -3041,12 +3046,12 @@ const NOTIFY_DEFAULTS = {
   activityLeadMin: 30, briefTime: '07:30', quietHours: false, quietStart: '22:00', quietEnd: '07:00',
 };
 const NOTIFY_TYPES = [
-  { key: 'activities',     label: 'Upcoming activities',  hint: 'Before each timed activity' },
+  { key: 'activities',     label: 'Upcoming activities',  hint: 'Before each timed activity, on trips you’re going on' },
   { key: 'leaveBy',        label: 'Time to leave',        hint: 'Leave-by time for drives, with live traffic' },
   { key: 'brief',          label: 'Morning brief',        hint: 'Your day at a glance on trip days' },
   { key: 'flights',        label: 'Flights',              hint: 'Check-in, delays, gate changes, cancellations' },
   { key: 'tripEdits',      label: 'Trip changes',         hint: 'When someone else edits a trip you’re on' },
-  { key: 'bookingInbox',   label: 'Booking inbox',        hint: 'A forwarded confirmation is ready to assign' },
+  { key: 'bookingInbox',   label: 'Booking inbox',        hint: 'A confirmation you forwarded is ready to add to a trip' },
   { key: 'accessRequests', label: 'Access requests',      hint: 'Someone asked to join', adminOnly: true },
 ];
 let _pushToken = null;
@@ -6349,6 +6354,36 @@ let _quickActBaseline  = null;
 // ── Unsaved-change tracking ──
 // Each editor stores a snapshot when it opens (and after each save); leaving with a
 // different snapshot asks Save / Discard / Keep editing instead of silently dropping edits.
+// Who's going (admins only — the list comes from access/). Ticked people get
+// the trip's push notifications; the creator always does. Kept in a Set so
+// the unsaved-changes check doesn't depend on the async list render.
+let _editTravelers = new Set();
+async function renderEditTravelers(trip) {
+  const list = document.getElementById('editTripTravelersList');
+  list.innerHTML = '<div style="font-size:13px;color:var(--muted);">Loading…</div>';
+  let access = {};
+  try { access = (await window._get(window._ref(window._db, 'access'))).val() || {}; } catch(e) {}
+  const ownerKey = (trip.ownerId || '').toLowerCase().replace(/\./g, ',');
+  const people = Object.entries(access)
+    .map(([key, u]) => ({ key, name: (u && (u.name || u.email)) || key.replace(/,/g, '.'),
+      // guests/users given this trip in User Access already get its notifications
+      granted: !!(u && u.role !== 'admin' && u.trips && u.trips[editingTripId]) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  list.innerHTML = people.map(p => {
+    const isOwner = p.key === ownerKey;
+    const locked = isOwner || p.granted;
+    const note = isOwner ? 'created this trip' : p.granted ? 'has this trip in User Access' : '';
+    return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+      <input type="checkbox" data-key="${escAttr(p.key)}" ${locked || _editTravelers.has(p.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}
+        style="width:16px;height:16px;accent-color:var(--terracotta);" onchange="toggleEditTraveler(this)">
+      <span style="font-size:14px;color:var(--ink);">${escHtml(p.name)}${note ? ' <span style="color:var(--muted);font-size:12px;">(' + note + ')</span>' : ''}</span>
+    </label>`;
+  }).join('') || '<div style="font-size:13px;color:var(--muted);">No people yet.</div>';
+}
+window.toggleEditTraveler = function(cb) {
+  if (cb.checked) _editTravelers.add(cb.dataset.key); else _editTravelers.delete(cb.dataset.key);
+};
+
 function _editTripSnapshot() {
   const v = id => document.getElementById(id).value;
   const fl = arr => arr.map(f => [f.formatted, f.travelerName || '', f.dayOffset ?? null]);
@@ -6356,7 +6391,7 @@ function _editTripSnapshot() {
     v('editTripName'), v('editTripYear'), v('editTripDates'), v('editTripEmoji'),
     v('editTripStatus'), v('editTripCurrency'),
     document.getElementById('editTripIncludeInWorldMap').checked,
-    fl(_editFlightsOut), fl(_editFlightsRet)
+    fl(_editFlightsOut), fl(_editFlightsRet), [..._editTravelers].sort()
   ]);
 }
 // Flight rows with a flight number typed in that haven't been looked up / added yet.
@@ -6412,6 +6447,9 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   document.getElementById('editTripCurrency').value = trip.currency || '';
   document.getElementById('editTripIncludeInWorldMap').checked = trip.includeInWorldMap !== false;
   document.getElementById('editTripWorldMapSection').style.display = userRole === 'admin' ? '' : 'none';
+  _editTravelers = new Set(Object.keys(trip.travelers || {}));
+  document.getElementById('editTripTravelersSection').style.display = userRole === 'admin' ? '' : 'none';
+  if (userRole === 'admin') renderEditTravelers(trip);
   // Parse existing trip-level flight strings into chip arrays
   _editFlightsOut = (trip.flightOut || '').split('\n').filter(Boolean)
     .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '', dayOffset: (trip.flightOutDayOffsets || [])[i] ?? null }));
@@ -6474,6 +6512,9 @@ window.saveEditedTrip = async function() {
     flightReturnNames: _editFlightsRet.map(f => f.travelerName || ''),
     flightReturnDayOffsets: _editFlightsRet.map(f => f.dayOffset ?? null),
   };
+  if (userRole === 'admin') {
+    updates.travelers = _editTravelers.size ? Object.fromEntries([..._editTravelers].map(k => [k, true])) : null;
+  }
   try {
     await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
   } catch (e) {

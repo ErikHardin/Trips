@@ -221,6 +221,12 @@ The Worker sends to APNs directly.
 4. `/version` should list `/push/test` and show the three keys as configured.
    In the app: Settings → Notifications → **Send a test**.
 
+**Who gets trip notifications:** the trip's creator, anyone ticked under
+**Edit Trip → Who's going** (admins only), and guests or users who were given
+the trip in User Access. Being an admin alone doesn't count. Booking-inbox
+pushes go only to whoever forwarded the booking; access requests go to every
+admin.
+
 **Scheduled pushes:** `wrangler.toml` adds a cron trigger (every 5 minutes)
 that sends activity reminders and leave-by alerts. You can see it in the
 dashboard under Workers → `hardin-trips-ai` → Settings → Triggers, and its runs
