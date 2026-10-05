@@ -52,9 +52,9 @@
 })();
 </script>
 <script>
-// Skipped inside the iOS app (ios-app/), which loads the live site and has no
-// use for the offline cache.
-if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
+// Also runs in the iOS app (ios-app/): the site is an App-Bound Domain there,
+// which lets WKWebView keep the offline cache.
+if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/Trips/sw.js', { scope: '/Trips/' });
 }
 </script>
@@ -2342,7 +2342,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 345 };
+window.BUILD_INFO = { prNumber: 346 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
