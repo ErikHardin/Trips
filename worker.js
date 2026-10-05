@@ -260,7 +260,9 @@ async function handleWidgetData(env, request) {
           emoji:    a.emoji || '📌',
           text:     a.text || a.description || '',
           location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
-        }));
+        }))
+        // In time order; untimed ones keep their place, after the timed ones
+        .sort((x, y) => (!x.timeSort - !y.timeSort) || (x.timeSort && y.timeSort ? x.timeSort.localeCompare(y.timeSort) : 0));
 
       todayData = {
         city:        dayEntry.city || '',

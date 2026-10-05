@@ -17,6 +17,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		7E1D9A012F00000100000005 /* UpcomingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000001 /* UpcomingWidget.swift */; };
+		7E1D9A012F00000100000021 /* TodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000020 /* TodayWidget.swift */; };
 		7E1D9A012F00000100000006 /* HardinTripsWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000002 /* HardinTripsWidgets.swift */; };
 		7E1D9A012F00000100000007 /* UpcomingWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000004 /* UpcomingWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -58,6 +59,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		7E1D9A012F00000100000001 /* UpcomingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingWidget.swift; sourceTree = "<group>"; };
+		7E1D9A012F00000100000020 /* TodayWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayWidget.swift; sourceTree = "<group>"; };
 		7E1D9A012F00000100000002 /* HardinTripsWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardinTripsWidgets.swift; sourceTree = "<group>"; };
 		7E1D9A012F00000100000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7E1D9A012F00000100000004 /* UpcomingWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UpcomingWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -122,6 +124,7 @@
 			children = (
 				7E1D9A012F00000100000002 /* HardinTripsWidgets.swift */,
 				7E1D9A012F00000100000001 /* UpcomingWidget.swift */,
+				7E1D9A012F00000100000020 /* TodayWidget.swift */,
 				7E1D9A012F00000100000003 /* Info.plist */,
 			);
 			path = UpcomingWidget;
@@ -250,6 +253,7 @@
 			files = (
 				7E1D9A012F00000100000006 /* HardinTripsWidgets.swift in Sources */,
 				7E1D9A012F00000100000005 /* UpcomingWidget.swift in Sources */,
+				7E1D9A012F00000100000021 /* TodayWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
