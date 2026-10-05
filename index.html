@@ -1381,8 +1381,6 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .drive-legs { padding: 4px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .drive-leg-row { font-size: 11px; color: var(--muted); padding: 1px 0; }
 .drive-leg-unknown { opacity: 0.6; font-style: italic; }
-.drive-leg-stop { text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
-.drive-leg-unknown .drive-leg-stop:last-child { color: var(--terracotta); font-style: normal; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
 .act-booking-select { border:1px solid var(--border); border-radius:7px; background:var(--warm-white); font-size:11px; font-family:'DM Sans',sans-serif; color:var(--muted); padding:3px 4px; height:26px; flex-shrink:0; cursor:pointer; max-width:120px; }
@@ -2342,7 +2340,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 338 };
+window.BUILD_INFO = { prNumber: 339 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4764,19 +4762,8 @@ function _bottomSheet(innerHTML) {
   return modal;
 }
 
-const _canSetLocation = (dayId, actIdx) => !!(dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId && !isShareView);
-
-// Opened from a drive-time leg row: just the Set location controls
-window.openSetLocation = function(dayId, actIdx) {
-  if (!_canSetLocation(dayId, actIdx)) return;
-  const info = _locActivity(dayId, actIdx);
-  if (!info) return;
-  const modal = _bottomSheet(`
-    <div style="font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Set location</div>
-    <div style="font-size:15px;font-weight:500;color:var(--ink);margin-bottom:12px;">${escHtml(info.text)}</div>
-    <div class="loc-host"></div>`);
-  mountLocationPicker(modal.querySelector('.loc-host'), dayId, actIdx, () => modal.remove());
-};
+// Admins and trip users only — guests and share links just get Google Maps / Waze
+const _canSetLocation = (dayId, actIdx) => !!(dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId && !isShareView && canManageTrip(currentTripId));
 
 window.openMapsChoice = function(query, dayId, actKey, actIdx) {
   const googleUrl = 'https://maps.google.com/?q=' + encodeURIComponent(query);
@@ -11579,21 +11566,9 @@ function injectDriveChip(cardId, seconds, legDetails, notFound) {
       const legsDiv = document.createElement('div');
       legsDiv.className = 'drive-legs';
       let html = '';
-      // Activity stops are tappable to fix their location (hotel/city endpoints aren't activities)
-      const dayId = cardId.replace(/^dc-/, '');
-      const canFix = !isShareView;
-      const stop = (name, actIdx) => (canFix && actIdx != null)
-        ? '<span class="drive-leg-stop" data-act-idx="' + actIdx + '">' + escHtml(name || '') + '</span>'
-        : escHtml(name || '');
-      if (hasLegs) html += legDetails.map(l => '<div class="drive-leg-row">🚗 ' + stop(l.from, l.fromAct) + ' → ' + stop(l.to, l.toAct) + ': ' + fmtSecs(l.seconds) + '</div>').join('');
-      if (hasMissing) html += notFound.map(n => '<div class="drive-leg-row drive-leg-unknown">⚠️ ' + stop(n.name, n.actIdx) + ' — location not found' + (canFix ? ' · <span class="drive-leg-stop" data-act-idx="' + n.actIdx + '">set it</span>' : '') + '</div>').join('');
+      if (hasLegs) html += legDetails.map(l => '<div class="drive-leg-row">🚗 ' + escHtml(l.from || '') + ' → ' + escHtml(l.to || '') + ': ' + fmtSecs(l.seconds) + '</div>').join('');
+      if (hasMissing) html += notFound.map(n => '<div class="drive-leg-row drive-leg-unknown">⚠️ ' + escHtml(n) + ' — location not found</div>').join('');
       legsDiv.innerHTML = html;
-      legsDiv.addEventListener('click', e => {
-        const t = e.target.closest('.drive-leg-stop');
-        if (!t) return;
-        e.stopPropagation();
-        openSetLocation(dayId, Number(t.dataset.actIdx));
-      });
       body.insertBefore(legsDiv, body.firstChild);
     }
   }
@@ -11780,10 +11755,8 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       const actRawTexts = [];
       const actContexts = [];
       const actTimes = [];
-      const actIdxs = [];
-      for (const [ai, a] of acts.entries()) {
+      for (const a of acts) {
         if (a && a.drive && a.text) {
-          actIdxs.push(ai);
           actTimes.push(a.time || '');
           const place = extractPlaceFromActivity(a.text);
           const locationHint = extractActivityLocation(a.text);
@@ -11835,7 +11808,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       // Assemble full route: [hotel/city start, ...activities, hotel/city end]
       const paired = [
         ...(prevEndpoint.coord ? [{ name: prevEndpoint.name, coord: prevEndpoint.coord }] : []),
-        ...actNames.map((name, j) => ({ name, coord: actCoords[j], actIdx: actIdxs[j] })).filter(p => p.coord),
+        ...actNames.map((name, j) => ({ name, coord: actCoords[j] })).filter(p => p.coord),
         ...(curEndpoint.coord ? [{ name: curEndpoint.name, coord: curEndpoint.coord }] : []),
       ];
       const deduped = paired.filter((p, j) => j === 0 || p.coord[0] !== paired[j-1].coord[0] || p.coord[1] !== paired[j-1].coord[1]);
@@ -11845,7 +11818,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       // (e.g. "Drive to <hotel name> and drop off bags") would otherwise always read as
       // "found" via that other, independently-resolved endpoint even when its own geocode
       // attempt silently failed, hiding a real failure instead of flagging it.
-      const notFound = driveActNames.map((n, j) => ({ name: n, actIdx: actIdxs[j] })).filter((n, j) => !actCoords[j]);
+      const notFound = driveActNames.filter((n, j) => !actCoords[j]);
 
       if (deduped.length < 2) {
         if (hasDriveActs) {
@@ -11893,8 +11866,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       }
 
       const {duration, legs} = await getRouteDuration(deduped.map(p => p.coord));
-      const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs,
-        fromAct: deduped[j].actIdx, toAct: deduped[j+1] ? deduped[j+1].actIdx : undefined}));
+      const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs}));
       if (duration > 600) {
         window._dayLegs = window._dayLegs || {};
         window._dayLegs[dayId] = legDetails;
