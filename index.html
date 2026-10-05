@@ -2341,7 +2341,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 342 };
+window.BUILD_INFO = { prNumber: 343 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3741,14 +3741,14 @@ function switchShareTab(name, btn) {
 window.switchShareTab = switchShareTab;
 
 // Google search for an activity, using the region for cleaner location context.
-// Goes through go.html, which redirects from script: a direct google.com link is
-// a universal link, so iOS would open it in the Google app instead of the browser.
+// google.com/search is a universal link, so iOS hands it to the Google app when
+// it's installed. noiga=1 is the opt-out Google lists in its app-site-association
+// file, so the search stays in the browser.
 function activitySearchUrl(text, day) {
   const region = (day.region||'').trim();
   const q = region ? text + ' ' + region : text;
   const cc = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
-  const google = 'https://www.google.com/search?q=' + encodeURIComponent(q) + (cc ? '&gl=' + cc : '');
-  return new URL('go.html?u=' + encodeURIComponent(google), location.href).href;
+  return 'https://www.google.com/search?q=' + encodeURIComponent(q) + (cc ? '&gl=' + cc : '') + '&noiga=1';
 }
 
 function renderTripItinerary(trip) {
