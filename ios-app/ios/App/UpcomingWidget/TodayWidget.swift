@@ -307,8 +307,10 @@ struct TodayWidgetView: View {
                     ActivityRow(activity: a, size: .large, isNext: a == entry.nextUp, now: entry.date)
                 }
             }
+            // Once today is done, tomorrow is the main event: full rows, wrapped
             if tomorrowRoom >= 2, let tomorrow = entry.tomorrow {
-                TomorrowSection(tomorrow: tomorrow, limit: min(tomorrowRoom, 4))
+                TomorrowSection(tomorrow: tomorrow, limit: shown.isEmpty ? 6 : min(tomorrowRoom, 4),
+                                prominent: shown.isEmpty)
                     .padding(.top, 4)
             }
         }
@@ -450,10 +452,12 @@ private struct FlightRow: View {
     }
 }
 
-// "TOMORROW · PARIS", then its first few plans, one line each
+// "TOMORROW · PARIS", then its first few plans: muted and one line each under
+// today's, or, once today is done, as full rows that wrap
 private struct TomorrowSection: View {
     let tomorrow: TomorrowPreview
     let limit: Int
+    var prominent = false
 
     private var label: String {
         guard let city = tomorrow.city, !city.isEmpty else { return "TOMORROW" }
@@ -464,16 +468,21 @@ private struct TomorrowSection: View {
         VStack(alignment: .leading, spacing: 3) {
             SectionLabel(text: label, extra: max(0, tomorrow.activities.count - limit))
             ForEach(Array(tomorrow.activities.prefix(limit)), id: \.self) { a in
-                HStack(spacing: 6) {
-                    Text(a.time ?? "")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Palette.muted)
-                        .lineLimit(1)
-                        .frame(width: 66, alignment: .leading)
-                    Text(String((a.emoji ?? "📌").prefix(1)) + " " + (a.text ?? ""))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Palette.muted)
-                        .lineLimit(1)
+                if prominent {
+                    ActivityRow(activity: a, size: .large)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(a.time ?? "")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                            .frame(width: 66, alignment: .leading)
+                        Text(String((a.emoji ?? "📌").prefix(1)) + " " + (a.text ?? ""))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
