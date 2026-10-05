@@ -272,8 +272,9 @@ struct TodayWidgetView: View {
         }
     }
 
-    // Large: the trip, weather, hotel and flights, the day's activities with
-    // room to wrap and their drive times, and tomorrow when today runs short
+    // Large: the trip and weather, "TODAY · city", the hotel and flights, the
+    // day's activities with room to wrap and their drive times, and tomorrow
+    // when today runs short
     private var largeDay: some View {
         let remaining = entry.remaining
         // Rows that fit under the header block; each flight takes one
@@ -281,18 +282,19 @@ struct TodayWidgetView: View {
         let shown = Array(remaining.prefix(limit))
         let tomorrowRoom = 5 - shown.count
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                SectionLabel(text: header, extra: max(0, remaining.count - limit))
+            // The trip on top, with the weather beside it; "TODAY · city" under
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if let trip = entry.trip {
+                    Text(String((trip.emoji ?? "✈️").prefix(2)) + "  " + (trip.name ?? "Trip"))
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
                 Spacer(minLength: 4)
                 if let weather = entry.weather { WeatherText(weather: weather, size: 12) }
             }
-            if let trip = entry.trip {
-                Text(String((trip.emoji ?? "✈️").prefix(2)) + "  " + (trip.name ?? "Trip"))
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+            SectionLabel(text: header, extra: max(0, remaining.count - limit))
             if let hotel = entry.hotel, !hotel.isEmpty {
                 Text("🏨  " + hotel)
                     .font(.system(size: 12, weight: .medium))
