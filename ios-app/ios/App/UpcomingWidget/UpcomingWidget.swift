@@ -97,8 +97,9 @@ struct UpcomingProvider: TimelineProvider {
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 // The deep-sage palette from widget-upcoming.js; see the contrast notes there.
+// Shared with TodayWidget.swift, so the two widgets match.
 
-private enum Palette {
+enum Palette {
     static let background = Color(hex: 0x333D37)
     static let terracotta = Color(hex: 0xEB9163)
     static let ink        = Color(hex: 0xEAF0EC)
@@ -106,7 +107,7 @@ private enum Palette {
     static let sand       = Color(hex: 0x414D45)
 }
 
-private extension Color {
+extension Color {
     init(hex: UInt32) {
         self.init(red:   Double((hex >> 16) & 0xFF) / 255,
                   green: Double((hex >> 8) & 0xFF) / 255,
@@ -157,7 +158,7 @@ struct UpcomingWidgetView: View {
     }
 }
 
-private struct SectionLabel: View {
+struct SectionLabel: View {
     let text: String
     let extra: Int
 
@@ -263,7 +264,7 @@ private struct BookingRow: View {
     }
 }
 
-private struct CenterMessage: View {
+struct CenterMessage: View {
     let text: String
 
     var body: some View {

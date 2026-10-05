@@ -121,10 +121,18 @@ automatically.
 
 ## Widgets
 
-`ios/App/UpcomingWidget/` is a WidgetKit extension: the native version of
-`widget-upcoming.js` (trip countdowns + bookings still to make), reading the
-same Worker endpoint. It's embedded in the app, so anyone with the TestFlight
-build can add it: long-press the home screen → **+** → Hardin Trips.
+`ios/App/UpcomingWidget/` is a WidgetKit extension with two widgets, both
+reading the Worker. Anyone with the TestFlight build can add them: long-press
+the home screen → **+** → Hardin Trips.
+
+- **Upcoming Trips** (`UpcomingWidget.swift`): the native version of
+  `widget-upcoming.js` — trip countdowns + bookings still to make.
+- **Today** (`TodayWidget.swift`): on a trip day, the city and the activities
+  still ahead (each drops off 30 minutes after it starts); between trips, a
+  countdown to the next one. Reads `/widget-data` with the phone's date.
+
+A new widget file must be added to the **UpcomingWidget** target (Xcode does
+this when you create it there; the project file isn't folder-synced).
 
 Widgets are compiled into the build, so a change to one ships with the next
 TestFlight upload rather than with the website. iOS decides when they refresh
