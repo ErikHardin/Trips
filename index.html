@@ -1067,6 +1067,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .ov-act-item { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
 .ov-act-emoji { font-size: 14px; flex-shrink: 0; }
 .ov-act-text { color: var(--ink); flex: 1; }
+.ov-act-link { text-decoration: underline dotted; text-decoration-color: var(--sand-dark); }
 .ov-act-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
 /* ── LOGISTICS TAB ── */
@@ -2340,7 +2341,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 341 };
+window.BUILD_INFO = { prNumber: 342 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3739,6 +3740,17 @@ function switchShareTab(name, btn) {
 }
 window.switchShareTab = switchShareTab;
 
+// Google search for an activity, using the region for cleaner location context.
+// Goes through go.html, which redirects from script: a direct google.com link is
+// a universal link, so iOS would open it in the Google app instead of the browser.
+function activitySearchUrl(text, day) {
+  const region = (day.region||'').trim();
+  const q = region ? text + ' ' + region : text;
+  const cc = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
+  const google = 'https://www.google.com/search?q=' + encodeURIComponent(q) + (cc ? '&gl=' + cc : '');
+  return new URL('go.html?u=' + encodeURIComponent(google), location.href).href;
+}
+
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
@@ -3810,11 +3822,8 @@ function renderTripItinerary(trip) {
       const bookingStatus = typeof a==='object' && a.bookingStatus ? a.bookingStatus : '';
       const bookingInfo = BOOKING_STATUSES.find(s => s.key === bookingStatus);
       const actNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.[noteKey] || {}).length;
-      // Build search URL using region for cleaner location context
       const regionClean = (day.region||'').trim();
-      const searchQ = regionClean ? text + ' ' + regionClean : text;
-      const countryCode = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
-      const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQ) + (countryCode ? '&gl=' + countryCode : '');
+      const searchUrl = activitySearchUrl(text, day);
       const mapsQuery = text + (regionClean ? ', ' + regionClean : '');
       return `
         <div class="activity-item" data-day="${dayId}" data-date="${day.dateISO||''}" data-datenum="${day.dateNum||''}" data-datemonth="${day.dateMonth||''}" data-year="${trip.year||''}" data-key="${noteKey}" data-idx="${i}" data-text="${escAttr(text)}" data-time="${escAttr(time)}" data-drive="${drive}" data-search="${escAttr(searchUrl)}">
@@ -4431,7 +4440,7 @@ async function renderTripOverview(trip) {
             const time = (typeof a === 'object' && a !== null && a.time) ? a.time : '';
             return `<div class="ov-act-item">
               <span class="ov-act-emoji">${emoji}</span>
-              <span class="ov-act-text">${escHtml(text)}</span>
+              <a class="ov-act-text ov-act-link" href="${escAttr(activitySearchUrl(text, day))}" target="_blank" rel="noopener">${escHtml(text)}</a>
               ${time ? `<span class="ov-act-time">${escHtml(time)}</span>` : ''}
             </div>`;
           }).filter(Boolean).join('');

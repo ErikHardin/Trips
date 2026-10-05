@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Opening search…</title>
+<style>body{font-family:-apple-system,sans-serif;padding:24px;color:#8a7e72;background:#faf8f4;}</style>
+</head>
+<body>
+<p>Opening search…</p>
+<script>
+// Hop for activity search links. Tapping a google.com link (or opening one from
+// the iOS app) is a universal link, so iOS hands it to the Google app when it's
+// installed. Arriving here first and redirecting from script keeps the search
+// in whichever browser opened this page. Only Google searches are forwarded, so
+// this can't be used as an open redirect.
+(function() {
+  var u = new URLSearchParams(location.search).get('u') || '';
+  var ok = false;
+  try {
+    var p = new URL(u);
+    ok = p.protocol === 'https:' && p.hostname === 'www.google.com' && p.pathname === '/search';
+  } catch (e) {}
+  if (ok) location.replace(u);
+  else document.body.textContent = 'Nothing to open.';
+})();
+</script>
+</body>
+</html>
