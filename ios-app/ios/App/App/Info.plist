@@ -80,6 +80,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- App-Bound Domains: WKWebView only runs the site's service worker (the
+	     offline cache) for domains listed here. See limitsNavigationsToAppBoundDomains
+	     in capacitor.config.json. -->
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>ech-technicalsolutions.com</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
