@@ -2342,7 +2342,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 348 };
+window.BUILD_INFO = { prNumber: 349 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2507,6 +2507,7 @@ function setupAuth() {
       lastOutstandingPopupAt = null;
       stopBookingInboxListener();
       stopAccessApprovalWatch();
+      try { localStorage.removeItem(ACCESS_LS); } catch(e) {}
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -2539,8 +2540,7 @@ async function handleSignedInUser(user) {
   const email = (user.email || '').toLowerCase();
   const emailKey = email.replace(/\./g, ',');
   try {
-    const snap = await window._get(window._ref(window._db, `access/${emailKey}`));
-    let access = snap.val();
+    let access = await lookupAccess(emailKey);
     if (!access) {
       // Bootstrap: auto-create record for primary admin on first sign-in
       if (email === 'erikchardin@gmail.com') {
@@ -2571,7 +2571,8 @@ async function handleSignedInUser(user) {
     guestTripIds = access.trips ? Object.keys(access.trips) : [];
     lastOutstandingPopupAt = access.lastOutstandingPopupAt || null;
     loadUserOwnerEmails(); // start the access read now so auto-open rarely has to wait
-    try { await window._set(window._ref(window._db, `access/${emailKey}/lastLogin`), Date.now()); } catch(e) {}
+    // Not awaited: offline, a database write only settles once it reconnects
+    window._set(window._ref(window._db, `access/${emailKey}/lastLogin`), Date.now()).catch(() => {});
     renderAppName();
     document.getElementById('lockBtn').style.display = '';
     // Users get the same ⚙️ button, opening a Settings view with just their
@@ -2589,6 +2590,32 @@ async function handleSignedInUser(user) {
     document.getElementById('loginError').textContent = 'Connection error — please try again.';
     document.getElementById('loginError').style.display = '';
     showScreen('screen-login');
+  }
+}
+
+// This person's access record, remembered on this device so the app still
+// opens with no signal: offline, the database read fails (or never returns)
+// and the trips cache is only loaded once access is known. With a remembered
+// copy, use it at once when the phone says it's offline, and after 5 s when the
+// read hangs on poor signal. Without one, the read decides, as before.
+const ACCESS_LS = 'hardinTripsAccess';
+async function lookupAccess(emailKey) {
+  let cached = null;
+  try { cached = (JSON.parse(localStorage.getItem(ACCESS_LS) || '{}') || {})[emailKey] || null; } catch(e) {}
+  if (cached && !navigator.onLine) return cached;
+  const read = window._get(window._ref(window._db, `access/${emailKey}`)).then(snap => {
+    const access = snap.val();
+    try {
+      if (access) localStorage.setItem(ACCESS_LS, JSON.stringify({ [emailKey]: access }));
+      else localStorage.removeItem(ACCESS_LS);
+    } catch(e) {}
+    return access;
+  });
+  if (!cached) return read;
+  try {
+    return await Promise.race([read, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))]);
+  } catch(e) {
+    return cached;
   }
 }
 
