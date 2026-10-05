@@ -2340,7 +2340,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 339 };
+window.BUILD_INFO = { prNumber: 340 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4627,7 +4627,32 @@ function _locActivity(dayId, actIdx) {
   const k = keys[Number(actIdx)];
   const act = k != null ? raw[k] : null;
   if (!act) return null;
-  return { day, path: `trips/${currentTripId}/days/${dayId}/activities/${k}/coords`, text: typeof act === 'object' ? (act.text || '') : String(act) };
+  const c = typeof act === 'object' && act.coords;
+  return {
+    day, path: `trips/${currentTripId}/days/${dayId}/activities/${k}/coords`,
+    text: typeof act === 'object' ? (act.text || '') : String(act),
+    coords: (c && typeof c.lat === 'number' && typeof c.lng === 'number') ? c : null,
+  };
+}
+
+// { name, address } at a coordinate, via the Worker (Apple Maps); null when unknown
+async function reverseGeocodePlace(lat, lng) {
+  try {
+    const res = await fetch(GEO_WORKER + '/reverse-geocode', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng })
+    });
+    const d = res.ok ? await res.json() : null;
+    return d && (d.name || d.address) ? { name: d.name || '', address: d.address || '' } : null;
+  } catch(e) { return null; }
+}
+
+// A pin's coords object: lat/lng plus the place's name/address when known
+function _pinRecord(lat, lng, place) {
+  const rec = { lat, lng };
+  if (place && place.name) rec.name = String(place.name).slice(0, 200);
+  if (place && place.address) rec.address = String(place.address).slice(0, 300);
+  return rec;
 }
 
 // Where the day is anchored: { coord, hotel } — the day's hotel when it geocodes
@@ -4678,11 +4703,17 @@ function mountLocationPicker(host, dayId, actIdx, onDone) {
   const anchor = () => (biasP = biasP || _locAnchor(info.day));
   const bias = async () => (await anchor()).coord;
 
-  async function save(lat, lng, label) {
+  // place: { name, address } when known; otherwise looked up from the coordinates
+  async function save(lat, lng, place) {
     results.innerHTML = '';
     say('Saving…');
+    if (!place || !place.address) {
+      const rev = await reverseGeocodePlace(lat, lng);
+      if (rev) place = { name: (place && place.name) || rev.name, address: rev.address };
+    }
     try {
-      await window._set(window._ref(window._db, info.path), { lat, lng });
+      await window._set(window._ref(window._db, info.path), _pinRecord(lat, lng, place));
+      const label = place && (place.name || place.address);
       showToast('📍 Location set' + (label ? ': ' + label : ''));
       onDone && onDone();
     } catch(e) { say('Could not save — ' + (e.message || 'try again')); }
@@ -4708,7 +4739,7 @@ function mountLocationPicker(host, dayId, actIdx, onDone) {
           body: JSON.stringify({ url: link, near: await bias() })
         });
         const d = await res.json();
-        if (res.ok && typeof d.lat === 'number') return save(d.lat, d.lng, d.name);
+        if (res.ok && typeof d.lat === 'number') return save(d.lat, d.lng, { name: d.name, address: d.address });
         say('No location found in that link. Try searching by name.');
       } catch(e) { say('Could not read that link — check your connection.'); }
       return;
@@ -4730,7 +4761,7 @@ function mountLocationPicker(host, dayId, actIdx, onDone) {
         b.style.cssText = 'text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--sand);cursor:pointer;color:var(--ink);';
         b.innerHTML = `<div style="font-size:14px;font-weight:500;">${escHtml(r.name)}</div>`
           + `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${escHtml(r.address || '')}${dist ? (r.address ? ' · ' : '') + escHtml(dist) : ''}</div>`;
-        b.addEventListener('click', () => save(r.lat, r.lng, r.name));
+        b.addEventListener('click', () => save(r.lat, r.lng, { name: r.name, address: r.address }));
         results.appendChild(b);
       });
     } catch(e) { say('Search failed — check your connection.'); }
@@ -4741,7 +4772,7 @@ function mountLocationPicker(host, dayId, actIdx, onDone) {
     if (!navigator.geolocation) { say('Location is not available on this device.'); return; }
     say('Finding you…');
     navigator.geolocation.getCurrentPosition(
-      pos => save(+pos.coords.latitude.toFixed(6), +pos.coords.longitude.toFixed(6), 'current location'),
+      pos => save(+pos.coords.latitude.toFixed(6), +pos.coords.longitude.toFixed(6)),
       () => say('Could not get your location — check location permission.'),
       { enableHighAccuracy: true, timeout: 15000 }
     );
@@ -4766,19 +4797,53 @@ function _bottomSheet(innerHTML) {
 const _canSetLocation = (dayId, actIdx) => !!(dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId && !isShareView && canManageTrip(currentTripId));
 
 window.openMapsChoice = function(query, dayId, actKey, actIdx) {
-  const googleUrl = 'https://maps.google.com/?q=' + encodeURIComponent(query);
-  const wazeUrl   = 'https://waze.com/ul?q=' + encodeURIComponent(query) + '&navigate=yes';
-  const canPin = _canSetLocation(dayId, actIdx) && _locActivity(dayId, actIdx);
+  const info = (dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId) ? _locActivity(dayId, actIdx) : null;
+  const pin = info && info.coords;
+  const canPin = _canSetLocation(dayId, actIdx) && info;
+  // A set location opens the exact spot; otherwise the apps search the activity text
+  const ll = pin ? pin.lat + ',' + pin.lng : '';
+  const googleUrl = pin ? 'https://www.google.com/maps/search/?api=1&query=' + ll : 'https://maps.google.com/?q=' + encodeURIComponent(query);
+  const appleUrl  = pin ? 'https://maps.apple.com/?ll=' + ll + '&q=' + encodeURIComponent(pin.name || 'Location')
+                        : 'https://maps.apple.com/?q=' + encodeURIComponent(query);
+  const wazeUrl   = pin ? 'https://waze.com/ul?ll=' + ll + '&navigate=yes' : 'https://waze.com/ul?q=' + encodeURIComponent(query) + '&navigate=yes';
   const linkCss = 'display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--sand);border:1px solid var(--border);border-radius:14px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;';
 
   const modal = _bottomSheet(`
+      ${pin ? `<div class="loc-current" style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;margin-bottom:16px;border:1px solid var(--border);border-radius:14px;background:var(--sand);">
+        <div style="font-size:18px;line-height:1.2;">📍</div>
+        <div style="min-width:0;">
+          <div style="font-size:11px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);">Location set</div>
+          <div class="loc-current-name" style="font-size:15px;font-weight:500;color:var(--ink);margin-top:2px;"></div>
+          <div class="loc-current-addr" style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4;"></div>
+        </div>
+      </div>` : ''}
       <div style="font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;">Open in…</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
+        <a href="${appleUrl}" target="_blank" rel="noopener" style="${linkCss}">🧭 <span>Apple Maps</span></a>
         <a href="${googleUrl}" target="_blank" rel="noopener" style="${linkCss}">🗺️ <span>Google Maps</span></a>
         <a href="${wazeUrl}" target="_blank" rel="noopener" style="${linkCss}">🔵 <span>Waze</span></a>
       </div>
       ${canPin ? `<div class="loc-host" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);"></div>` : ''}`);
   if (canPin) mountLocationPicker(modal.querySelector('.loc-host'), dayId, actIdx, () => modal.remove());
+
+  if (pin) {
+    const nameEl = modal.querySelector('.loc-current-name');
+    const addrEl = modal.querySelector('.loc-current-addr');
+    const show = (name, address) => {
+      const dup = name && address && address.toLowerCase() === name.toLowerCase();
+      nameEl.textContent = name || address || pin.lat.toFixed(5) + ', ' + pin.lng.toFixed(5);
+      addrEl.textContent = (name && address && !dup) ? address : '';
+    };
+    show(pin.name, pin.address);
+    // Pins set before names were saved: look the place up, and save it for next time
+    if (!pin.name && !pin.address) {
+      addrEl.textContent = 'Looking up…';
+      reverseGeocodePlace(pin.lat, pin.lng).then(rev => {
+        show(rev && rev.name, rev && rev.address);
+        if (rev && canPin) window._set(window._ref(window._db, info.path), _pinRecord(pin.lat, pin.lng, rev)).catch(() => {});
+      });
+    }
+  }
 };
 
 // ════════════════════════════════════════

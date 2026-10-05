@@ -124,6 +124,13 @@ export default {
       return new Response(JSON.stringify({ results }), { headers: CORS_JSON });
     }
 
+    // Coordinates → the place/address there, to label a pin set from coordinates or a link
+    if (url.pathname === '/reverse-geocode') {
+      const at = validNear([body.lat, body.lng]);
+      if (!at) return new Response(JSON.stringify({ error: 'Missing lat/lng' }), { status: 400, headers: CORS_JSON });
+      return new Response(JSON.stringify(await reverseGeocode(env, at) || {}), { headers: CORS_JSON });
+    }
+
     // A pasted Google Maps / Apple Maps share link → coordinates
     if (url.pathname === '/resolve-map-link') {
       const result = await resolveMapLink(env, String(body.url || '').trim(), validNear(body.near));
@@ -403,6 +410,7 @@ const WORKER_ROUTES = [
   '/booking-parse',
   '/geocode',
   '/resolve-map-link',
+  '/reverse-geocode',
   '/push/test',
   '/push/access-request',
   '/push/access-approved',
@@ -1491,6 +1499,29 @@ async function appleSearch(env, q, near, limit) {
   let results = await get('search');
   if (!results.length) results = await get('geocode');
   return results.slice(0, limit);
+}
+
+// { name, address } at a coordinate: Apple Maps, Photon as the fallback
+async function reverseGeocode(env, at) {
+  try {
+    const token = await appleMapsToken(env);
+    if (token) {
+      const r = await fetch('https://maps-api.apple.com/v1/reverseGeocode?loc=' + at[0] + ',' + at[1] + '&lang=en-US',
+        { headers: { authorization: 'Bearer ' + token } });
+      if (!r.ok) throw new Error('status ' + r.status);
+      const x = ((await r.json()).results || [])[0];
+      if (x) return { name: x.name || '', address: (x.formattedAddressLines || []).join(', ') };
+    }
+  } catch (e) { console.warn('Apple reverse geocode failed: ' + e.message); }
+  try {
+    const d = await wFetchJson('https://photon.komoot.io/reverse?lat=' + at[0] + '&lon=' + at[1] + '&lang=en');
+    const p = ((d.features || [])[0] || {}).properties;
+    if (p) {
+      const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+      return { name: p.name || street, address: [street, p.city || p.town || p.village, p.state, p.country].filter(Boolean).join(', ') };
+    }
+  } catch (e) {}
+  return null;
 }
 
 // Share links only — this follows redirects, so it must not fetch arbitrary hosts
