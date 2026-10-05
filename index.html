@@ -4632,13 +4632,24 @@ function _locActivity(dayId, actIdx) {
   return { day, path: `trips/${currentTripId}/days/${dayId}/activities/${k}/coords`, text: typeof act === 'object' ? (act.text || '') : String(act) };
 }
 
-async function _locBias(day) {
+// Where the day is anchored: { coord, hotel } — the day's hotel when it geocodes
+// near the city (same check as the drive route's endpoints), else the city/region
+async function _locAnchor(day) {
+  let area = null;
   for (const q of [day.city, day.region]) {
     const clean = (q || '').replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]/gu, '').trim();
     if (!clean) continue;
-    try { const c = await getCityCoords(clean); if (c) return c; } catch(e) {}
+    try { area = await getCityCoords(clean); if (area) break; } catch(e) {}
   }
-  return null;
+  const hotel = extractHotel(day);
+  const city = extractCity(day);
+  if (hotel && area) {
+    try {
+      const h = await getCityCoords(hotel + (city ? ', ' + city : ''), area);
+      if (h && Math.abs(h[0] - area[0]) + Math.abs(h[1] - area[1]) <= 1.0) return { coord: h, hotel };
+    } catch(e) {}
+  }
+  return { coord: area, hotel: null };
 }
 
 // Mounts the Set location controls into `host`; onDone runs after a pin is saved
@@ -4666,7 +4677,8 @@ function mountLocationPicker(host, dayId, actIdx, onDone) {
   input.value = extractPlaceFromActivity(info.text) || info.text;
   const say = msg => { status.textContent = msg || ''; status.style.display = msg ? 'block' : 'none'; };
   let biasP = null;
-  const bias = () => (biasP = biasP || _locBias(info.day));
+  const anchor = () => (biasP = biasP || _locAnchor(info.day));
+  const bias = async () => (await anchor()).coord;
 
   async function save(lat, lng, label) {
     results.innerHTML = '';
@@ -4705,19 +4717,21 @@ function mountLocationPicker(host, dayId, actIdx, onDone) {
     }
     say('Searching…');
     try {
-      const near = await bias();
+      const { coord: near, hotel } = await anchor();
       let list = await searchPlaces(v, near, 5);
       const ctx = [info.day.city, info.day.region].filter(Boolean).join(', ');
       if (!list.length && ctx) list = await searchPlaces(v + ', ' + ctx, near, 5);
       if (!list.length) { say('No matches. Try a different name, or paste a map link.'); return; }
       say('Tap the right place:');
       list.forEach(r => {
-        const km = near ? Math.round(Math.hypot(r.lat - near[0], (r.lng - near[1]) * Math.cos(near[0] * Math.PI / 180)) * 111) : null;
+        // Straight-line miles from the hotel (or the town, when the hotel can't be placed)
+        const mi = near ? Math.hypot(r.lat - near[0], (r.lng - near[1]) * Math.cos(near[0] * Math.PI / 180)) * 69 : null;
+        const dist = mi == null ? '' : (mi < 10 ? mi.toFixed(1) : Math.round(mi)) + ' mi from ' + (hotel ? 'hotel' : (info.day.city || 'town'));
         const b = document.createElement('button');
         b.type = 'button';
         b.style.cssText = 'text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--sand);cursor:pointer;color:var(--ink);';
         b.innerHTML = `<div style="font-size:14px;font-weight:500;">${escHtml(r.name)}</div>`
-          + `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${escHtml(r.address || '')}${km != null ? (r.address ? ' · ' : '') + km + ' km away' : ''}</div>`;
+          + `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${escHtml(r.address || '')}${dist ? (r.address ? ' · ' : '') + escHtml(dist) : ''}</div>`;
         b.addEventListener('click', () => save(r.lat, r.lng, r.name));
         results.appendChild(b);
       });
