@@ -2342,7 +2342,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 350 };
+window.BUILD_INFO = { prNumber: 351 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2507,7 +2507,7 @@ function setupAuth() {
       lastOutstandingPopupAt = null;
       stopBookingInboxListener();
       stopAccessApprovalWatch();
-      try { localStorage.removeItem(ACCESS_LS); } catch(e) {}
+      try { localStorage.removeItem(ACCESS_LS); localStorage.removeItem(ACCESS_LIST_LS); } catch(e) {}
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -2593,31 +2593,38 @@ async function handleSignedInUser(user) {
   }
 }
 
-// This person's access record, remembered on this device so the app still
-// opens with no signal: offline, the database read fails (or never returns)
-// and the trips cache is only loaded once access is known. With a remembered
-// copy, use it at once when the phone says it's offline, and after 5 s when the
-// read hangs on poor signal. Without one, the read decides, as before.
-const ACCESS_LS = 'hardinTripsAccess';
-async function lookupAccess(emailKey) {
+// Database reads the app needs before it can show anything. Offline, a read
+// fails or never returns, so the last value read on this device is remembered
+// and used instead: at once when the phone says it's offline, and after 5 s
+// when the read hangs on poor signal. Offline with nothing remembered, it fails
+// straight away rather than waiting for a connection. Signing out forgets them.
+const ACCESS_LS = 'hardinTripsAccess';           // access/{you}
+const ACCESS_LIST_LS = 'hardinTripsAccessList';  // access (admins only)
+async function cachedGet(path, lsKey) {
   let cached = null;
-  try { cached = (JSON.parse(localStorage.getItem(ACCESS_LS) || '{}') || {})[emailKey] || null; } catch(e) {}
-  if (cached && !navigator.onLine) return cached;
-  const read = window._get(window._ref(window._db, `access/${emailKey}`)).then(snap => {
-    const access = snap.val();
+  try { cached = JSON.parse(localStorage.getItem(lsKey) || 'null'); } catch(e) {}
+  if (cached && cached.p !== path) cached = null;   // someone else's, on a shared device
+  if (!navigator.onLine) {
+    if (cached) return cached.v;
+    throw new Error('offline');
+  }
+  const read = window._get(window._ref(window._db, path)).then(snap => {
+    const v = snap.val();
     try {
-      if (access) localStorage.setItem(ACCESS_LS, JSON.stringify({ [emailKey]: access }));
-      else localStorage.removeItem(ACCESS_LS);
+      if (v != null) localStorage.setItem(lsKey, JSON.stringify({ p: path, v }));
+      else localStorage.removeItem(lsKey);
     } catch(e) {}
-    return access;
+    return v;
   });
   if (!cached) return read;
   try {
     return await Promise.race([read, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))]);
   } catch(e) {
-    return cached;
+    return cached.v;
   }
 }
+
+const lookupAccess = emailKey => cachedGet(`access/${emailKey}`, ACCESS_LS);
 
 // 'signin' shows the sign-in buttons and email form. 'verify' replaces them
 // with the "check your inbox" step for a new password account; 'waiting'
@@ -2936,10 +2943,10 @@ function loadUserOwnerEmails() {
     userOwnerEmailsPromise = Promise.resolve();
     return userOwnerEmailsPromise;
   }
-  userOwnerEmailsPromise = window._get(window._ref(window._db, 'access'))
-    .then(snap => {
+  userOwnerEmailsPromise = cachedGet('access', ACCESS_LIST_LS)
+    .then(all => {
       userOwnerEmails = new Set(
-        Object.values(snap.val() || {})
+        Object.values(all || {})
           .filter(u => u && u.role === 'user' && u.email)
           .map(u => u.email)
       );
@@ -3553,8 +3560,9 @@ async function groupTripsByUserOwner(keys) {
   const userOwnerNames = {}; // ownerId (email) -> display name, only for role:'user' owners
   if (userRole === 'admin') {
     try {
-      const accessSnap = await window._get(window._ref(window._db, 'access'));
-      Object.values(accessSnap.val() || {}).forEach(u => {
+      // Remembered on the device: offline, this read would hold up the trip list
+      const all = await cachedGet('access', ACCESS_LIST_LS);
+      Object.values(all || {}).forEach(u => {
         if (u.role === 'user' && u.email) userOwnerNames[u.email] = u.name || u.email;
       });
     } catch(e) { /* ignore — falls back to no grouping */ }
