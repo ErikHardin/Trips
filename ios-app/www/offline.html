@@ -17,7 +17,13 @@
 <main>
   <h1>Can't reach Hardin Trips</h1>
   <p>Check your internet connection and try again.</p>
-  <button onclick="location.href='https://ech-technicalsolutions.com/Trips/'">Try again</button>
+  <button onclick="retry()">Try again</button>
 </main>
+<script>
+  // Shown only when the app has never loaded the site on this phone (after
+  // that, the offline cache opens it). Retry by itself once a connection returns.
+  function retry() { location.href = 'https://ech-technicalsolutions.com/Trips/'; }
+  window.addEventListener('online', retry);
+</script>
 </body>
 </html>

@@ -52,9 +52,9 @@
 })();
 </script>
 <script>
-// Skipped inside the iOS app (ios-app/), which loads the live site and has no
-// use for the offline cache.
-if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.()) {
+// Also runs in the iOS app (ios-app/): the site is an App-Bound Domain there,
+// which lets WKWebView keep the offline cache.
+if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/Trips/sw.js', { scope: '/Trips/' });
 }
 </script>
