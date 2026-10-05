@@ -2340,7 +2340,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 340 };
+window.BUILD_INFO = { prNumber: 341 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3973,7 +3973,9 @@ function renderTripItinerary(trip) {
       ? days.filter(([, d]) => { const iso = _dayISO(d); return !iso || iso >= _todayISO; })
       : days;
     const _driveTripId = currentTripId;
-    setTimeout(() => fetchTripDriveTimes(_driveDays, days, _driveTripId), 200);
+    // After this render finishes (later innerHTML += below would wipe injected chips);
+    // saved results paint immediately, only changed days recalculate
+    setTimeout(() => fetchTripDriveTimes(_driveDays, days, _driveTripId), 0);
   }
   if (trip.status === 'active') setTimeout(() => highlightToday(trip), 50);
   // Return flights
@@ -11727,6 +11729,62 @@ function parseActivityDurationMinutes(timeStr) {
   return m ? parseInt(m[1]) : null;
 }
 
+// ── Saved drive-time results ──
+// A day's finished result is saved, keyed by a fingerprint of everything it
+// depends on (cities, hotels, flight, drive activities and their pins), so a
+// trip opens with its chips at once and a day is only recalculated after an
+// edit that changes it. localStorage paints on this device without waiting;
+// drivecache/days/{tripId} shares results with other devices and guests.
+const DRIVE_DAY_V = 1;
+const DRIVE_DAY_LS = 'driveDays';
+const DRIVE_DAY_TTL = 30 * 864e5;        // re-check roads/places monthly
+const DRIVE_DAY_TTL_MISSING = 864e5;     // a "location not found" may be a passing outage
+
+function driveDaySig(dayId, day, allDays) {
+  const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+  const drive = acts.filter(a => a && a.drive);
+  if (!day.flightInfo && !drive.length) return null;
+  const idx = allDays.findIndex(([id]) => id === dayId);
+  const prev = idx > 0 ? allDays[idx - 1][1] : null;
+  const place = d => d ? [d.city || '', d.region || '', d.hotel || ''] : null;
+  const str = JSON.stringify([DRIVE_DAY_V, GEO_V, place(prev), place(day),
+    day.flightInfo ? (day.flightInfo.formatted || '') : null,
+    drive.map(a => [a.text || '', a.time || '', a.coords ? [a.coords.lat, a.coords.lng] : null])]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+
+function driveDayFresh(e, sig) {
+  return !!(e && e.sig === sig && typeof e.at === 'number' &&
+    Date.now() - e.at < (e.notFound ? DRIVE_DAY_TTL_MISSING : DRIVE_DAY_TTL));
+}
+
+function _driveDayLocalAll() {
+  try { return JSON.parse(localStorage.getItem(DRIVE_DAY_LS) || '{}') || {}; } catch(e) { return {}; }
+}
+
+function driveDayLocalGet(tripId, dayId, sig) {
+  const e = _driveDayLocalAll()[(tripId || '') + '/' + dayId];
+  return driveDayFresh(e, sig) ? e : null;
+}
+
+function driveDayLocalPut(tripId, dayId, entry) {
+  try {
+    const all = _driveDayLocalAll();
+    const now = Date.now();
+    for (const k of Object.keys(all)) if (!all[k] || now - (all[k].at || 0) > DRIVE_DAY_TTL) delete all[k];
+    all[(tripId || '') + '/' + dayId] = entry;
+    localStorage.setItem(DRIVE_DAY_LS, JSON.stringify(all));
+  } catch(e) {}
+}
+
+function applyDriveDay(dayId, r) {
+  if (!r || r.none) return;
+  if (r.legs) { window._dayLegs = window._dayLegs || {}; window._dayLegs[dayId] = r.legs; }
+  injectDriveChip('dc-' + dayId, r.seconds || 0, r.legs || null, r.notFound || null);
+}
+
 async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
   // Shared promise cache — deduplicates concurrent geocoding requests across days
   const coordCache = {};
@@ -11757,9 +11815,31 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
     return { name: hotelName || cityName, coord: cityCoord };
   }
 
-  // Process each day concurrently — chips appear as each day's geocoding finishes
+  // Finished results from another device or person, read once per call
+  let sharedP = null;
+  const shared = () => (sharedP = sharedP || (tripIdForPush
+    ? window._get(window._ref(window._db, 'drivecache/days/' + tripIdForPush)).then(s => s.val() || {}).catch(() => ({}))
+    : Promise.resolve({})));
+
+  // Process each day concurrently — a saved result paints at once; otherwise
+  // chips appear as each day's geocoding finishes
   await Promise.all(days.map(async ([dayId, day], i) => {
+    const sig = driveDaySig(dayId, day, allDays || days);
+    if (!sig) return; // no flight and no drive activities: nothing to show
+    const local = driveDayLocalGet(tripIdForPush, dayId, sig);
+    if (local) { applyDriveDay(dayId, local); return; }
+    const remote = (await shared())[dayId];
+    if (driveDayFresh(remote, sig)) {
+      driveDayLocalPut(tripIdForPush, dayId, remote);
+      applyDriveDay(dayId, remote);
+      return;
+    }
+    let result = null;
+    const emit = (seconds, legs, notFound) => {
+      result = { seconds, legs: legs || null, notFound: notFound && notFound.length ? notFound : null };
+    };
     try {
+     await (async () => {
       const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
       const hasDriveActs = acts.some(a => a && a.drive);
       const _allDays = allDays || days;
@@ -11783,9 +11863,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
             const {duration: dur, legs} = await getRouteDuration([prevEndpoint.coord, to]);
             if (dur > 600) {
               const flightLeg = legs.length ? [{from: prevEndpoint.name, to: iata + ' airport', seconds: legs[0]}] : null;
-              window._dayLegs = window._dayLegs || {};
-              if (flightLeg) window._dayLegs[dayId] = flightLeg;
-              injectDriveChip('dc-' + dayId, dur, flightLeg);
+              emit(dur, flightLeg);
             }
           }
         }
@@ -11925,19 +12003,21 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
           }
 
           const totalSecs = scheduleSecs + hotelLegSecs;
-          injectDriveChip('dc-' + dayId, scheduleOk && totalSecs > 300 ? totalSecs : 0);
+          emit(scheduleOk && totalSecs > 300 ? totalSecs : 0);
         }
         return;
       }
 
       const {duration, legs} = await getRouteDuration(deduped.map(p => p.coord));
       const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs}));
-      if (duration > 600) {
-        window._dayLegs = window._dayLegs || {};
-        window._dayLegs[dayId] = legDetails;
-        injectDriveChip('dc-' + dayId, duration, legDetails, notFound);
-      } else if (hasDriveActs) injectDriveChip('dc-' + dayId, 0, null, notFound);
-    } catch(e) { console.warn('Drive time failed', dayId, e); }
+      if (duration > 600) emit(duration, legDetails, notFound);
+      else if (hasDriveActs) emit(0, null, notFound);
+     })();
+    } catch(e) { console.warn('Drive time failed', dayId, e); return; } // not saved, so it retries next time
+    const entry = Object.assign({ sig, at: Date.now() }, result || { none: true });
+    driveDayLocalPut(tripIdForPush, dayId, entry);
+    if (tripIdForPush) window._set(window._ref(window._db, 'drivecache/days/' + tripIdForPush + '/' + dayId), entry).catch(() => {});
+    applyDriveDay(dayId, entry);
   }));
 }
 
@@ -11948,6 +12028,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
 
 // ── Geocode cache stored in Firebase so lookups persist across sessions ──
 const localGeoCache = {};
+const GEO_V = 4; // bump to invalidate old cached results (v4: Apple Maps search first, tighter bias radius)
 
 // Curated coordinates for all known destinations
 const KNOWN_COORDS = {
@@ -12050,7 +12131,6 @@ async function getCityCoords(cityName, biasCoords = null) {
   }
 
   const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
-  const GEO_V = 4; // bump to invalidate old cached results (v4: Apple Maps search first, tighter bias radius)
 
   // 2. Check local memory cache — `in` (not truthy) because a confirmed "not found" is
   // cached as null, which is a real hit, not an absent one.
