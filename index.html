@@ -1381,6 +1381,8 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .drive-legs { padding: 4px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .drive-leg-row { font-size: 11px; color: var(--muted); padding: 1px 0; }
 .drive-leg-unknown { opacity: 0.6; font-style: italic; }
+.drive-leg-stop { text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+.drive-leg-unknown .drive-leg-stop:last-child { color: var(--terracotta); font-style: normal; }
 .act-drive-btn { background: none; border: none; font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.15s; border-radius: 6px; }
 .act-drive-btn.active { opacity: 1; background: var(--sand); }
 .act-booking-select { border:1px solid var(--border); border-radius:7px; background:var(--warm-white); font-size:11px; font-family:'DM Sans',sans-serif; color:var(--muted); padding:3px 4px; height:26px; flex-shrink:0; cursor:pointer; max-width:120px; }
@@ -4615,70 +4617,167 @@ window.toggleDay = function(id) {
   document.getElementById(id).classList.toggle('open');
 };
 
-window._pinActivityCoords = async function(inputEl, dayId, actKey) {
-  const parts = inputEl.value.trim().replace(/[()]/g, '').split(',').map(s => parseFloat(s.trim()));
-  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1]) ||
-      parts[0] < -90 || parts[0] > 90 || parts[1] < -180 || parts[1] > 180) {
-    inputEl.style.outline = '2px solid red';
-    return;
+// ── Set location: the exact spot drive times use for an activity ──
+// Search by name (Apple Maps via the Worker), paste a Google/Apple Maps share
+// link or "lat, lng", or use where you're standing. Saved to the activity's
+// coords, which fetchTripDriveTimes prefers over geocoding.
+function _locActivity(dayId, actIdx) {
+  const day = allTrips[currentTripId]?.days?.[dayId];
+  if (!day || !day.activities) return null;
+  const raw = day.activities;
+  const keys = Array.isArray(raw) ? raw.map((_, i) => String(i)) : Object.keys(raw);
+  const k = keys[Number(actIdx)];
+  const act = k != null ? raw[k] : null;
+  if (!act) return null;
+  return { day, path: `trips/${currentTripId}/days/${dayId}/activities/${k}/coords`, text: typeof act === 'object' ? (act.text || '') : String(act) };
+}
+
+async function _locBias(day) {
+  for (const q of [day.city, day.region]) {
+    const clean = (q || '').replace(/[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]/gu, '').trim();
+    if (!clean) continue;
+    try { const c = await getCityCoords(clean); if (c) return c; } catch(e) {}
   }
-  const [lat, lng] = parts;
-  const pinBtn = inputEl.nextElementSibling;
-  pinBtn.textContent = '…';
-  pinBtn.disabled = true;
-  try {
-    await window._set(window._ref(window._db, `trips/${currentTripId}/days/${dayId}/activities/${actKey}/coords`), { lat, lng });
-    pinBtn.textContent = 'Pinned ✓';
-    pinBtn.style.cssText += ';background:#4a7c59;';
-    setTimeout(() => inputEl.closest('[style*=fixed]').remove(), 1000);
-  } catch(e) {
-    pinBtn.textContent = 'Pin';
-    pinBtn.disabled = false;
-    inputEl.style.outline = '2px solid red';
+  return null;
+}
+
+// Mounts the Set location controls into `host`; onDone runs after a pin is saved
+function mountLocationPicker(host, dayId, actIdx, onDone) {
+  const info = _locActivity(dayId, actIdx);
+  if (!info) return;
+  const btnCss = 'padding:10px 14px;background:var(--terracotta);color:white;border:none;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0;';
+  host.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
+      Set the exact spot used for drive times: search by name, or paste a Google Maps / Apple Maps share link (Share → Copy link) or coordinates.
+    </div>
+    <form class="loc-form" style="display:flex;gap:8px;">
+      <input class="loc-input" type="text" enterkeyhint="search" autocomplete="off"
+        style="flex:1;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:16px;background:var(--sand);outline:none;">
+      <button type="submit" style="${btnCss}">Search</button>
+    </form>
+    <div class="loc-status" style="font-size:12px;color:var(--muted);margin-top:8px;display:none;"></div>
+    <div class="loc-results" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:40vh;overflow-y:auto;"></div>
+    <button type="button" class="loc-here" style="margin-top:8px;width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--sand);font-size:13px;color:var(--ink);cursor:pointer;">
+      📍 Use my current location
+    </button>`;
+  const input = host.querySelector('.loc-input');
+  const status = host.querySelector('.loc-status');
+  const results = host.querySelector('.loc-results');
+  input.value = extractPlaceFromActivity(info.text) || info.text;
+  const say = msg => { status.textContent = msg || ''; status.style.display = msg ? 'block' : 'none'; };
+  let biasP = null;
+  const bias = () => (biasP = biasP || _locBias(info.day));
+
+  async function save(lat, lng, label) {
+    results.innerHTML = '';
+    say('Saving…');
+    try {
+      await window._set(window._ref(window._db, info.path), { lat, lng });
+      showToast('📍 Location set' + (label ? ': ' + label : ''));
+      onDone && onDone();
+    } catch(e) { say('Could not save — ' + (e.message || 'try again')); }
   }
+
+  async function submit() {
+    const v = input.value.trim();
+    if (!v) return;
+    results.innerHTML = '';
+    // Coordinates: "43.9062, 4.8369" or "(43.9062, 4.8369)"
+    const cm = v.replace(/[()]/g, '').match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    if (cm) {
+      const lat = parseFloat(cm[1]), lng = parseFloat(cm[2]);
+      if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return save(lat, lng);
+    }
+    // A share link — often pasted with the place name in front of it
+    const link = (v.match(/https?:\/\/\S+/) || [])[0];
+    if (link) {
+      say('Reading link…');
+      try {
+        const res = await fetch(GEO_WORKER + '/resolve-map-link', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: link, near: await bias() })
+        });
+        const d = await res.json();
+        if (res.ok && typeof d.lat === 'number') return save(d.lat, d.lng, d.name);
+        say('No location found in that link. Try searching by name.');
+      } catch(e) { say('Could not read that link — check your connection.'); }
+      return;
+    }
+    say('Searching…');
+    try {
+      const near = await bias();
+      let list = await searchPlaces(v, near, 5);
+      const ctx = [info.day.city, info.day.region].filter(Boolean).join(', ');
+      if (!list.length && ctx) list = await searchPlaces(v + ', ' + ctx, near, 5);
+      if (!list.length) { say('No matches. Try a different name, or paste a map link.'); return; }
+      say('Tap the right place:');
+      list.forEach(r => {
+        const km = near ? Math.round(Math.hypot(r.lat - near[0], (r.lng - near[1]) * Math.cos(near[0] * Math.PI / 180)) * 111) : null;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = 'text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--sand);cursor:pointer;color:var(--ink);';
+        b.innerHTML = `<div style="font-size:14px;font-weight:500;">${escHtml(r.name)}</div>`
+          + `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${escHtml(r.address || '')}${km != null ? (r.address ? ' · ' : '') + km + ' km away' : ''}</div>`;
+        b.addEventListener('click', () => save(r.lat, r.lng, r.name));
+        results.appendChild(b);
+      });
+    } catch(e) { say('Search failed — check your connection.'); }
+  }
+
+  host.querySelector('.loc-form').addEventListener('submit', e => { e.preventDefault(); submit(); });
+  host.querySelector('.loc-here').addEventListener('click', () => {
+    if (!navigator.geolocation) { say('Location is not available on this device.'); return; }
+    say('Finding you…');
+    navigator.geolocation.getCurrentPosition(
+      pos => save(+pos.coords.latitude.toFixed(6), +pos.coords.longitude.toFixed(6), 'current location'),
+      () => say('Could not get your location — check location permission.'),
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  });
+}
+
+function _bottomSheet(innerHTML) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
+  modal.innerHTML = `<div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 20px 36px;box-sizing:border-box;">${innerHTML}
+      <button type="button" class="sheet-cancel"
+        style="margin-top:12px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;color:var(--muted);cursor:pointer;">
+        Cancel
+      </button></div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('.sheet-cancel').addEventListener('click', () => modal.remove());
+  document.body.appendChild(modal);
+  return modal;
+}
+
+const _canSetLocation = (dayId, actIdx) => !!(dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId && !isShareView);
+
+// Opened from a drive-time leg row: just the Set location controls
+window.openSetLocation = function(dayId, actIdx) {
+  if (!_canSetLocation(dayId, actIdx)) return;
+  const info = _locActivity(dayId, actIdx);
+  if (!info) return;
+  const modal = _bottomSheet(`
+    <div style="font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Set location</div>
+    <div style="font-size:15px;font-weight:500;color:var(--ink);margin-bottom:12px;">${escHtml(info.text)}</div>
+    <div class="loc-host"></div>`);
+  mountLocationPicker(modal.querySelector('.loc-host'), dayId, actIdx, () => modal.remove());
 };
 
 window.openMapsChoice = function(query, dayId, actKey, actIdx) {
   const googleUrl = 'https://maps.google.com/?q=' + encodeURIComponent(query);
   const wazeUrl   = 'https://waze.com/ul?q=' + encodeURIComponent(query) + '&navigate=yes';
-  const canPin = dayId && actKey != null && typeof currentTripId !== 'undefined' && currentTripId;
+  const canPin = _canSetLocation(dayId, actIdx) && _locActivity(dayId, actIdx);
+  const linkCss = 'display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--sand);border:1px solid var(--border);border-radius:14px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;';
 
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-end;';
-  modal.innerHTML = `
-    <div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;padding:20px 20px 36px;box-sizing:border-box;">
+  const modal = _bottomSheet(`
       <div style="font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;">Open in…</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
-        <a href="${googleUrl}" target="_blank" rel="noopener"
-          style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--sand);border:1px solid var(--border);border-radius:14px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;">
-          🗺️ <span>Google Maps</span>
-        </a>
-        <a href="${wazeUrl}" target="_blank" rel="noopener"
-          style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--sand);border:1px solid var(--border);border-radius:14px;text-decoration:none;color:var(--ink);font-size:15px;font-weight:500;">
-          🔵 <span>Waze</span>
-        </a>
+        <a href="${googleUrl}" target="_blank" rel="noopener" style="${linkCss}">🗺️ <span>Google Maps</span></a>
+        <a href="${wazeUrl}" target="_blank" rel="noopener" style="${linkCss}">🔵 <span>Waze</span></a>
       </div>
-      ${canPin ? `
-      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4;">
-          Pin exact location: open Google Maps, long-press the spot → tap the address card → copy the coordinates, then paste below.
-        </div>
-        <div style="display:flex;gap:8px;">
-          <input type="text" inputmode="decimal" placeholder="43.9062, 4.8369"
-            style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);outline:none;">
-          <button onclick="window._pinActivityCoords(this.previousElementSibling,'${dayId}','${actIdx != null ? actIdx : actKey}')"
-            style="padding:10px 16px;background:var(--terracotta);color:white;border:none;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;">
-            Pin
-          </button>
-        </div>
-      </div>` : ''}
-      <button onclick="this.closest('[style*=fixed]').remove()"
-        style="margin-top:12px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;color:var(--muted);cursor:pointer;">
-        Cancel
-      </button>
-    </div>`;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
+      ${canPin ? `<div class="loc-host" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);"></div>` : ''}`);
+  if (canPin) mountLocationPicker(modal.querySelector('.loc-host'), dayId, actIdx, () => modal.remove());
 };
 
 // ════════════════════════════════════════
@@ -7363,7 +7462,7 @@ window.saveDayEdit = async function() {
     // This prevents a newly-inserted activity from stealing the key of the activity it displaced,
     // which would make two activities share a key and show the same memory count.
     const existAct = existActByText || (posActText && !newTexts.has(posActText) ? posAct : null);
-    const coords = (existActByText || posAct)?.coords;
+    const coords = existAct?.coords; // never from an activity that merely shifted down a slot
     const michelin = (existActByText || posAct)?.michelin;
     // Preserve existing stable key or mint a new one so notes survive reorders
     const key = existAct?.key || genKey();
@@ -7648,7 +7747,7 @@ window.saveQuickActivityEdit = async function() {
     const posAct         = existingActs[i];
     const posActText     = posAct ? (typeof posAct === 'object' ? (posAct.text || '') : String(posAct)) : '';
     const existAct       = existActByText || (posActText && !newTexts.has(posActText) ? posAct : null);
-    const coords         = (existActByText || posAct)?.coords;
+    const coords         = existAct?.coords;
     const michelin       = (existActByText || posAct)?.michelin;
     const key            = existAct?.key || genKey();
 
@@ -11466,9 +11565,21 @@ function injectDriveChip(cardId, seconds, legDetails, notFound) {
       const legsDiv = document.createElement('div');
       legsDiv.className = 'drive-legs';
       let html = '';
-      if (hasLegs) html += legDetails.map(l => '<div class="drive-leg-row">🚗 ' + l.from + ' → ' + l.to + ': ' + fmtSecs(l.seconds) + '</div>').join('');
-      if (hasMissing) html += notFound.map(n => '<div class="drive-leg-row drive-leg-unknown">⚠️ ' + n + ' — location not found</div>').join('');
+      // Activity stops are tappable to fix their location (hotel/city endpoints aren't activities)
+      const dayId = cardId.replace(/^dc-/, '');
+      const canFix = !isShareView;
+      const stop = (name, actIdx) => (canFix && actIdx != null)
+        ? '<span class="drive-leg-stop" data-act-idx="' + actIdx + '">' + escHtml(name || '') + '</span>'
+        : escHtml(name || '');
+      if (hasLegs) html += legDetails.map(l => '<div class="drive-leg-row">🚗 ' + stop(l.from, l.fromAct) + ' → ' + stop(l.to, l.toAct) + ': ' + fmtSecs(l.seconds) + '</div>').join('');
+      if (hasMissing) html += notFound.map(n => '<div class="drive-leg-row drive-leg-unknown">⚠️ ' + stop(n.name, n.actIdx) + ' — location not found' + (canFix ? ' · <span class="drive-leg-stop" data-act-idx="' + n.actIdx + '">set it</span>' : '') + '</div>').join('');
       legsDiv.innerHTML = html;
+      legsDiv.addEventListener('click', e => {
+        const t = e.target.closest('.drive-leg-stop');
+        if (!t) return;
+        e.stopPropagation();
+        openSetLocation(dayId, Number(t.dataset.actIdx));
+      });
       body.insertBefore(legsDiv, body.firstChild);
     }
   }
@@ -11655,8 +11766,10 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       const actRawTexts = [];
       const actContexts = [];
       const actTimes = [];
-      for (const a of acts) {
+      const actIdxs = [];
+      for (const [ai, a] of acts.entries()) {
         if (a && a.drive && a.text) {
+          actIdxs.push(ai);
           actTimes.push(a.time || '');
           const place = extractPlaceFromActivity(a.text);
           const locationHint = extractActivityLocation(a.text);
@@ -11708,7 +11821,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       // Assemble full route: [hotel/city start, ...activities, hotel/city end]
       const paired = [
         ...(prevEndpoint.coord ? [{ name: prevEndpoint.name, coord: prevEndpoint.coord }] : []),
-        ...actNames.map((name, j) => ({ name, coord: actCoords[j] })).filter(p => p.coord),
+        ...actNames.map((name, j) => ({ name, coord: actCoords[j], actIdx: actIdxs[j] })).filter(p => p.coord),
         ...(curEndpoint.coord ? [{ name: curEndpoint.name, coord: curEndpoint.coord }] : []),
       ];
       const deduped = paired.filter((p, j) => j === 0 || p.coord[0] !== paired[j-1].coord[0] || p.coord[1] !== paired[j-1].coord[1]);
@@ -11718,7 +11831,7 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       // (e.g. "Drive to <hotel name> and drop off bags") would otherwise always read as
       // "found" via that other, independently-resolved endpoint even when its own geocode
       // attempt silently failed, hiding a real failure instead of flagging it.
-      const notFound = driveActNames.filter((n, j) => !actCoords[j]);
+      const notFound = driveActNames.map((n, j) => ({ name: n, actIdx: actIdxs[j] })).filter((n, j) => !actCoords[j]);
 
       if (deduped.length < 2) {
         if (hasDriveActs) {
@@ -11766,7 +11879,8 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
       }
 
       const {duration, legs} = await getRouteDuration(deduped.map(p => p.coord));
-      const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs}));
+      const legDetails = legs.map((secs, j) => ({from: deduped[j].name, to: deduped[j+1] ? deduped[j+1].name : '?', seconds: secs,
+        fromAct: deduped[j].actIdx, toAct: deduped[j+1] ? deduped[j+1].actIdx : undefined}));
       if (duration > 600) {
         window._dayLegs = window._dayLegs || {};
         window._dayLegs[dayId] = legDetails;
@@ -11855,6 +11969,18 @@ async function getMapboxToken() {
   return _mapboxToken;
 }
 
+const GEO_WORKER = 'https://hardin-trips-ai.erikchardin.workers.dev';
+
+// Place search through the Worker (Apple Maps, Photon fallback): [{ name, address, lat, lng }]
+async function searchPlaces(q, near, limit) {
+  const res = await fetch(GEO_WORKER + '/geocode', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q, near: near || null, limit: limit || 5 })
+  });
+  if (!res.ok) throw new Error('geocode status ' + res.status);
+  return (await res.json()).results || [];
+}
+
 async function getCityCoords(cityName, biasCoords = null) {
   if (!cityName) return null;
   const raw = cityName.replace(/[🛬🚗✈️🏠]/g,'').trim();
@@ -11873,7 +11999,7 @@ async function getCityCoords(cityName, biasCoords = null) {
   }
 
   const cacheKey = lower.replace(/[^a-z0-9]/g,'_');
-  const GEO_V = 3; // bump to invalidate old cached results (v3: fixes region-center bias corruption)
+  const GEO_V = 4; // bump to invalidate old cached results (v4: Apple Maps search first, tighter bias radius)
 
   // 2. Check local memory cache — `in` (not truthy) because a confirmed "not found" is
   // cached as null, which is a real hit, not an absent one.
@@ -11904,7 +12030,17 @@ async function getCityCoords(cityName, biasCoords = null) {
     return [lat, lng];
   };
 
-  // 4. Mapbox — best POI coverage, runs first so wineries/restaurants are found precisely
+  // A biased lookup is an activity near the day's region: anything farther than ~80km is
+  // a same-named place somewhere else, not the one on the itinerary.
+  const nearBias = (lat, lng) => !biasCoords || (Math.abs(lat - biasCoords[0]) < 0.75 && Math.abs(lng - biasCoords[1]) < 0.75);
+
+  // 4. Apple Maps search via the Worker — the iPhone Maps POI data, best for wineries/restaurants
+  try {
+    const [hit] = await searchPlaces(raw, biasCoords, 1);
+    if (hit && nearBias(hit.lat, hit.lng)) return cacheAndReturn(hit.lat, hit.lng);
+  } catch(e) { console.warn('Place search failed:', raw, e); }
+
+  // 5. Mapbox
   const mbToken = await getMapboxToken();
   if (mbToken) {
     try {
@@ -11914,14 +12050,12 @@ async function getCityCoords(cityName, biasCoords = null) {
       const data = await res.json();
       if (data.features && data.features[0]) {
         const [lng, lat] = data.features[0].geometry.coordinates;
-        if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
-          return cacheAndReturn(lat, lng);
-        }
+        if (nearBias(lat, lng)) return cacheAndReturn(lat, lng);
       }
     } catch(e) { console.warn('Mapbox failed:', raw, e); }
   }
 
-  // 5. Photon with optional location bias
+  // 6. Photon with optional location bias
   try {
     await new Promise(r => setTimeout(r, 400));
     let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(raw)}&limit=1&lang=en`;
@@ -11930,13 +12064,11 @@ async function getCityCoords(cityName, biasCoords = null) {
     const data = await res.json();
     if (data.features && data.features[0]) {
       const [lng, lat] = data.features[0].geometry.coordinates;
-      if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
-        return cacheAndReturn(lat, lng);
-      }
+      if (nearBias(lat, lng)) return cacheAndReturn(lat, lng);
     }
   } catch(e) { console.warn('Photon failed:', raw, e); }
 
-  // 6. Overpass API — searches OSM directly by name within a bounding box
+  // 7. Overpass API — searches OSM directly by name within a bounding box
   if (biasCoords) {
     try {
       const searchName = raw.includes(',') ? raw.split(',')[0].trim() : raw;
@@ -11959,7 +12091,7 @@ async function getCityCoords(cityName, biasCoords = null) {
     } catch(e) { console.warn('Overpass failed:', raw, e); }
   }
 
-  // 7. Nominatim fallback
+  // 8. Nominatim fallback
   try {
     await new Promise(r => setTimeout(r, 1100));
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(raw)}&format=json&limit=1`;
@@ -11967,13 +12099,11 @@ async function getCityCoords(cityName, biasCoords = null) {
     const data = await res.json();
     if (data && data[0]) {
       const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
-      if (!biasCoords || (Math.abs(lat - biasCoords[0]) < 2 && Math.abs(lng - biasCoords[1]) < 2)) {
-        return cacheAndReturn(lat, lng);
-      }
+      if (nearBias(lat, lng)) return cacheAndReturn(lat, lng);
     }
   } catch(e) { console.warn('Nominatim failed:', raw, e); }
 
-  // 8. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
+  // 9. Retry without region suffix ("Domaine Tempier, Bandol" → "Domaine Tempier")
   if (raw.includes(',')) {
     const base = raw.split(',')[0].trim();
     if (base && base !== raw) {
@@ -11987,20 +12117,6 @@ async function getCityCoords(cityName, biasCoords = null) {
       return result;
     }
   }
-
-  // 9. Google Maps Geocoding via Worker (if endpoint configured)
-  try {
-    const gmUrl = 'https://hardin-trips-ai.erikchardin.workers.dev/geocode?q=' + encodeURIComponent(raw);
-    const res = await fetch(gmUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.lat && data.lng) {
-        localGeoCache[cacheKey] = [data.lat, data.lng];
-        try { await window._set(window._ref(window._db, `geocache/${cacheKey}`), { lat: data.lat, lng: data.lng, name: raw, v: GEO_V }); } catch(e) {}
-        return [data.lat, data.lng];
-      }
-    }
-  } catch(e) {}
 
   // All providers exhausted — cache the negative result so a future lookup of this exact
   // query returns instantly instead of repeating the entire slow fallback chain again.
