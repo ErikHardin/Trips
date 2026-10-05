@@ -1155,7 +1155,7 @@ async function apnsPost(env, host, deviceToken, payload, opts) {
   return { ok: false, status: r.status, reason };
 }
 
-// msg: { title, body, route?, threadId?, collapseId?, timeSensitive? }.
+// msg: { title, body, route?, threadId?, collapseId?, timeSensitive?, category?, act? }.
 // `route` rides along in the payload; the app opens it when the push is tapped.
 // Returns { sent, tokens, errors }. Tokens APNs reports dead are removed.
 async function sendPushToUser(env, emailKey, msg) {
@@ -1165,7 +1165,11 @@ async function sendPushToUser(env, emailKey, msg) {
   const aps = { alert: { title: msg.title, body: msg.body }, sound: 'default' };
   if (msg.threadId) aps['thread-id'] = msg.threadId;
   if (msg.timeSensitive) aps['interruption-level'] = 'time-sensitive';
+  // Buttons on the notification (categories registered in AppDelegate.swift);
+  // builds without them just ignore it
+  if (msg.category) aps.category = msg.category;
   const payload = { aps, route: msg.route || null };
+  if (msg.act) payload.act = msg.act;
 
   await Promise.all(Object.entries(devices).map(async ([token, rec]) => {
     if (!/^[0-9a-f]{32,200}$/i.test(token)) return;
@@ -1606,6 +1610,17 @@ function tripRecipients(access, tokens, trip, tripId, prefsAll) {
   });
 }
 
+// Where a reminder's Directions button goes: the activity's set pin, else
+// where the app's drive-times map placed it, else a search for it and the city
+function pushMapsTarget(a, day, geo) {
+  const ok = c => c && typeof c.lat === 'number' && typeof c.lng === 'number';
+  const stop = ((geo && geo.stops) || []).find(s => s.text === a.text && (s.time || '') === (a.time || ''));
+  const c = ok(a.coords) ? a.coords : ok(stop) ? stop : null;
+  if (c) return { lat: c.lat, lng: c.lng, name: c.name || a.text };
+  const q = [a.text, day.city || day.description].filter(Boolean).join(', ');
+  return q ? { q } : null;
+}
+
 async function runPushCron(env) {
   if (!pushConfigured(env)) return;
   const now = Date.now();
@@ -1663,6 +1678,8 @@ async function runPushCron(env) {
         const route = { screen: 'trip', tripId };
         const who = recipients.filter(k => !((mutesAll[k] || {})[actId]));
         if (!who.length) continue;
+        // For the Directions and Mute buttons on these reminders
+        const act = { id: actId, tripId, name: a.text, maps: pushMapsTarget(a, day, geo) };
 
         // Leave-by for drives with a saved stop and origin
         let leave = null;
@@ -1699,6 +1716,7 @@ async function runPushCron(env) {
                   title: late ? '🚗 Time to leave' : '🚗 Leave by ' + fmtLocalTime(leaveAt, tz),
                   body: dest + ' at ' + a.time + '\n' + mins + ' min drive' + traffic,
                   route, threadId: tripId, timeSensitive: true, collapseId: actId,
+                  category: 'ACTIVITY', act,
                 });
                 await fbWrite(env, 'PUT', 'pushState/eta/' + actId + '/notifiedSec', st.sec).catch(() => {});
               } else if (st.notifiedSec && st.sec >= st.notifiedSec + 600) {
@@ -1706,6 +1724,7 @@ async function runPushCron(env) {
                   title: '🚦 Traffic got worse',
                   body: 'Now ' + mins + ' min — leave ' + (late ? 'now' : 'by ' + fmtLocalTime(leaveAt, tz)) + '\n' + dest + ' at ' + a.time,
                   route, threadId: tripId, timeSensitive: true, collapseId: actId,
+                  category: 'ACTIVITY', act,
                 });
               }
             }
@@ -1722,6 +1741,7 @@ async function runPushCron(env) {
             title: (a.emoji ? a.emoji + ' ' : '⏰ ') + 'In ' + mins + ' min · ' + a.time,
             body: a.text,
             route, threadId: tripId, collapseId: actId,
+            category: 'ACTIVITY', act,
           });
         }
       }
