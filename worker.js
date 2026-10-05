@@ -383,7 +383,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-04.5';
+const WORKER_VERSION = '2026-10-05.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -839,8 +839,8 @@ async function notifyBookingQueued(env, item) {
       ? [String(item.ownerEmail).toLowerCase().replace(/\./g, ',')]
       : await adminKeys(env);
     await pushToKeys(env, keys, 'bookingInbox', {
-      title: item.status === 'error' ? 'Booking inbox: couldn’t read an email' : '📥 New booking in your inbox',
-      body: (item.summary || item.subject || 'Booking') + ' — tap to add it to a trip',
+      title: item.status === 'error' ? '📥 Couldn’t read a booking' : '📥 New booking',
+      body: (item.summary || item.subject || 'Booking') + '\nTap to add it to a trip',
       route: { screen: 'inbox' },
       threadId: 'inbox',
     });
@@ -1695,14 +1695,14 @@ async function runPushCron(env) {
               if (!sent[sentKey]) {
                 await send(sentKey, key, {
                   title: late ? '🚗 Time to leave' : '🚗 Leave by ' + fmtLocalTime(leaveAt, tz),
-                  body: dest + ' at ' + a.time + ' · ' + mins + ' min drive' + traffic,
+                  body: dest + ' at ' + a.time + '\n' + mins + ' min drive' + traffic,
                   route, threadId: tripId, timeSensitive: true, collapseId: actId,
                 });
                 await fbWrite(env, 'PUT', 'pushState/eta/' + actId + '/notifiedSec', st.sec).catch(() => {});
               } else if (st.notifiedSec && st.sec >= st.notifiedSec + 600) {
                 await send('worse_' + actId + '_' + key, key, {
                   title: '🚦 Traffic got worse',
-                  body: dest + ': now ' + mins + ' min — leave ' + (late ? 'now' : 'by ' + fmtLocalTime(leaveAt, tz)),
+                  body: 'Now ' + mins + ' min — leave ' + (late ? 'now' : 'by ' + fmtLocalTime(leaveAt, tz)) + '\n' + dest + ' at ' + a.time,
                   route, threadId: tripId, timeSensitive: true, collapseId: actId,
                 });
               }
@@ -1715,8 +1715,10 @@ async function runPushCron(env) {
           if (inQuietHours(prefs, now, tz)) continue;   // held; sent when quiet hours end, if still ahead
           const mins = Math.max(1, Math.round((start - now) / 60000));
           await send('act_' + actId + '_' + key, key, {
-            title: (a.emoji ? a.emoji + ' ' : '') + a.text,
-            body: 'Starts at ' + a.time + ' — in ' + mins + ' min',
+            // iOS shows one title line and ~4 body lines: keep the title short
+            // and let the activity's name wrap in the body
+            title: (a.emoji ? a.emoji + ' ' : '⏰ ') + 'In ' + mins + ' min · ' + a.time,
+            body: a.text,
             route, threadId: tripId, collapseId: actId,
           });
         }
@@ -1769,22 +1771,19 @@ function wWeatherText(code) {
   return '⛈️ Storms';
 }
 
-// "☀️ Day 3 in Lyon" / "4 plans · first: 🍽️ Lunch at Bocuse, 12:30pm ·
-// 🏨 Hotel X · ☀️ Clear, 81°/60°"
+// Title "☀️ Day 2 · Paris"; body one item per line, in the order iOS shows
+// before a long-press: the day's description, the weather, then activities.
+//   Louvre & the Marais
+//   🌤️ Partly cloudy · 81°/60°
+//   🖼️ 10am Louvre
+//   🍽️ 7:30pm Dinner at Septime
 async function buildMorningBrief(env, trip, dayId, day, acts, dateISO, tz) {
   const ordered = Object.entries(trip.days).map(([id, d]) => [id, d.dateISO || dayDateISO(d, trip.year) || '']).sort((a, b) => a[1].localeCompare(b[1]));
   const dayNum = ordered.findIndex(([id]) => id === dayId) + 1;
   const city = wCleanCity(day.city) || wCleanCity(day.region) || trip.name || 'your trip';
-  const parts = [];
-  const plans = acts.filter(a => a && (typeof a === 'string' || a.text));
-  const timed = plans.filter(a => typeof a === 'object' && wActStartMinutes(a.time) != null)
-    .sort((a, b) => wActStartMinutes(a.time) - wActStartMinutes(b.time));
-  if (plans.length) {
-    let line = plans.length + (plans.length === 1 ? ' plan' : ' plans');
-    if (timed.length) line += ' · first: ' + (timed[0].emoji ? timed[0].emoji + ' ' : '') + timed[0].text + ', ' + timed[0].time;
-    parts.push(line);
-  } else parts.push('Nothing planned — a free day');
-  if (day.hotel) parts.push('🏨 ' + day.hotel);
+  const lines = [];
+  const desc = String(day.description || '').trim();
+  if (desc && desc.toLowerCase() !== city.toLowerCase()) lines.push(desc);
   try {
     const place = wCleanCity(day.city) || wCleanCity(day.region);
     const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
@@ -1793,11 +1792,23 @@ async function buildMorningBrief(env, trip, dayId, day, acts, dateISO, tz) {
         '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + dateISO);
       const d = w && w.daily;
       if (d && d.weathercode && d.weathercode.length) {
-        parts.push(wWeatherText(d.weathercode[0]) + ', ' + Math.round(d.temperature_2m_max[0]) + '°/' + Math.round(d.temperature_2m_min[0]) + '°');
+        lines.push(wWeatherText(d.weathercode[0]) + ' · ' + Math.round(d.temperature_2m_max[0]) + '°/' + Math.round(d.temperature_2m_min[0]) + '°');
       }
     }
   } catch (e) {}
-  return { title: '☀️ Day ' + (dayNum || '') + ' in ' + city, body: parts.join(' · '), collapseId: 'brief_' + dateISO };
+  const plans = acts.filter(a => a && (typeof a === 'string' ? a.trim() : a.text));
+  const startOf = a => typeof a === 'object' ? wActStartMinutes(a.time) : null;
+  // Timed activities in time order, then untimed ones in itinerary order
+  const sorted = plans.map((a, i) => ({ a, i, t: startOf(a) }))
+    .sort((x, y) => (x.t == null) - (y.t == null) || (x.t != null ? x.t - y.t : x.i - y.i))
+    .map(x => x.a);
+  if (sorted.length) {
+    sorted.forEach(a => {
+      if (typeof a === 'string') { lines.push('• ' + a.trim()); return; }
+      lines.push((a.emoji ? a.emoji + ' ' : '• ') + (a.time ? a.time + ' ' : '') + a.text);
+    });
+  } else lines.push('Free day — nothing planned');
+  return { title: '☀️ Day ' + (dayNum || '') + ' · ' + city, body: lines.join('\n'), collapseId: 'brief_' + dateISO };
 }
 
 // ── Flights ──
@@ -1881,27 +1892,27 @@ async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightSta
       st = Object.assign({}, prev, info || {}, { at: now });
       await fbWrite(env, 'PUT', 'pushState/flights/' + key, st).catch(() => {});
       if (info) {
-        const label = leg.num + ' ' + (info.from && info.to ? info.from + ' → ' + info.to : '');
+        const label = info.from && info.to ? info.from + ' → ' + info.to : leg.num;
         const route = { screen: 'trip', tripId };
         const msgs = [];
         const delayMin = info.depUtc && info.schedUtc ? Math.round((info.depUtc - info.schedUtc) / 60000) : 0;
         if (/cancel/i.test(info.status) && !/cancel/i.test(prev.status || '')) {
-          msgs.push(['flt_cancel_' + key, { title: '❌ ' + leg.num + ' canceled', body: label + ' was canceled. Check the airline app to rebook.', timeSensitive: true }]);
+          msgs.push(['flt_cancel_' + key, { title: '❌ ' + leg.num + ' canceled', body: label + '\nCheck the airline app to rebook.', timeSensitive: true }]);
         } else {
           if (delayMin >= 15 && Math.abs(delayMin - (prev.notifiedDelay || 0)) >= 15) {
             msgs.push(['flt_delay_' + key + '_' + delayMin, { title: '⏱️ ' + leg.num + ' delayed ' + delayMin + ' min',
-              body: label + ' now departs ' + info.depLocal + ' (was ' + info.schedLocal + ')', timeSensitive: true }]);
+              body: label + '\nNow departs ' + info.depLocal + ' (was ' + info.schedLocal + ')', timeSensitive: true }]);
             st.notifiedDelay = delayMin;
           } else if (prev.notifiedDelay >= 15 && delayMin < 15) {
-            msgs.push(['flt_ontime_' + key + '_' + now, { title: '✅ ' + leg.num + ' back on time', body: label + ' departs ' + info.depLocal }]);
+            msgs.push(['flt_ontime_' + key + '_' + now, { title: '✅ ' + leg.num + ' back on time', body: label + '\nDeparts ' + info.depLocal }]);
             st.notifiedDelay = 0;
           }
           if (info.gate && prev.gate && info.gate !== prev.gate) {
-            msgs.push(['flt_gate_' + key + '_' + info.gate, { title: '🚪 ' + leg.num + ' gate change: ' + info.gate,
-              body: label + ' — gate ' + prev.gate + ' → ' + info.gate + (info.terminal ? ' (terminal ' + info.terminal + ')' : ''), timeSensitive: true }]);
+            msgs.push(['flt_gate_' + key + '_' + info.gate, { title: '🚪 ' + leg.num + ' now gate ' + info.gate,
+              body: label + '\nGate ' + prev.gate + ' → ' + info.gate + (info.terminal ? ' · terminal ' + info.terminal : ''), timeSensitive: true }]);
           } else if (info.gate && !prev.gate && info.depUtc && info.depUtc - now < 4 * 3600e3) {
-            msgs.push(['flt_gate_' + key + '_' + info.gate, { title: '🚪 ' + leg.num + ' departs from gate ' + info.gate,
-              body: label + (info.terminal ? ' · terminal ' + info.terminal : '') + ' · ' + info.depLocal }]);
+            msgs.push(['flt_gate_' + key + '_' + info.gate, { title: '🚪 ' + leg.num + ' gate ' + info.gate,
+              body: label + '\nDeparts ' + info.depLocal + (info.terminal ? ' · terminal ' + info.terminal : '') }]);
           }
         }
         for (const [id, msg] of msgs) for (const k of who) await send(id + '_' + k, k, Object.assign({ route, threadId: 'flt_' + key, collapseId: 'flt_' + key }, msg));
@@ -1913,8 +1924,8 @@ async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightSta
     const dep = st && (st.depUtc || st.schedUtc);
     if (dep && now >= dep - 24 * 3600e3 && now < dep - 3 * 3600e3) {
       for (const k of who) await send('checkin_' + key + '_' + k, k, {
-        title: '✈️ Check in for ' + leg.num,
-        body: (st.from && st.to ? st.from + ' → ' + st.to + ' · ' : '') + 'departs ' + (st.depLocal || st.schedLocal || '') + ' (local). Online check-in is usually open now.',
+        title: '✈️ Check in: ' + leg.num,
+        body: (st.from && st.to ? st.from + ' → ' + st.to + '\n' : '') + 'Departs ' + (st.depLocal || st.schedLocal || '') + ' local time\nOnline check-in is usually open now',
         route: { screen: 'trip', tripId }, threadId: 'flt_' + key,
       });
     }
@@ -1946,7 +1957,7 @@ async function runEditDigest(env, tripId, trip, recipients, access, prefsOf, cur
     const lines = others.slice(0, 3).map(e => e.action + (e.detail ? ': ' + e.detail : ''));
     if (others.length > 3) lines.push('+' + (others.length - 3) + ' more');
     await send('edits_' + tripId + '_' + fresh[fresh.length - 1].ts + '_' + k, k, {
-      title: '✏️ ' + names.join(' & ') + (others.length === 1 ? ' updated ' : ' made ' + others.length + ' changes to ') + tripName,
+      title: '✏️ ' + tripName + ': ' + (others.length === 1 ? '1 change' : others.length + ' changes') + ' by ' + names.join(' & '),
       body: lines.join('\n'),
       route: { screen: 'trip', tripId, tab: 'changes' },
       threadId: tripId,
