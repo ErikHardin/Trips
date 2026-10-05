@@ -153,9 +153,13 @@ the home screen → **+** → Hardin Trips.
 - **Upcoming Trips** (`UpcomingWidget.swift`): the native version of
   `widget-upcoming.js` — trip countdowns + bookings still to make.
 - **Today** (`TodayWidget.swift`, small, medium or large): on a trip day, the
-  city and the activities still ahead (each drops off 30 minutes after it
-  starts); between trips, a countdown to the next one. Reads `/widget-data`
-  with the phone's date.
+  city, the weather and the activities still ahead (each drops off 30 minutes
+  after it starts), with the next one highlighted and counting down. Large adds
+  the hotel, today's flights (gate and delays from the flight alerts), each
+  drive's time and, with live traffic, when to leave, and tomorrow's first
+  plans once today runs short. Between trips, a countdown to the next one.
+  Reads `/widget-data` with the phone's date; it shows the first *active* trip
+  (else the next upcoming one) for everyone.
 
 A new widget file must be added to the **UpcomingWidget** target (Xcode does
 this when you create it there; the project file isn't folder-synced).

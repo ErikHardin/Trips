@@ -210,14 +210,14 @@ async function handleWidgetData(env, request) {
     : new Date().toISOString().slice(0, 10);
 
   // Active trip takes priority; otherwise pick the soonest upcoming trip
-  const entries = Object.values(trips);
-  let chosen = entries.find(t => t.status === 'active');
-  if (!chosen) {
-    const upcoming = entries
-      .filter(t => t.status === 'upcoming' && t.startDateISO)
-      .sort((a, b) => a.startDateISO.localeCompare(b.startDateISO));
-    chosen = upcoming[0] || null;
+  const ids = Object.keys(trips).filter(id => trips[id]);
+  let chosenId = ids.find(id => trips[id].status === 'active');
+  if (!chosenId) {
+    chosenId = ids
+      .filter(id => trips[id].status === 'upcoming' && trips[id].startDateISO)
+      .sort((a, b) => trips[a].startDateISO.localeCompare(trips[b].startDateISO))[0];
   }
+  const chosen = chosenId ? trips[chosenId] : null;
 
   if (!chosen) {
     return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
@@ -239,40 +239,117 @@ async function handleWidgetData(env, request) {
     flightOutDate: chosen.flightOutDate || null,
   };
 
-  // Find today's day and build sorted activity list
+  const days = Object.entries(chosen.days || {})
+    .filter(([, d]) => d)
+    .map(([id, d]) => ({ id, d, iso: d.dateISO || dayDateISO(d, chosen.year) }));
+  const tomorrowISO = new Date(Date.parse(todayISO + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
+  const todayRow = days.find(x => x.iso === todayISO);
+  const tomorrowRow = days.find(x => x.iso === tomorrowISO);
+
   let todayData = null;
-  if (chosen.days) {
-    const dayEntry = Object.values(chosen.days).find(d => {
-      if (d.dateISO) return d.dateISO === todayISO;
-      return dayDateISO(d, chosen.year) === todayISO;
-    });
-    if (dayEntry) {
-      const rawActs = dayEntry.activities
-        ? (Array.isArray(dayEntry.activities) ? dayEntry.activities : Object.values(dayEntry.activities))
-        : [];
-
-      const city = dayEntry.description || dayEntry.city || '';
-      const activities = rawActs
-        .filter(a => a && (a.text || a.description))
-        .map(a => ({
-          time:     a.time || '',
-          timeSort: parseTimeTo24h(a.time || ''),
-          emoji:    a.emoji || '📌',
-          text:     a.text || a.description || '',
-          location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
-        }))
-        // In time order; untimed ones keep their place, after the timed ones
-        .sort((x, y) => (!x.timeSort - !y.timeSort) || (x.timeSort && y.timeSort ? x.timeSort.localeCompare(y.timeSort) : 0));
-
-      todayData = {
-        city:        dayEntry.city || '',
-        description: city,
-        activities,
-      };
-    }
+  if (todayRow) {
+    const { day, raws } = widgetDay(todayRow.d);
+    todayData = day;
+    // Extras for the native Today widget (widget.js ignores them). Each one is
+    // best-effort: a failed lookup just leaves its line off the widget.
+    const [weather, flights] = await Promise.all([
+      wDayWeather(env, todayRow.d, todayISO).catch(() => null),
+      widgetFlights(env, chosen, todayISO).catch(() => []),
+      widgetDrives(env, chosenId, todayRow, todayData.activities, raws).catch(() => {}),
+    ]);
+    todayData.weather = weather;
+    todayData.hotel = todayRow.d.hotel || null;
+    todayData.flights = flights;
+  }
+  let tomorrowData = null;
+  if (tomorrowRow) {
+    tomorrowData = widgetDay(tomorrowRow.d).day;
+    tomorrowData.activities = tomorrowData.activities.slice(0, 4);
   }
 
-  return new Response(JSON.stringify({ trip: tripInfo, today: todayData }), { headers: CORS });
+  return new Response(JSON.stringify({ trip: tripInfo, today: todayData, tomorrow: tomorrowData }), { headers: CORS });
+}
+
+// One itinerary day for the widgets: its city, and its activities with the
+// timed ones in time order. Untimed ones ("Check in at the hotel") keep their
+// place in the itinerary. raws[i] is the itinerary activity behind
+// day.activities[i].
+function widgetDay(d) {
+  const rawActs = d.activities
+    ? (Array.isArray(d.activities) ? d.activities : Object.values(d.activities))
+    : [];
+  const city = d.description || d.city || '';
+  const hhmm = m => m == null ? '' : String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  const items = rawActs
+    .filter(a => a && (a.text || a.description))
+    .map(a => ({ a, m: wActStartMinutes(a.time || '') }));
+  const timed = items.filter(x => x.m != null).sort((x, y) => x.m - y.m);
+  const sorted = items.map(x => x.m != null ? timed.shift() : x);
+  const activities = sorted.map(({ a, m }) => ({
+    time:     a.time || '',
+    timeSort: hhmm(m),   // "HH:MM" local to the trip, '' when untimed
+    emoji:    a.emoji || '📌',
+    text:     a.text || a.description || '',
+    location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
+  }));
+  return { day: { city: d.city || '', description: city, activities }, raws: sorted.map(x => x.a) };
+}
+
+// Drive time for each drive activity: the leg the app's drive-times map saved
+// (drivecache/days), and when the push cron has a live ETA for it, the minutes
+// with traffic and when to leave. Adds `drive` to activities in place.
+async function widgetDrives(env, tripId, row, activities, raws) {
+  if (!raws.some(a => a.drive)) return;
+  const [geo, cache] = await Promise.all([
+    fbGet(env, 'pushGeo/' + tripId + '/' + row.id).catch(() => null),
+    fbGet(env, 'drivecache/days/' + tripId + '/' + row.id).catch(() => null),
+  ]);
+  const legs = (cache && Array.isArray(cache.legs)) ? cache.legs : [];
+  const now = Date.now();
+  let tzPromise = null;
+  await Promise.all(activities.map(async (x, i) => {
+    const a = raws[i];
+    if (!a.drive) return;
+    const drive = {};
+    const stop = ((geo && geo.stops) || []).find(s => s.text === a.text && (s.time || '') === (a.time || ''));
+    const leg = stop && legs.find(l => l && l.to === stop.name);
+    if (leg && leg.seconds) drive.mins = Math.max(1, Math.round(leg.seconds / 60));
+    const startMin = wActStartMinutes(a.time || '');
+    if (startMin != null) {
+      const st = await fbGet(env, 'pushState/eta/' + pushActId(tripId, row.iso, a)).catch(() => null);
+      if (st && st.sec && now - (st.at || 0) < 90 * 60000) {
+        tzPromise = tzPromise || wDayTimeZone(env, row.d, geo, {}).catch(() => null);
+        const tz = await tzPromise;
+        drive.mins = Math.max(1, Math.round(st.sec / 60));
+        drive.live = st.src === 'apple';
+        if (tz) {
+          const leaveAt = zonedToUtc(row.iso, startMin, tz) - st.sec * 1000 - PUSH_LEAVE_BUFFER_MIN * 60000;
+          if (leaveAt > now - 15 * 60000) drive.leaveBy = fmtLocalTime(leaveAt, tz);
+        }
+      }
+    }
+    if (drive.mins) x.drive = drive;
+  }));
+}
+
+// Today's flights for the widget: "UA100 · DEN → LIS · 8:00am", plus gate or
+// delay from the flight-alert cron's last lookup (pushState/flights) when it
+// has one; otherwise the itinerary's own flight line.
+async function widgetFlights(env, trip, dateISO) {
+  const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO);
+  return Promise.all(legs.map(async leg => {
+    const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
+    const st = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
+    if (!st || !(st.depLocal || st.schedLocal)) return { line: String(leg.formatted || leg.num).trim(), detail: '', alert: false };
+    const route = st.from && st.to ? st.from + ' → ' + st.to : '';
+    const delayMin = st.depUtc && st.schedUtc ? Math.round((st.depUtc - st.schedUtc) / 60000) : 0;
+    let detail = '', alert = false;
+    if (/cancel/i.test(st.status || '')) { detail = 'Canceled'; alert = true; }
+    else if (delayMin >= 15) { detail = 'Delayed ' + delayMin + ' min'; alert = true; }
+    const gate = st.gate ? 'Gate ' + st.gate + (st.terminal ? ' · T' + st.terminal : '') : '';
+    if (gate) detail = detail ? detail + ' · ' + gate : gate;
+    return { line: [leg.num, route, st.depLocal || st.schedLocal].filter(Boolean).join(' · '), detail, alert };
+  }));
 }
 
 async function handleWidgetUpcoming(env, request) {
@@ -585,18 +662,6 @@ function dayDateISO(day, tripYear) {
   const yr  = parseInt(day.year || tripYear || '', 10);
   if (!num || !mon || !yr) return '';
   return `${yr}-${String(mon).padStart(2, '0')}-${String(num).padStart(2, '0')}`;
-}
-
-function parseTimeTo24h(time) {
-  if (!time) return '';
-  const m = String(time).match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
-  if (!m) return '';
-  let h = parseInt(m[1], 10);
-  const min = m[2];
-  const ampm = (m[3] || '').toLowerCase();
-  if (ampm === 'pm' && h !== 12) h += 12;
-  if (ampm === 'am' && h === 12) h = 0;
-  return String(h).padStart(2, '0') + ':' + min;
 }
 
 // ── Booking inbox ─────────────────────────────────────────────────────────────
@@ -1780,6 +1845,19 @@ function addHHMM(hhmm, mins) {
 }
 
 // WMO weather codes (Open-Meteo), condensed — same groups as the app's icons
+// The day's forecast for its city: { text: '🌤️ Partly cloudy', hi, lo } (°F),
+// or null when the city can't be placed. Used by the morning brief and widget.
+async function wDayWeather(env, day, dateISO) {
+  const place = wCleanCity(day.city) || wCleanCity(day.region);
+  const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
+  if (!c) return null;
+  const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
+    '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + dateISO);
+  const d = w && w.daily;
+  if (!d || !d.weathercode || !d.weathercode.length) return null;
+  return { text: wWeatherText(d.weathercode[0]), hi: Math.round(d.temperature_2m_max[0]), lo: Math.round(d.temperature_2m_min[0]) };
+}
+
 function wWeatherText(code) {
   if (code === 0) return '☀️ Clear';
   if (code <= 2) return '🌤️ Partly cloudy';
@@ -1807,16 +1885,8 @@ async function buildMorningBrief(env, trip, dayId, day, acts, dateISO, tz) {
   const desc = String(day.description || '').trim();
   if (desc && desc.toLowerCase() !== city.toLowerCase()) lines.push(desc);
   try {
-    const place = wCleanCity(day.city) || wCleanCity(day.region);
-    const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
-    if (c) {
-      const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
-        '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + dateISO);
-      const d = w && w.daily;
-      if (d && d.weathercode && d.weathercode.length) {
-        lines.push(wWeatherText(d.weathercode[0]) + ' · ' + Math.round(d.temperature_2m_max[0]) + '°/' + Math.round(d.temperature_2m_min[0]) + '°');
-      }
-    }
+    const w = await wDayWeather(env, day, dateISO);
+    if (w) lines.push(w.text + ' · ' + w.hi + '°/' + w.lo + '°');
   } catch (e) {}
   const plans = acts.filter(a => a && (typeof a === 'string' ? a.trim() : a.text));
   const startOf = a => typeof a === 'object' ? wActStartMinutes(a.time) : null;
