@@ -116,6 +116,22 @@ export default {
       }
     }
 
+    // Place search for drive times and the app's "Set location" sheet
+    if (url.pathname === '/geocode') {
+      const q = String(body.q || '').trim().slice(0, 200);
+      if (!q) return new Response(JSON.stringify({ error: 'Missing q' }), { status: 400, headers: CORS_JSON });
+      const results = await placeSearch(env, q, validNear(body.near), Math.min(Math.max(parseInt(body.limit) || 5, 1), 10));
+      return new Response(JSON.stringify({ results }), { headers: CORS_JSON });
+    }
+
+    // A pasted Google Maps / Apple Maps share link → coordinates
+    if (url.pathname === '/resolve-map-link') {
+      const result = await resolveMapLink(env, String(body.url || '').trim(), validNear(body.near));
+      return new Response(JSON.stringify(result || { error: 'No location found in that link' }), {
+        status: result ? 200 : 404, headers: CORS_JSON
+      });
+    }
+
     // Push: a test notification to the signed-in caller's own devices
     if (url.pathname === '/push/test') {
       return handlePushTest(env, body);
@@ -385,6 +401,8 @@ const WORKER_ROUTES = [
   '/verify-pin',
   '/flight-lookup',
   '/booking-parse',
+  '/geocode',
+  '/resolve-map-link',
   '/push/test',
   '/push/access-request',
   '/push/access-approved',
@@ -1424,6 +1442,119 @@ async function driveEtaSeconds(env, from, to) {
     const sec = r.routes && r.routes[0] && r.routes[0].duration;
     if (sec) return { sec: Math.round(sec), src: 'osrm' };
   } catch (e) {}
+  return null;
+}
+
+// ── Place search ──
+// Apple Maps search first: it's the iPhone Maps POI data and finds wineries
+// and restaurants the free geocoders miss. Photon is the fallback when the
+// Maps key isn't configured or Apple has nothing.
+function validNear(n) {
+  if (!Array.isArray(n) || n.length < 2) return null;
+  const lat = Number(n[0]), lng = Number(n[1]);
+  return (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) ? [lat, lng] : null;
+}
+
+async function placeSearch(env, q, near, limit) {
+  let results = [];
+  try { results = await appleSearch(env, q, near, limit); } catch (e) { console.warn('Apple search failed: ' + e.message); }
+  if (results.length) return results;
+  try {
+    let u = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(q) + '&limit=' + limit + '&lang=en';
+    if (near) u += '&lat=' + near[0] + '&lon=' + near[1];
+    const d = await wFetchJson(u);
+    results = (d.features || []).map(f => {
+      const p = f.properties || {};
+      const addr = [[p.housenumber, p.street].filter(Boolean).join(' '), p.city || p.town || p.village, p.state, p.country]
+        .filter(Boolean).join(', ');
+      return { name: p.name || q, address: addr, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+    });
+  } catch (e) { console.warn('Photon search failed: ' + e.message); }
+  return results;
+}
+
+async function appleSearch(env, q, near, limit) {
+  const token = await appleMapsToken(env);
+  if (!token) return [];
+  const loc = near ? '&searchLocation=' + near[0] + ',' + near[1] : '';
+  const get = async path => {
+    const r = await fetch('https://maps-api.apple.com/v1/' + path + '?q=' + encodeURIComponent(q) + loc + '&lang=en-US',
+      { headers: { authorization: 'Bearer ' + token } });
+    if (!r.ok) throw new Error(path + ' status ' + r.status);
+    return ((await r.json()).results || []).filter(x => x.coordinate).map(x => ({
+      name: x.name || (x.formattedAddressLines || [])[0] || q,
+      address: (x.formattedAddressLines || []).join(', '),
+      lat: x.coordinate.latitude,
+      lng: x.coordinate.longitude,
+    }));
+  };
+  let results = await get('search');
+  if (!results.length) results = await get('geocode');
+  return results.slice(0, limit);
+}
+
+// Share links only — this follows redirects, so it must not fetch arbitrary hosts
+const MAP_LINK_HOSTS = /(^|\.)(goo\.gl|google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})|maps\.apple\.com|maps\.apple|apple\.co)$/i;
+
+// Coordinates written into a maps URL. A Google place URL carries both the
+// viewport centre (@lat,lng) and the place itself (!3dlat!4dlng) — prefer the place.
+function coordsFromMapUrl(s) {
+  const dec = (() => { try { return decodeURIComponent(s); } catch (e) { return s; } })();
+  const num = '(-?\\d{1,3}(?:\\.\\d+)?)';
+  const pats = [
+    new RegExp('!3d' + num + '!4d' + num),
+    new RegExp('[?&](?:q|query|ll|sll|daddr|destination|coordinate|center)=' + num + '\\s*,\\s*' + num),
+    new RegExp('/place/' + num + ',\\s*' + num),
+    new RegExp('@' + num + ',' + num),
+  ];
+  for (const p of pats) {
+    const m = dec.match(p);
+    if (m) {
+      const c = validNear([m[1], m[2]]);
+      if (c) return c;
+    }
+  }
+  return null;
+}
+
+// The place name a maps URL is about, for links that carry no coordinates
+function placeNameFromMapUrl(s) {
+  try {
+    const u = new URL(s);
+    const m = u.pathname.match(/\/maps\/place\/([^/]+)/);
+    if (m) return decodeURIComponent(m[1].replace(/\+/g, ' '));
+    const q = u.searchParams.get('q') || u.searchParams.get('query') || u.searchParams.get('name') || u.searchParams.get('address');
+    return q ? q.trim() : null;
+  } catch (e) { return null; }
+}
+
+async function resolveMapLink(env, link, near) {
+  const direct = coordsFromMapUrl(link);
+  if (direct) return { lat: direct[0], lng: direct[1], name: placeNameFromMapUrl(link) || '' };
+  let cur;
+  try { cur = new URL(link); } catch (e) { return null; }
+  // Follow the share link's redirects by hand, staying on map hosts
+  for (let hop = 0; hop < 6; hop++) {
+    if (!/^https?:$/.test(cur.protocol) || !MAP_LINK_HOSTS.test(cur.hostname)) break;
+    // Google's EU consent interstitial carries the real URL in ?continue=
+    const cont = cur.hostname.startsWith('consent.') && cur.searchParams.get('continue');
+    if (cont) { try { cur = new URL(cont); continue; } catch (e) { break; } }
+    const c = coordsFromMapUrl(cur.href);
+    if (c) return { lat: c[0], lng: c[1], name: placeNameFromMapUrl(cur.href) || '' };
+    let r;
+    try { r = await fetch(cur.href, { redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' } }); }
+    catch (e) { break; }
+    const loc = r.headers.get('location');
+    if (!loc) break;
+    try { cur = new URL(loc, cur.href); } catch (e) { break; }
+  }
+  const c = coordsFromMapUrl(cur.href);
+  const name = placeNameFromMapUrl(cur.href);
+  if (c) return { lat: c[0], lng: c[1], name: name || '' };
+  if (name) {
+    const [hit] = await placeSearch(env, name, near, 1);
+    if (hit) return hit;
+  }
   return null;
 }
 
