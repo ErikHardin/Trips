@@ -1290,6 +1290,19 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .change-row { padding: 11px 14px; border-bottom: 1px solid var(--border); }
 .change-row:last-child { border-bottom: none; }
+/* Admins swipe a row left to reveal its Delete button */
+.change-swipe { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
+.change-swipe:last-child { border-bottom: none; }
+.change-swipe .change-row {
+  position: relative; background: var(--warm-white); border-bottom: none;
+  touch-action: pan-y; transition: transform 0.2s ease; user-select: none; -webkit-user-select: none;
+}
+.change-swipe .change-row.dragging { transition: none; }
+.change-delete-btn {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 84px;
+  border: none; background: var(--terracotta); color: #fff;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
 .change-action { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .change-detail { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
 .change-meta { font-size: 11px; color: var(--sand-dark); margin-top: 3px; }
@@ -8735,7 +8748,9 @@ async function renderChangesPanel(tripId) {
   panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
   try {
     const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/changeLog'));
-    const entries = Object.values(snap.val() || {}).sort((a, b) => b.ts - a.ts).slice(0, 25);
+    const entries = Object.entries(snap.val() || {}).map(([key, e]) => Object.assign({ key }, e))
+      .sort((a, b) => b.ts - a.ts).slice(0, 25);
+    const canDelete = userRole === 'admin';
     if (!entries.length) {
       panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">No changes recorded yet.</div>';
       return;
@@ -8744,11 +8759,15 @@ async function renderChangesPanel(tripId) {
       const dt = new Date(e.ts);
       const dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      return '<div class="change-row">'
+      const row = '<div class="change-row">'
         + '<div class="change-action">' + escHtml(e.action) + '</div>'
         + (e.detail ? '<div class="change-detail">' + escHtml(e.detail) + '</div>' : '')
         + '<div class="change-meta">' + dateStr + ' · ' + timeStr + (e.user ? ' · ' + escHtml(e.user) : '') + '</div>'
         + '</div>';
+      if (!canDelete) return row;
+      return '<div class="change-swipe" data-key="' + escHtml(e.key) + '">'
+        + '<button class="change-delete-btn" type="button">Delete</button>'
+        + row + '</div>';
     }).join('');
     panel.innerHTML = '<div style="height:16px;"></div>'
       + '<div class="logistics-section" style="padding-top:0;">'
@@ -8756,10 +8775,79 @@ async function renderChangesPanel(tripId) {
       + '<div class="changes-list">' + rows + '</div>'
       + '</div>'
       + '<div style="height:32px;"></div>';
+    if (canDelete) panel.querySelectorAll('.change-swipe').forEach(el => initChangeSwipe(el, tripId));
   } catch(err) {
     panel.innerHTML = '<div style="padding:20px;color:red;font-size:13px;">Error: ' + err.message + '</div>';
   }
 }
+
+// Swipe a change row left to reveal Delete; tapping elsewhere or swiping back closes it.
+const CHANGE_DELETE_WIDTH = 84;
+function closeOpenChangeSwipes(except) {
+  document.querySelectorAll('#tripChangesPanel .change-swipe.open').forEach(el => {
+    if (el === except) return;
+    el.classList.remove('open');
+    el.querySelector('.change-row').style.transform = '';
+  });
+}
+function initChangeSwipe(wrap, tripId) {
+  const row = wrap.querySelector('.change-row');
+  const btn = wrap.querySelector('.change-delete-btn');
+  let startX = 0, startY = 0, base = 0, dx = 0, mode = null, pid = null;
+  row.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pid = e.pointerId; startX = e.clientX; startY = e.clientY; dx = 0; mode = null;
+    base = wrap.classList.contains('open') ? -CHANGE_DELETE_WIDTH : 0;
+  });
+  row.addEventListener('pointermove', e => {
+    if (e.pointerId !== pid) return;
+    const mx = e.clientX - startX, my = e.clientY - startY;
+    if (!mode) {
+      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      // Vertical movement is a scroll, not a swipe
+      mode = Math.abs(mx) > Math.abs(my) ? 'swipe' : 'scroll';
+      if (mode === 'swipe') {
+        closeOpenChangeSwipes(wrap);
+        row.classList.add('dragging');
+        try { row.setPointerCapture(pid); } catch(_) {}
+      }
+    }
+    if (mode !== 'swipe') return;
+    dx = Math.max(-CHANGE_DELETE_WIDTH * 1.5, Math.min(0, base + mx));
+    row.style.transform = 'translateX(' + dx + 'px)';
+  });
+  const end = e => {
+    if (e.pointerId !== pid) return;
+    pid = null;
+    if (mode !== 'swipe') {
+      // A plain tap on an open row closes it
+      if (!mode && wrap.classList.contains('open')) closeOpenChangeSwipes();
+      return;
+    }
+    row.classList.remove('dragging');
+    const open = dx < -CHANGE_DELETE_WIDTH / 2;
+    wrap.classList.toggle('open', open);
+    row.style.transform = open ? 'translateX(' + -CHANGE_DELETE_WIDTH + 'px)' : '';
+  };
+  row.addEventListener('pointerup', end);
+  row.addEventListener('pointercancel', end);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      await window._remove(window._ref(window._db, 'trips/' + tripId + '/changeLog/' + wrap.dataset.key));
+      wrap.remove();
+      const list = document.querySelector('#tripChangesPanel .changes-list');
+      if (list && !list.children.length) renderChangesPanel(tripId);
+    } catch(err) {
+      btn.disabled = false;
+      console.warn('Delete change failed', err);
+      alert('Could not delete this change: ' + err.message);
+    }
+  });
+}
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest('#tripChangesPanel .change-swipe.open')) closeOpenChangeSwipes();
+});
 
 // ════════════════════════════════════════
 //  LOGISTICS TAB
