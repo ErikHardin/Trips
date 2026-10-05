@@ -264,7 +264,7 @@ async function handleWidgetData(env, request) {
   let tomorrowData = null;
   if (tomorrowRow) {
     tomorrowData = widgetDay(tomorrowRow.d).day;
-    tomorrowData.activities = tomorrowData.activities.slice(0, 4);
+    tomorrowData.activities = tomorrowData.activities.slice(0, 8);
   }
 
   return new Response(JSON.stringify({ trip: tripInfo, today: todayData, tomorrow: tomorrowData }), { headers: CORS });
