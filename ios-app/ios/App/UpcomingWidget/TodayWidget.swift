@@ -77,7 +77,10 @@ struct TodayEntry: TimelineEntry {
             TodayActivity(time: "9:00 AM", timeSort: "", emoji: "🥞", text: "Breakfast at the hotel"),
             TodayActivity(time: "11:30 AM", timeSort: "", emoji: "🚤", text: "Boat to Yelapa"),
             TodayActivity(time: "4:00 PM", timeSort: "", emoji: "🏖️", text: "Beach time"),
+            TodayActivity(time: "1:00 PM", timeSort: "", emoji: "🐟", text: "Lunch on the beach"),
+            TodayActivity(time: "4:00 PM", timeSort: "", emoji: "💆", text: "Spa"),
             TodayActivity(time: "7:30 PM", timeSort: "", emoji: "🌮", text: "Dinner at Pia Pia"),
+            TodayActivity(time: "9:30 PM", timeSort: "", emoji: "🍹", text: "Drinks on the Malecón"),
         ],
         failed: false
     )
@@ -166,9 +169,19 @@ struct TodayWidgetView: View {
             }
         } else {
             let remaining = entry.remaining
-            let limit = family == .systemSmall ? 2 : 4
-            VStack(alignment: .leading, spacing: 3) {
+            let large = family == .systemLarge
+            let limit = family == .systemSmall ? 2 : large ? 9 : 4
+            VStack(alignment: .leading, spacing: large ? 7 : 3) {
                 SectionLabel(text: header, extra: max(0, remaining.count - limit))
+                // Large has room for the trip itself above the day's plan
+                if large, let trip = entry.trip {
+                    Text(String((trip.emoji ?? "✈️").prefix(2)) + "  " + (trip.name ?? "Trip"))
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.bottom, 2)
+                }
                 if remaining.isEmpty {
                     Text("That's everything for today")
                         .font(.system(size: 12, weight: .medium))
@@ -176,7 +189,7 @@ struct TodayWidgetView: View {
                         .padding(.top, 4)
                 } else {
                     ForEach(Array(remaining.prefix(limit)), id: \.self) {
-                        ActivityRow(activity: $0, stacked: family == .systemSmall)
+                        ActivityRow(activity: $0, stacked: family == .systemSmall, large: large)
                     }
                 }
             }
@@ -190,20 +203,21 @@ struct TodayWidgetView: View {
     }
 }
 
-// Medium: "9:00 AM  🥞 Breakfast at the hotel"
+// Medium/large: "9:00 AM  🥞 Breakfast at the hotel" (large in bigger type)
 // Small, where it's narrow, puts the time on its own line above.
 private struct ActivityRow: View {
     let activity: TodayActivity
     let stacked: Bool
+    var large = false
 
     var body: some View {
         let time = activity.time ?? ""
         let label = HStack(spacing: 4) {
             Text(String((activity.emoji ?? "📌").prefix(1)))
-                .font(.system(size: 11))
+                .font(.system(size: large ? 14 : 11))
                 .fixedSize()
             Text(activity.text ?? "")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: large ? 15 : 12, weight: .bold))
                 .foregroundStyle(Palette.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -216,7 +230,7 @@ private struct ActivityRow: View {
             .padding(.vertical, 2)
         } else {
             HStack(spacing: 6) {
-                timeText(time).frame(width: 58, alignment: .leading)
+                timeText(time).frame(width: large ? 70 : 58, alignment: .leading)
                 label
             }
         }
@@ -224,7 +238,7 @@ private struct ActivityRow: View {
 
     private func timeText(_ time: String) -> some View {
         Text(time)
-            .font(.system(size: 10, weight: .bold))
+            .font(.system(size: large ? 13 : 10, weight: .bold))
             .foregroundStyle(Palette.terracotta)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -271,7 +285,7 @@ struct TodayWidget: Widget {
         }
         .configurationDisplayName("Today")
         .description("Today's city and what's still ahead on the trip.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
 }
