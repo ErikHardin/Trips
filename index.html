@@ -3114,10 +3114,15 @@ function addPushListeners() {
   const cap = window.Capacitor;
   cap.addListener('PushNotifications', 'registration', data => { if (data && data.value) savePushToken(data.value); });
   cap.addListener('PushNotifications', 'registrationError', (data, err) => console.warn('Push registration failed:', err || data));
-  // Fires for a tap on a notification, including the one that launched the app
+  // Fires for a tap on a notification (including the one that launched the
+  // app) or on one of its buttons: reminders carry Directions and Mute
+  // (categories registered in AppDelegate.swift, payload `act` from worker.js)
   cap.addListener('PushNotifications', 'pushNotificationActionPerformed', data => {
-    const route = data && data.notification && data.notification.data && data.notification.data.route;
-    if (route) handlePushRoute(route);
+    const payload = (data && data.notification && data.notification.data) || {};
+    const act = payload.act;
+    if (data.actionId === 'directions' && act && act.maps) openDirections(act.maps);
+    else if (data.actionId === 'mute' && act && act.id) muteFromPush(act);
+    else if (payload.route) handlePushRoute(payload.route);
   });
 }
 
@@ -3168,6 +3173,27 @@ function openAdminPanel(sectionId) {
   if (sectionId === 'userAccessSection') toggleUserAccessSection();
   else toggleAdminSection(sectionId);
   setTimeout(() => body.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+// maps: { lat, lng, name } or { q } — driving directions in Apple Maps
+function openDirections(maps) {
+  const dest = maps.lat != null ? maps.lat + ',' + maps.lng : maps.q;
+  if (!dest) return;
+  window.open('https://maps.apple.com/?daddr=' + encodeURIComponent(dest) + '&dirflg=d', '_blank');
+}
+
+// The Mute button: same as tapping the activity's bell. It can arrive before
+// sign-in finishes, so wait (briefly) for the signed-in person.
+async function muteFromPush(act, tries) {
+  tries = tries || 0;
+  if (!(currentUser && userRole && pushEmailKey())) {
+    if (tries < 40) setTimeout(() => muteFromPush(act, tries + 1), 250);
+    return;
+  }
+  if (_activityMutes[act.id]) { showToast('Reminders already off for this activity'); return; }
+  if (!(await setActivityMute(act.id, true))) return;
+  showToast('Reminders off' + (act.name ? ' for ' + act.name : ' for this activity'));
+  if (currentTripId && currentTripId === act.tripId && allTrips[currentTripId]) renderTripItinerary(allTrips[currentTripId]);
 }
 
 // A push carries { screen, tripId?, dayId? }. A tap can arrive before the
@@ -4037,20 +4063,27 @@ async function onBellClick(e) {
   if (!a || typeof a !== 'object') return;
   const id = pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a);
   const muting = !_activityMutes[id];
-  const r = window._ref(window._db, `activityMutes/${key}/${id}`);
-  try {
-    if (muting) { await window._set(r, true); _activityMutes[id] = true; }
-    else { await window._remove(r); delete _activityMutes[id]; }
-  } catch(err) {
-    showToast('Couldn’t save — try again');
-    return;
-  }
+  if (!(await setActivityMute(id, muting))) return;
   btn.textContent = muting ? '🔕' : '🔔';
   btn.classList.toggle('reminded', !muting);
   btn.title = muting ? 'Reminder off — tap to turn on' : 'Reminder on — tap to turn off';
   showToast(muting ? 'Reminder off for this activity' : (isNativeApp() || _pushToken
     ? 'Reminder on — you’ll get a notification before it starts'
     : 'Reminder on — notifications arrive in the Hardin Trips iPhone app'));
+}
+
+// Saves (or clears) a mute for the signed-in person. Returns false, after
+// telling them, when the write fails.
+async function setActivityMute(id, muted) {
+  const r = window._ref(window._db, `activityMutes/${pushEmailKey()}/${id}`);
+  try {
+    if (muted) { await window._set(r, true); _activityMutes[id] = true; }
+    else { await window._remove(r); delete _activityMutes[id]; }
+    return true;
+  } catch(err) {
+    showToast('Couldn’t save — try again');
+    return false;
+  }
 }
 
 // Copies `url` to the clipboard, falling back to a selectable prompt so the

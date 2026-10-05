@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import UserNotifications
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,8 +8,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        registerNotificationButtons()
         return true
+    }
+
+    // Buttons on activity reminders and leave-by alerts: worker.js sends them
+    // with aps.category "ACTIVITY". Both open the app, where the web app's
+    // pushNotificationActionPerformed listener handles them by actionId.
+    private func registerNotificationButtons() {
+        let directions = UNNotificationAction(identifier: "directions", title: "Directions",
+                                              options: [.foreground],
+                                              icon: UNNotificationActionIcon(systemImageName: "car.fill"))
+        let mute = UNNotificationAction(identifier: "mute", title: "Mute reminders",
+                                        options: [.foreground],
+                                        icon: UNNotificationActionIcon(systemImageName: "bell.slash"))
+        let activity = UNNotificationCategory(identifier: "ACTIVITY", actions: [directions, mute],
+                                              intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([activity])
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

@@ -119,6 +119,15 @@ TestFlight builds expire after 90 days. To renew: in Xcode bump **Build**
 they must match — then Archive → Distribute again. Testers get the new build
 automatically.
 
+### Notification buttons
+
+Activity reminders and leave-by alerts carry **Directions** (Apple Maps
+driving directions to the activity) and **Mute reminders** (same as its 🔕
+bell). Long-press or pull down the notification to see them. The worker sends
+`aps.category = "ACTIVITY"`; `AppDelegate.swift` registers that category, so
+the buttons appear only with a build that includes it — older builds show the
+same notification without buttons.
+
 ## Widgets
 
 `ios/App/UpcomingWidget/` is a WidgetKit extension: the native version of
