@@ -248,6 +248,17 @@ The same cron also sends:
 - **A digest of other people's edits**, from the trip's change log, sent
   10 minutes after the last edit.
 
+## User Policies (roles)
+
+Settings → **User Policies** stores roles at `config/rolePolicies`. Deploy
+`database.rules.json` with this change: it makes `config/rolePolicies`
+admin-write-only. Without that rule the `config/$setting` wildcard lets any
+signed-in person write there and switch their own permissions back on.
+
+A role's tier (Guest or User, in `access/{key}/role`) is what the database
+enforces. Turning a permission off below the tier hides it in the app, but the
+database still allows anything the tier allows.
+
 ## "This project is disconnected from your Git account"
 
 A banner saying this can appear in the Builds section even when the repository
