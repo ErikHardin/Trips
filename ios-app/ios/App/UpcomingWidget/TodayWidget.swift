@@ -69,6 +69,35 @@ struct TodayFlight: Decodable, Hashable {
     let alert: Bool?
 }
 
+// The trip ahead, for the large widget between trips (worker: widgetNextTrip)
+struct NextWeatherDay: Decodable, Hashable {
+    let label: String?   // "WED 7"
+    let icon: String?
+    let hi: Int?
+    let lo: Int?
+}
+
+struct NextFlight: Decodable, Hashable {
+    let name: String?     // who's on it, when the trip says
+    let num: String?
+    let route: String?    // "DEN → PVR"
+    let time: String?     // departure, local
+    let arrives: String?
+    let status: String?   // "On time", "Delayed 25 min", "Canceled", "Scheduled"
+    let gate: String?     // "Gate B31 · T2"
+    let alert: Bool?
+    let ok: Bool?
+}
+
+struct NextTripInfo: Decodable, Hashable {
+    let datesLabel: String?   // "Wed Oct 7 – Sat Oct 17 · 10 nights"
+    let weather: [NextWeatherDay]?
+    let forecastFrom: String? // "Oct 14", when the trip is beyond the forecast
+    let hotel: String?
+    let checkIn: String?
+    let flights: [NextFlight]?
+}
+
 private struct TodayDay: Decodable {
     let city: String?
     let description: String?
@@ -84,6 +113,7 @@ private struct TodayPayload: Decodable {
     let trip: TodayTrip?
     let today: TodayDay?
     let tomorrow: TodayDay?
+    let next: NextTripInfo?
     let error: String?
 }
 
@@ -101,6 +131,7 @@ struct TodayEntry: TimelineEntry {
     var hotel: String? = nil
     var flights: [TodayFlight] = []
     var tomorrow: TomorrowPreview? = nil
+    var next: NextTripInfo? = nil
     let failed: Bool
 
     // What's still ahead at this entry's time. A timed activity drops off a
@@ -125,7 +156,7 @@ struct TodayEntry: TimelineEntry {
 
     func at(_ date: Date) -> TodayEntry {
         TodayEntry(date: date, trip: trip, city: city, activities: activities,
-                   weather: weather, hotel: hotel, flights: flights, tomorrow: tomorrow, failed: failed)
+                   weather: weather, hotel: hotel, flights: flights, tomorrow: tomorrow, next: next, failed: failed)
     }
 
     static let sample = TodayEntry(
@@ -173,7 +204,9 @@ struct TodayProvider: TimelineProvider {
             // Refetch every 30 minutes on a trip day (drive times and flights
             // change), hourly otherwise, sooner after a failure, and just after
             // midnight for the new day. iOS treats this as a request, not a promise.
-            let minutes = entry.failed ? 15 : (entry.activities == nil ? 60 : 30)
+            // (also the day before a trip, when flight status and gates change)
+            let soon = (entry.trip?.daysUntil ?? 99) <= 1
+            let minutes = entry.failed ? 15 : (entry.activities != nil || soon ? 30 : 60)
             let midnight = Calendar.current.startOfDay(for: now).addingTimeInterval(86400 + 60)
             let next = min(now.addingTimeInterval(TimeInterval(minutes * 60)), midnight)
             completion(Timeline(entries: entries, policy: .after(next)))
@@ -212,6 +245,7 @@ struct TodayProvider: TimelineProvider {
                                   hotel: day?.hotel,
                                   flights: day?.flights ?? [],
                                   tomorrow: tomorrow,
+                                  next: payload.next,
                                   failed: false))
         }.resume()
     }
@@ -237,7 +271,11 @@ struct TodayWidgetView: View {
         } else if entry.activities == nil {
             // Not a trip day: count down to the next trip instead
             if let trip = entry.trip {
-                NextTripMessage(trip: trip)
+                if family == .systemLarge, let next = entry.next {
+                    NextTripLarge(trip: trip, next: next)
+                } else {
+                    NextTripMessage(trip: trip)
+                }
             } else {
                 CenterMessage(text: "✈️  No upcoming trips")
             }
@@ -512,20 +550,190 @@ private struct NextTripMessage: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.8)
-            Text(countdown)
+            Text(tripCountdown(trip))
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Palette.terracotta)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    private var countdown: String {
-        if trip.status == "active" { return "Under way" }
-        switch trip.daysUntil ?? 0 {
-        case 0: return "Today"
-        case 1: return "Tomorrow"
-        case let days: return "in \(days) days"
+// "in 13 days" / "Tomorrow" / "Today" / "Under way"
+private func tripCountdown(_ trip: TodayTrip) -> String {
+    if trip.status == "active" { return "Under way" }
+    switch trip.daysUntil ?? 0 {
+    case 0: return "Today"
+    case 1: return "Tomorrow"
+    case let days: return "in \(days) days"
+    }
+}
+
+private let okGreen = Color(hex: 0x9FD3A8)
+
+// Large, between trips: the trip itself across the top part, then the first
+// five days' weather, the first night's hotel, and the outbound flights (two
+// fit; any more are counted). Rows the trip has no data for are left out.
+private struct NextTripLarge: View {
+    let trip: TodayTrip
+    let next: NextTripInfo
+
+    private var flights: [NextFlight] { next.flights ?? [] }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 3) {
+                Text(String((trip.emoji ?? "✈️").prefix(4)))
+                    .font(.system(size: flights.count > 1 ? 32 : 38))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(trip.name ?? "Next trip")
+                    .font(.system(size: 20, weight: .heavy))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if let label = next.datesLabel, !label.isEmpty {
+                    Text(label)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Text(tripCountdown(trip))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Palette.terracotta)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: flights.count > 1 ? 124 : 146)
+
+            VStack(alignment: .leading, spacing: 0) {
+                weatherRow
+                Spacer(minLength: 6)
+                if let hotel = next.hotel, !hotel.isEmpty {
+                    HStack(spacing: 8) {
+                        Text("🏨").font(.system(size: 14))
+                        Text(hotel)
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(Palette.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Spacer(minLength: 4)
+                        if let checkIn = next.checkIn {
+                            Text(checkIn)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Palette.muted)
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                    }
+                    Spacer(minLength: 6)
+                }
+                if !flights.isEmpty { flightsBox }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
+    }
+
+    // "WED 7 / ☀️ / 88° 76°" × 5, or when the forecast starts
+    @ViewBuilder private var weatherRow: some View {
+        let days = Array((next.weather ?? []).prefix(5))
+        if !days.isEmpty {
+            HStack(spacing: 0) {
+                ForEach(days, id: \.self) { d in
+                    VStack(spacing: 1) {
+                        Text(d.label ?? "")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Palette.muted)
+                        Text(d.icon ?? "")
+                            .font(.system(size: 15))
+                        (Text("\(d.hi ?? 0)° ").foregroundColor(Palette.ink)
+                            + Text("\(d.lo ?? 0)°").foregroundColor(Palette.muted))
+                            .font(.system(size: 11, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+        } else if let from = next.forecastFrom {
+            Text("🌤️  Forecast appears 16 days out (\(from))")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.muted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+        }
+    }
+
+    private var flightsBox: some View {
+        let shown = Array(flights.prefix(2))
+        let more = flights.count - shown.count
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { index, flight in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Palette.background.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.leading, 24)
+                }
+                FlightLegRow(flight: flight)
+            }
+            if more > 0 {
+                Text("+\(more) more flight\(more == 1 ? "" : "s")")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(Palette.muted)
+                    .padding(.leading, 24)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+    }
+}
+
+// ✈️ "Erik · UA1652 · DEN → PVR          9:40am"
+//    "On time · Gate B31 · arrives 1:50pm"
+private struct FlightLegRow: View {
+    let flight: NextFlight
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 7) {
+                Text("✈️").font(.system(size: 13))
+                Text([flight.name, flight.num, flight.route]
+                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 4)
+                Text(flight.time ?? "")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize()
+            }
+            details
+                .font(.system(size: 10.5, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.leading, 24)
+        }
+    }
+
+    // Status in green (on time) or terracotta (delayed, canceled), then the rest
+    private var details: Text {
+        let status = flight.status ?? "Scheduled"
+        let color = flight.ok == true ? okGreen : flight.alert == true ? Palette.terracotta : Palette.muted
+        var rest: [String] = []
+        if let gate = flight.gate, !gate.isEmpty { rest.append(gate) }
+        else if status == "Scheduled" { rest.append("gate shown the day before") }
+        if let arrives = flight.arrives, !arrives.isEmpty { rest.append("arrives " + arrives) }
+        return Text(status).foregroundColor(color)
+            + Text(rest.isEmpty ? "" : " · " + rest.joined(separator: " · ")).foregroundColor(Palette.muted)
     }
 }
 

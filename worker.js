@@ -268,7 +268,103 @@ async function handleWidgetData(env, request) {
     tomorrowData.activities = tomorrowData.activities.slice(0, 8);
   }
 
-  return new Response(JSON.stringify({ trip: tripInfo, today: todayData, tomorrow: tomorrowData }), { headers: CORS });
+  // Not a trip day: the large widget shows the trip ahead instead
+  let nextData = null;
+  if (!todayRow && chosen.status !== 'past') {
+    nextData = await widgetNextTrip(env, chosen, days, todayISO).catch(() => null);
+  }
+
+  return new Response(JSON.stringify({ trip: tripInfo, today: todayData, tomorrow: tomorrowData, next: nextData }), { headers: CORS });
+}
+
+const W_DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const W_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const wIsoDate = iso => new Date(iso + 'T00:00:00Z');
+const wAddDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+const wDaysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
+const wShortDate = iso => W_MON[wIsoDate(iso).getUTCMonth()] + ' ' + wIsoDate(iso).getUTCDate();            // "Oct 7"
+const wDowDate = iso => W_DOW[wIsoDate(iso).getUTCDay()].charAt(0) + W_DOW[wIsoDate(iso).getUTCDay()].slice(1).toLowerCase() + ' ' + wShortDate(iso);   // "Wed Oct 7"
+
+// The trip ahead, for the large Today widget between trips: dates, the first
+// five days' forecast at the destination (once they're within the 16-day
+// forecast), the first night's hotel, and the outbound flights with live
+// status and gate from the flight-alert cron.
+async function widgetNextTrip(env, trip, days, todayISO) {
+  const sorted = days.filter(x => x.iso).sort((a, b) => a.iso.localeCompare(b.iso));
+  const startISO = trip.startDateISO || (sorted[0] && sorted[0].iso);
+  if (!startISO) return null;
+  const endISO = sorted.length ? sorted[sorted.length - 1].iso : null;
+  const nights = endISO && endISO > startISO ? wDaysBetween(startISO, endISO) : null;
+  const out = {
+    datesLabel: wDowDate(startISO) + (endISO && endISO !== startISO ? ' – ' + wDowDate(endISO) : '') +
+      (nights ? ' · ' + nights + ' night' + (nights === 1 ? '' : 's') : ''),
+    weather: [], forecastFrom: null, hotel: null, checkIn: null, flights: [],
+  };
+
+  const first = sorted.find(x => x.iso >= startISO) || sorted[0];
+  const hotelRow = sorted.find(x => x.iso >= startISO && x.d.hotel);
+  if (hotelRow) { out.hotel = hotelRow.d.hotel; out.checkIn = 'Check-in ' + wShortDate(hotelRow.iso); }
+
+  // Open-Meteo forecasts today plus 15 days
+  const lastForecast = wAddDays(todayISO, 15);
+  const from = startISO > todayISO ? startISO : todayISO;
+  const to = wAddDays(startISO, 4) < lastForecast ? wAddDays(startISO, 4) : lastForecast;
+  const weatherJob = (async () => {
+    if (from > to) { out.forecastFrom = wShortDate(wAddDays(startISO, -15)); return; }
+    const day = first && first.d;
+    const place = day && (wCleanCity(day.city) || wCleanCity(day.region));
+    const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
+    if (!c) return;
+    const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
+      '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + from + '&end_date=' + to);
+    const d = w && w.daily;
+    if (!d || !d.time) return;
+    out.weather = d.time.map((iso, i) => ({
+      label: W_DOW[wIsoDate(iso).getUTCDay()] + ' ' + wIsoDate(iso).getUTCDate(),
+      icon: wWeatherText(d.weathercode[i]).split(' ')[0],
+      hi: Math.round(d.temperature_2m_max[i]), lo: Math.round(d.temperature_2m_min[i]),
+    }));
+  })().catch(() => {});
+
+  // Outbound: the legs on the first flight date at or before the trip's first day
+  const legs = tripFlightLegs(trip).filter(l => l.dateISO <= wAddDays(startISO, 1));
+  const firstFlightDay = legs.map(l => l.dateISO).sort()[0];
+  const outbound = legs.filter(l => l.dateISO === firstFlightDay);
+  const names = {};
+  String(trip.flightOut || '').split('\n').filter(Boolean).forEach((f, i) => { names[f.trim()] = (trip.flightOutNames || [])[i] || ''; });
+  Object.values(trip.days || {}).forEach(d => {
+    (Array.isArray(d && d.flightInfo) ? d.flightInfo : d && d.flightInfo ? [d.flightInfo] : [])
+      .forEach(fi => { if (fi && fi.formatted && fi.travelerName) names[String(fi.formatted).trim()] = fi.travelerName; });
+  });
+  const flightsJob = Promise.all(outbound.map(async leg => {
+    const formatted = String(leg.formatted || '').trim();
+    const m = formatted.match(/^\S+\s+(\S+)\s*→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
+    const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
+    const st = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
+    const f = {
+      name: names[formatted] || '',
+      num: leg.num,
+      route: st && st.from && st.to ? st.from + ' → ' + st.to : (m ? m[1] + ' → ' + m[2] : ''),
+      time: (st && (st.depLocal || st.schedLocal)) || (m && m[3] ? m[3].trim() : ''),
+      arrives: m && m[4] ? m[4].trim() : '',
+      status: 'Scheduled', alert: false, ok: false, gate: '',
+    };
+    if (st && (st.depLocal || st.schedLocal)) {
+      const delay = st.depUtc && st.schedUtc ? Math.round((st.depUtc - st.schedUtc) / 60000) : 0;
+      if (/cancel/i.test(st.status || '')) { f.status = 'Canceled'; f.alert = true; }
+      else if (delay >= 15) { f.status = 'Delayed ' + delay + ' min'; f.alert = true; }
+      else { f.status = 'On time'; f.ok = true; }
+      if (st.gate) f.gate = 'Gate ' + st.gate + (st.terminal ? ' · T' + st.terminal : '');
+    }
+    return f;
+  })).then(list => {
+    // By local departure time
+    const mins = f => { const m = wActStartMinutes(f.time); return m == null ? 9999 : m; };
+    out.flights = list.sort((a, b) => mins(a) - mins(b));
+  }).catch(() => {});
+
+  await Promise.all([weatherJob, flightsJob]);
+  return out;
 }
 
 // One itinerary day for the widgets: its city, and its activities with the
