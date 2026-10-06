@@ -17,15 +17,19 @@ const MUTED      = new Color("#8a7f76");
 const SAND       = new Color("#d9cbb8");
 
 // ── Fetch data ────────────────────────────────────────────────────────────────
+// The phone's dates: the Worker's own "today" is UTC, already tomorrow on a US evening
+const localISO = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const todayLocalISO = localISO(new Date());
 let data = null;
 try {
-  data = await new Request(WORKER_URL).loadJSON();
+  data = await new Request(WORKER_URL + "?date=" + todayLocalISO).loadJSON();
 } catch (e) {
   data = null;
 }
 
 // Pre-fetch tomorrow's data so the widget can roll over once today's last activity ends
-const tomorrowISO = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const _tomorrow = new Date(); _tomorrow.setDate(_tomorrow.getDate() + 1);
+const tomorrowISO = localISO(_tomorrow);
 let tomorrowData = null;
 try {
   const td = await new Request(WORKER_URL + "?date=" + tomorrowISO).loadJSON();

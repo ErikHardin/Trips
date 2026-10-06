@@ -3528,7 +3528,9 @@ function getTripCountdown(t) {
     if (dayDates.length) startISO = dayDates[0];
   }
   if (!startISO) return '⏳ Upcoming';
-  var diff = Math.round((new Date(startISO + 'T00:00:00') - new Date()) / 86400000);
+  // Calendar days, not hours from now: at 6pm a trip two days out is
+  // 30 hours away, which rounded to "Tomorrow!"
+  var diff = Math.round((isoToDate(startISO) - isoToDate(todayISO())) / 86400000);
   if (diff <= 0) return '⏳ Upcoming';
   if (diff === 1) return '🗓️ Tomorrow!';
   return '🗓️ ' + diff + ' days away';

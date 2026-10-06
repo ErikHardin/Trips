@@ -11,7 +11,7 @@
 import WidgetKit
 import SwiftUI
 
-private let upcomingURL = URL(string: "https://hardin-trips-ai.erikchardin.workers.dev/widget-upcoming?limit=4&months=12")!
+private let upcomingEndpoint = "https://hardin-trips-ai.erikchardin.workers.dev/widget-upcoming"
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -75,7 +75,17 @@ struct UpcomingProvider: TimelineProvider {
     }
 
     private func fetch(completion: @escaping (UpcomingEntry) -> Void) {
-        var request = URLRequest(url: upcomingURL)
+        // The phone's date, so countdowns don't jump a day early on a US
+        // evening (the Worker's own date is UTC)
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        var components = URLComponents(string: upcomingEndpoint)!
+        components.queryItems = [URLQueryItem(name: "limit", value: "4"),
+                                 URLQueryItem(name: "months", value: "12"),
+                                 URLQueryItem(name: "date", value: formatter.string(from: Date()))]
+        var request = URLRequest(url: components.url!)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 15
         URLSession.shared.dataTask(with: request) { data, _, _ in
