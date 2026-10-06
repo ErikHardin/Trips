@@ -6764,8 +6764,42 @@ window.saveEditedTrip = async function() {
     flightReturnNames: _editFlightsRet.map(f => f.travelerName || ''),
     flightReturnDayOffsets: _editFlightsRet.map(f => f.dayOffset ?? null),
   };
+  // The Dates box is free text; the start date that orders the trip list,
+  // drives the countdown and picks the widget's trip is startDateISO, so keep
+  // it in step. Offer to move the itinerary's days along with it.
+  const trip = allTrips[editingTripId];
+  const newStart = parseTripStartISO(updates.dates, updates.year);
+  let moveDays = null;
+  if (newStart && newStart !== trip.startDateISO) {
+    updates.startDateISO = newStart;
+    const isos = Object.values(trip.days || {}).map(d => dayISO(d, trip.year)).filter(Boolean).sort();
+    const delta = isos.length ? Math.round((isoToDate(newStart) - isoToDate(isos[0])) / 864e5) : 0;
+    if (delta) {
+      const fmt = iso => { const d = isoToDate(iso); return MONTHS_SHORT[d.getMonth()] + ' ' + d.getDate(); };
+      const n = isos.length;
+      const ok = await showConfirmDialog('Move the itinerary too?',
+        `The trip now starts ${fmt(newStart)}, but its ${n} day${n === 1 ? '' : 's'} start${n === 1 ? 's' : ''} ${fmt(isos[0])}. ` +
+        `Move ${n === 1 ? 'it' : 'them all'} ${Math.abs(delta)} day${Math.abs(delta) === 1 ? '' : 's'} ${delta > 0 ? 'later' : 'earlier'}, keeping their plans?`,
+        'Move days');
+      if (ok) moveDays = { delta, from: isos[0] };
+    }
+  }
+
   try {
     await window._update(window._ref(window._db, 'trips/' + editingTripId), updates);
+    if (moveDays) {
+      const dayUpdates = {};
+      Object.entries(trip.days || {}).forEach(([dayId, day]) => {
+        const iso = dayISO(day, trip.year);
+        if (!iso) return;
+        const nd = _sdShiftDate(iso, moveDays.delta);
+        ['dateISO', 'dateNum', 'dateMonth', 'dayName'].forEach(f => {
+          dayUpdates[`trips/${editingTripId}/days/${dayId}/${f}`] = nd[f];
+        });
+      });
+      await window._update(window._ref(window._db, '/'), dayUpdates);
+      logChange(editingTripId, 'Itinerary moved', `${moveDays.from} → ${newStart}`);
+    }
   } catch (e) {
     console.error(e);
     showToast('Save failed — check connection');
@@ -7160,6 +7194,18 @@ window.addNewDay = async function() {
 // ── Shift Days ────────────────────────────────────────────────────────────────
 
 function _sdGetISO(day, tripYear) { return dayISO(day, tripYear); }
+
+// First date in the trip's Dates text ("Nov 5 – Nov 8", "May 23 – Jun 7",
+// "Dec 30 – Jan 2") in that year, as 'YYYY-MM-DD'; null when it doesn't parse
+function parseTripStartISO(dates, year) {
+  const m = String(dates || '').match(/([A-Za-z]{3,})\.?\s+(\d{1,2})\b/);
+  if (!m || !year) return null;
+  const mi = MONTHS_SHORT.findIndex(x => x.toLowerCase() === m[1].slice(0, 3).toLowerCase());
+  const day = parseInt(m[2], 10);
+  if (mi < 0 || day < 1 || day > 31) return null;
+  const iso = year + '-' + String(mi + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  return localISO(isoToDate(iso)) === iso ? iso : null;   // rejects "Feb 30"
+}
 
 function _sdShiftDate(iso, delta) {
   const dt = isoToDate(iso);
