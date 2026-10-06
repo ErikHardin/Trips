@@ -151,6 +151,12 @@ export default {
     if (url.pathname === '/push/access-approved') {
       return handlePushAccessApproved(env, body);
     }
+    // Trip owners invite guests to their own trips (they can't write access/)
+    const tripGuestRoutes = { '/trip-guests/list': handleTripGuestsList, '/trip-guests/add': handleTripGuestsAdd, '/trip-guests/remove': handleTripGuestsRemove };
+    if (tripGuestRoutes[url.pathname]) {
+      try { return await tripGuestRoutes[url.pathname](env, body); }
+      catch (e) { return jsonResponse({ error: 'Couldn’t update guests: ' + e.message }, 500); }
+    }
 
     // AI proxy (unchanged)
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -596,6 +602,9 @@ const WORKER_ROUTES = [
   '/push/test',
   '/push/access-request',
   '/push/access-approved',
+  '/trip-guests/list',
+  '/trip-guests/add',
+  '/trip-guests/remove',
 ];
 
 async function handleVersion(env) {
@@ -1489,6 +1498,105 @@ async function handlePushAccessApproved(env, body) {
     route: { screen: 'home' },
   });
   return jsonResponse({ sent: r.sent });
+}
+
+// ── Trip guests ─────────────────────────────────────────────────────────────
+// Lets a trip's owner (a 'user'-role account) invite guests to that trip.
+// The database rules only let admins write access/, so the Worker does it
+// after checking the caller: an admin, or a user who owns the trip and whose
+// policy hasn't turned off 'inviteGuests'. Returns { caller, trip } or a Response.
+const FB_KEY_RE = /^[^/.#$\[\]]+$/;
+async function tripGuestsCaller(env, body) {
+  let who;
+  try { who = await verifyFirebaseIdToken(env, body.idToken); }
+  catch (e) { return jsonResponse({ error: 'Not signed in: ' + e.message }, 401); }
+  const tripId = String(body.tripId || '');
+  if (!FB_KEY_RE.test(tripId)) return jsonResponse({ error: 'Bad tripId' }, 400);
+  // Just the two fields needed — a whole trip carries its itinerary and notes
+  const [caller, ownerId, name] = await Promise.all([
+    fbGet(env, 'access/' + who.emailKey), fbGet(env, 'trips/' + tripId + '/ownerId'), fbGet(env, 'trips/' + tripId + '/name'),
+  ]);
+  if (!caller) return jsonResponse({ error: 'No access' }, 403);
+  if (!name && !ownerId) return jsonResponse({ error: 'Trip not found' }, 404);
+  const trip = { ownerId, name };
+  if (caller.role !== 'admin') {
+    const owns = caller.role === 'user' && String(trip.ownerId || '').toLowerCase() === who.email;
+    if (!owns) return jsonResponse({ error: 'Only the trip owner can manage guests' }, 403);
+    const policy = await fbGet(env, 'config/rolePolicies/' + (caller.policy || 'user')).catch(() => null);
+    if (policy && policy.perms && policy.perms.inviteGuests === false) {
+      return jsonResponse({ error: 'Inviting guests is turned off for your account' }, 403);
+    }
+  }
+  return { who, caller, trip, tripId };
+}
+
+// POST /trip-guests/list { idToken, tripId } → { guests: [{ emailKey, email, name, role }] }
+async function handleTripGuestsList(env, body) {
+  const ctx = await tripGuestsCaller(env, body);
+  if (ctx instanceof Response) return ctx;
+  const all = (await fbGet(env, 'access')) || {};
+  const guests = Object.entries(all)
+    .filter(([key, u]) => key !== ctx.who.emailKey && u && u.role !== 'admin' && u.trips && u.trips[ctx.tripId])
+    .map(([key, u]) => ({ emailKey: key, email: u.email || key.replace(/,/g, '.'), name: u.name || '', role: u.role }))
+    .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+  return jsonResponse({ guests });
+}
+
+// POST /trip-guests/add { idToken, tripId, email, name }
+// New people become Guests with just this trip; existing guests and users get
+// the trip added. Admins already see every trip, so they're left alone.
+async function handleTripGuestsAdd(env, body) {
+  const ctx = await tripGuestsCaller(env, body);
+  if (ctx instanceof Response) return ctx;
+  const email = String(body.email || '').trim().toLowerCase();
+  const name = String(body.name || '').trim().slice(0, 80);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: 'Enter a valid email address' }, 400);
+  const key = email.replace(/\./g, ',');
+  if (!FB_KEY_RE.test(key)) return jsonResponse({ error: 'Enter a valid email address' }, 400);
+  if (key === ctx.who.emailKey) return jsonResponse({ error: 'That’s you' }, 400);
+  const existing = await fbGet(env, 'access/' + key);
+  let created = false;
+  if (existing && existing.role === 'admin') {
+    return jsonResponse({ ok: true, status: 'admin' });
+  } else if (existing) {
+    if (existing.trips && existing.trips[ctx.tripId]) return jsonResponse({ ok: true, status: 'already' });
+    await fbWrite(env, 'PUT', 'access/' + key + '/trips/' + ctx.tripId, true);
+  } else {
+    await fbWrite(env, 'PUT', 'access/' + key, {
+      name: name || email, email, role: 'guest',
+      trips: { [ctx.tripId]: true },
+      invitedBy: ctx.who.email, invitedAt: Date.now(),
+    });
+    created = true;
+  }
+  await fbWrite(env, 'DELETE', 'accessRequests/' + key).catch(() => {});
+  const tripName = ctx.trip.name || 'a trip';
+  await sendPushToUser(env, key, {
+    title: 'You’re invited 🎉',
+    body: (ctx.caller.name || ctx.who.email) + ' added you to ' + tripName + '. Tap to open it.',
+    route: { screen: 'home' },
+  }).catch(() => {});
+  return jsonResponse({ ok: true, status: created ? 'created' : 'added' });
+}
+
+// POST /trip-guests/remove { idToken, tripId, emailKey }
+// Takes the trip away; a guest left with no trips loses their access record.
+async function handleTripGuestsRemove(env, body) {
+  const ctx = await tripGuestsCaller(env, body);
+  if (ctx instanceof Response) return ctx;
+  const key = String(body.emailKey || '');
+  if (!FB_KEY_RE.test(key) || key === ctx.who.emailKey) return jsonResponse({ error: 'Bad emailKey' }, 400);
+  const existing = await fbGet(env, 'access/' + key);
+  if (!existing || existing.role === 'admin' || !existing.trips || !existing.trips[ctx.tripId]) {
+    return jsonResponse({ ok: true, status: 'not-a-guest' });
+  }
+  const remaining = Object.keys(existing.trips).filter(id => id !== ctx.tripId);
+  if (existing.role === 'guest' && !remaining.length) {
+    await fbWrite(env, 'DELETE', 'access/' + key);
+  } else {
+    await fbWrite(env, 'DELETE', 'access/' + key + '/trips/' + ctx.tripId);
+  }
+  return jsonResponse({ ok: true, status: 'removed' });
 }
 
 // ── Scheduled pushes (cron) ──────────────────────────────────────────────────

@@ -2046,6 +2046,20 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
 
+    <!-- GUESTS (trip owner or admin) -->
+    <div class="admin-section" id="editTripGuestsSection" style="display:none;">
+      <div class="admin-section-title">Guests</div>
+      <div class="admin-card">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Guests sign in with Google or Apple using the email you enter here and see just this trip.</div>
+        <div id="editTripGuestsList" style="margin-bottom:10px;"></div>
+        <label class="form-label">Name</label>
+        <input class="form-input" id="tripGuestName" placeholder="e.g. Sam">
+        <label class="form-label">Email</label>
+        <input class="form-input" id="tripGuestEmail" type="email" autocapitalize="off" autocomplete="off" placeholder="their Google or Apple email">
+        <button class="form-btn" id="tripGuestInviteBtn" onclick="inviteTripGuest()" style="margin-top:6px;">Invite Guest</button>
+      </div>
+    </div>
+
     <!-- FLIGHTS -->
     <div class="admin-section">
       <div class="admin-section-title">Flights</div>
@@ -3613,6 +3627,7 @@ const PERMISSIONS = [
   { key: 'wishlist',        tier: 'guest', label: 'Wishlist',              desc: 'See the wishlist tab and add ideas' },
   { key: 'changesTab',      tier: 'guest', label: 'Change log',            desc: 'See the Changes tab' },
   { key: 'shareLink',       tier: 'guest', label: 'Share link',            desc: 'Create a read-only share link' },
+  { key: 'inviteGuests',    tier: 'user',  label: 'Invite guests',         desc: 'Invite guests to trips they own' },
   { key: 'createTrips',     tier: 'user',  label: 'Create trips',          desc: 'Add new trips of their own' },
   { key: 'editTripDetails', tier: 'user',  label: 'Edit trip details',     desc: 'Rename, re-date and edit flights' },
   { key: 'logistics',       tier: 'user',  label: 'Logistics',             desc: 'See and edit the Logistics tab' },
@@ -7025,8 +7040,104 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   _flightRowCount = 0;
   document.getElementById('flightLookupStatus').textContent = '';
   renderEditDaysList(trip);
+  renderTripGuestsSection(tripId);
   _editTripBaseline = _editTripSnapshot();
   showScreen('screen-edit');
+};
+
+// ── Trip guests ──
+// Owners (and admins) invite guests to a trip from its edit screen. Only admins
+// can write access/, so the Worker checks ownership and makes the change.
+function canInviteTripGuests(tripId) {
+  return canManageTrip(tripId) && can('inviteGuests') && (userRole === 'admin' || isTripOwner(tripId));
+}
+
+async function tripGuestsCall(action, payload) {
+  const r = await fetch(PUSH_WORKER_URL + '/trip-guests/' + action, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken: await window._auth.currentUser.getIdToken(), ...payload }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'status ' + r.status);
+  return data;
+}
+
+async function renderTripGuestsSection(tripId) {
+  const section = document.getElementById('editTripGuestsSection');
+  const show = canInviteTripGuests(tripId);
+  section.style.display = show ? '' : 'none';
+  if (!show) return;
+  document.getElementById('tripGuestName').value = '';
+  document.getElementById('tripGuestEmail').value = '';
+  const list = document.getElementById('editTripGuestsList');
+  list.innerHTML = '<div style="font-size:13px;color:var(--muted);">Loading guests…</div>';
+  try {
+    const { guests } = await tripGuestsCall('list', { tripId });
+    if (editingTripId !== tripId) return;
+    list.innerHTML = guests.length ? guests.map(g => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;color:var(--ink);">${escHtml(g.name || g.email)}</div>
+          <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;">${escHtml(g.email)}${g.role === 'user' ? ' · User' : ''}</div>
+        </div>
+        <button class="form-btn secondary" style="width:auto;margin:0;padding:6px 12px;font-size:12px;" data-key="${escHtml(g.emailKey)}" data-name="${escHtml(g.name || g.email)}" onclick="removeTripGuest(this.dataset.key, this.dataset.name)">Remove</button>
+      </div>`).join('')
+      : '<div style="font-size:13px;color:var(--muted);">No guests yet.</div>';
+  } catch (e) {
+    console.warn('Trip guests load failed:', e);
+    list.innerHTML = `<div style="font-size:13px;color:var(--muted);">Couldn’t load guests — ${escHtml(e.message)}</div>`;
+  }
+}
+
+window.inviteTripGuest = async function() {
+  const tripId = editingTripId;
+  const name = document.getElementById('tripGuestName').value.trim();
+  const email = document.getElementById('tripGuestEmail').value.trim().toLowerCase();
+  if (!tripId) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Enter a valid email address'); return; }
+  const btn = document.getElementById('tripGuestInviteBtn');
+  btn.disabled = true; btn.textContent = 'Inviting…';
+  try {
+    const { status } = await tripGuestsCall('add', { tripId, email, name });
+    if (status === 'admin') showToast(`${email} is an admin and already sees every trip`);
+    else if (status === 'already') showToast(`${email} already has this trip`);
+    else {
+      showToast('Guest invited ✓');
+      await sendTripGuestInvite(tripId, email);
+    }
+    await renderTripGuestsSection(tripId);
+  } catch (e) {
+    showToast('Couldn’t invite — ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Invite Guest';
+  }
+};
+
+// Hands the owner a message to send: the app link plus which email to sign in with.
+async function sendTripGuestInvite(tripId, email) {
+  const trip = allTrips[tripId] || {};
+  const url = `${window.location.origin}${window.location.pathname}`;
+  const text = `You’re invited to ${trip.name || 'my trip'}! Open ${url} and sign in with Google or Apple using ${email}.`;
+  if (!(await showConfirmDialog('Send them the link?', 'Share a message with the app link and which email to sign in with.', 'Send'))) return;
+  if (navigator.share) {
+    try { await navigator.share({ title: trip.name || 'Trip invite', text }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(text); showToast('Invite copied ✓'); }
+  catch { window.prompt('Copy this invite:', text); }
+}
+
+window.removeTripGuest = async function(emailKey, name) {
+  const tripId = editingTripId;
+  if (!tripId) return;
+  if (!(await showConfirmDialog('Remove guest?', `${escHtml(name)} won’t see this trip anymore.`, 'Remove'))) return;
+  try {
+    await tripGuestsCall('remove', { tripId, emailKey });
+    showToast('Guest removed');
+    await renderTripGuestsSection(tripId);
+  } catch (e) {
+    showToast('Couldn’t remove — ' + e.message);
+  }
 };
 
 window.saveEditedTrip = async function() {
