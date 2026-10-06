@@ -157,7 +157,11 @@ the home screen → **+** → Hardin Trips.
   after it starts), with the next one highlighted and counting down. Large adds
   the hotel, today's flights (gate and delays from the flight alerts), each
   drive's time and, with live traffic, when to leave, and tomorrow's first
-  plans once today runs short. Between trips, a countdown to the next one.
+  plans once today runs short. Between trips, a countdown to the next one;
+  on large, the trip across the top with its dates, the first five days'
+  forecast at the destination (once within the 16-day forecast), the first
+  night's hotel and the outbound flights with status, gate and arrival (two
+  fit, any more are counted).
   Reads `/widget-data` with the phone's date; it shows the first *active* trip
   (else the next upcoming one) for everyone.
 
