@@ -1985,10 +1985,16 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       <div class="admin-card">
         <label class="form-label">Trip Name</label>
         <input class="form-input" id="editTripName" placeholder="e.g. France Spring 2026">
-        <label class="form-label">Year</label>
-        <input class="form-input" id="editTripYear" type="number">
-        <label class="form-label">Dates</label>
-        <input class="form-input" id="editTripDates" placeholder="e.g. May 23 – Jun 7">
+        <div class="date-fields-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label class="form-label">Start Date</label>
+            <input class="form-input" id="editTripStart" type="date">
+          </div>
+          <div>
+            <label class="form-label">End Date</label>
+            <input class="form-input" id="editTripEnd" type="date">
+          </div>
+        </div>
         <label class="form-label">Cover Emoji</label>
         <input class="form-input" id="editTripEmoji" placeholder="🇮🇹 or 🇮🇹🇫🇷 for multiple">
         <label class="form-label">Status</label>
@@ -6643,7 +6649,7 @@ function _editTripSnapshot() {
   const v = id => document.getElementById(id).value;
   const fl = arr => arr.map(f => [f.formatted, f.travelerName || '', f.dayOffset ?? null]);
   return JSON.stringify([
-    v('editTripName'), v('editTripYear'), v('editTripDates'), v('editTripEmoji'),
+    v('editTripName'), v('editTripStart'), v('editTripEnd'), v('editTripEmoji'),
     v('editTripStatus'), v('editTripCurrency'),
     document.getElementById('editTripIncludeInWorldMap').checked,
     fl(_editFlightsOut), fl(_editFlightsRet)
@@ -6695,8 +6701,9 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   const trip = allTrips[tripId];
   document.getElementById('editTripHeaderName').textContent = trip.name || 'Trip';
   document.getElementById('editTripName').value = trip.name || '';
-  document.getElementById('editTripYear').value = trip.year || '';
-  document.getElementById('editTripDates').value = trip.dates || '';
+  const range = tripDateRange(trip);
+  document.getElementById('editTripStart').value = range.start;
+  document.getElementById('editTripEnd').value = range.end;
   document.getElementById('editTripEmoji').value = trip.emoji || '';
   document.getElementById('editTripStatus').value = trip.status || 'upcoming';
   document.getElementById('editTripCurrency').value = trip.currency || '';
@@ -6749,8 +6756,6 @@ window.saveEditedTrip = async function() {
   // preserves days, logistics, packingList, startDateISO, avatars etc.
   const updates = {
     name: document.getElementById('editTripName').value.trim(),
-    year: parseInt(document.getElementById('editTripYear').value) || new Date().getFullYear(),
-    dates: document.getElementById('editTripDates').value.trim(),
     emoji: document.getElementById('editTripEmoji').value.trim() || '✈️',
     status: document.getElementById('editTripStatus').value,
     currency: document.getElementById('editTripCurrency').value.trim(),
@@ -6764,11 +6769,21 @@ window.saveEditedTrip = async function() {
     flightReturnNames: _editFlightsRet.map(f => f.travelerName || ''),
     flightReturnDayOffsets: _editFlightsRet.map(f => f.dayOffset ?? null),
   };
-  // The Dates box is free text; the start date that orders the trip list,
-  // drives the countdown and picks the widget's trip is startDateISO, so keep
-  // it in step. Offer to move the itinerary's days along with it.
+  // Start/end pickers, as when creating a trip: they set the "Nov 5 – Nov 8"
+  // label, the year and startDateISO (which orders the trip list, drives the
+  // countdown and picks the widget's trip). Left blank, the dates stay as
+  // they were. When the start moves, offer to move the itinerary's days too.
   const trip = allTrips[editingTripId];
-  const newStart = parseTripStartISO(updates.dates, updates.year);
+  const startVal = document.getElementById('editTripStart').value;
+  const endVal = document.getElementById('editTripEnd').value;
+  if (!!startVal !== !!endVal) { showToast('Pick both a start and end date'); return false; }
+  if (startVal && endVal < startVal) { showToast('End date must be after start date'); return false; }
+  if (startVal) {
+    const fmtShort = iso => isoToDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    updates.dates = `${fmtShort(startVal)} – ${fmtShort(endVal)}`;
+    updates.year = isoToDate(startVal).getFullYear();
+  }
+  const newStart = startVal || null;
   let moveDays = null;
   if (newStart && newStart !== trip.startDateISO) {
     updates.startDateISO = newStart;
@@ -7194,6 +7209,32 @@ window.addNewDay = async function() {
 // ── Shift Days ────────────────────────────────────────────────────────────────
 
 function _sdGetISO(day, tripYear) { return dayISO(day, tripYear); }
+
+// The trip's start and end as 'YYYY-MM-DD' for the edit form's pickers:
+// startDateISO, else the itinerary's first day, else the Dates text; the end
+// from the itinerary's last day, else the Dates text. '' when unknown.
+function tripDateRange(trip) {
+  const isos = Object.values(trip.days || {}).map(d => dayISO(d, trip.year)).filter(Boolean).sort();
+  const start = trip.startDateISO || isos[0] || parseTripStartISO(trip.dates, trip.year) || '';
+  let end = isos.length ? isos[isos.length - 1] : parseTripEndISO(trip.dates, trip.year, start) || '';
+  if (end && start && end < start) end = start;
+  return { start: end ? start : '', end: start ? end : '' };
+}
+
+// Last date in the Dates text: "Nov 5 – Nov 8" → Nov 8, "Sep 3-9" → Sep 9,
+// "Dec 30 – Jan 2" → Jan 2 the next year
+function parseTripEndISO(dates, year, startISO) {
+  const text = String(dates || '');
+  const pairs = [...text.matchAll(/([A-Za-z]{3,})\.?\s+(\d{1,2})\b/g)];
+  if (!pairs.length || !year) return null;
+  const last = pairs[pairs.length - 1];
+  let month = last[1], day = last[2];
+  const bare = text.slice(last.index + last[0].length).match(/^\s*[-–]\s*(\d{1,2})\b/);   // "Sep 3-9"
+  if (bare) day = bare[1];
+  let iso = parseTripStartISO(month + ' ' + day, year);
+  if (iso && startISO && iso < startISO) iso = parseTripStartISO(month + ' ' + day, year + 1);
+  return iso;
+}
 
 // First date in the trip's Dates text ("Nov 5 – Nov 8", "May 23 – Jun 7",
 // "Dec 30 – Jan 2") in that year, as 'YYYY-MM-DD'; null when it doesn't parse
