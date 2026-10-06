@@ -223,10 +223,11 @@ async function handleWidgetData(env, request) {
     return new Response(JSON.stringify({ trip: null, today: null }), { headers: CORS });
   }
 
+  // Whole calendar days from the caller's date (the phone's, via ?date=),
+  // not from the current UTC time: on a US evening that is already tomorrow
   let daysUntil = null;
   if (chosen.startDateISO) {
-    const msPerDay = 86400000;
-    daysUntil = Math.max(0, Math.ceil((new Date(chosen.startDateISO + 'T00:00:00Z') - Date.now()) / msPerDay));
+    daysUntil = Math.max(0, Math.round((Date.parse(chosen.startDateISO + 'T00:00:00Z') - Date.parse(todayISO + 'T00:00:00Z')) / 86400000));
   }
 
   const tripInfo = {
@@ -379,8 +380,14 @@ async function handleWidgetUpcoming(env, request) {
     return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
   }
 
+  // Today is the caller's date when it sends one (?date=YYYY-MM-DD, the
+  // phone's local day); otherwise the UTC date, which on a US evening is
+  // already tomorrow and makes every countdown a day short
   const now      = new Date();
-  const todayMs  = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dateParam = params.get('date');
+  const todayMs  = (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam))
+    ? Date.parse(dateParam + 'T00:00:00Z')
+    : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayISO = new Date(todayMs).toISOString().slice(0, 10);
 
   // Trips owned by a role:'user' account belong to that person, not the family

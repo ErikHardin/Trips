@@ -52,7 +52,10 @@ const BOOKING_ICONS = { flights: "✈️", hotel: "🏨", car: "🚗" };
 // ── Fetch data ────────────────────────────────────────────────────────────────
 let data = null;
 try {
-  data = await new Request(`${WORKER_URL}?limit=${TRIP_COUNT}&months=${BOOKING_MONTHS}`).loadJSON();
+  // The phone's date, so countdowns don't jump a day early on a US evening
+  const d = new Date();
+  const localISO = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  data = await new Request(`${WORKER_URL}?limit=${TRIP_COUNT}&months=${BOOKING_MONTHS}&date=${localISO}`).loadJSON();
 } catch (e) {
   data = null;
 }
