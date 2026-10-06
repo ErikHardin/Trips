@@ -2348,7 +2348,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 356 };
+window.BUILD_INFO = { prNumber: 357 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5671,6 +5671,7 @@ window.createTrip = async function() {
 
   showToast(`${name} created with ${sortOrder} days! 🎉`);
   ['newTripName','newTripEmoji','newTripStart','newTripEnd'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('newTripEnd').min = '';
   document.getElementById('newTripDayPreview').textContent = '';
 };
 
@@ -6706,6 +6707,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   const range = tripDateRange(trip);
   document.getElementById('editTripStart').value = range.start;
   document.getElementById('editTripEnd').value = range.end;
+  document.getElementById('editTripEnd').min = range.start || '';
   document.getElementById('editTripEmoji').value = trip.emoji || '';
   document.getElementById('editTripStatus').value = trip.status || 'upcoming';
   document.getElementById('editTripCurrency').value = trip.currency || '';
@@ -8654,8 +8656,24 @@ function escAttr(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// Picking a start date moves an empty or earlier end date to the next day, so the
+// end picker opens on the right month. A later end date the user chose is kept.
+function syncEndToStart(startId, endId) {
+  const start = document.getElementById(startId).value;
+  const end = document.getElementById(endId);
+  end.min = start || '';
+  if (!start) return;
+  if (!end.value || end.value <= start) {
+    const next = isoToDate(start);
+    next.setDate(next.getDate() + 1);
+    end.value = localISO(next);
+  }
+}
+
 // Live day count preview on new trip date inputs
 document.addEventListener('change', function(e) {
+  if (e.target.id === 'newTripStart') syncEndToStart('newTripStart', 'newTripEnd');
+  if (e.target.id === 'editTripStart') syncEndToStart('editTripStart', 'editTripEnd');
   if (e.target.id === 'newTripStart' || e.target.id === 'newTripEnd') {
     const s = document.getElementById('newTripStart').value;
     const en = document.getElementById('newTripEnd').value;
