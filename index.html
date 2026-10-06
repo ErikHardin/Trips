@@ -1574,7 +1574,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     <div class="admin-group-header">Trips</div>
 
     <!-- BOOKING INBOX (users see only bookings they sent) -->
-    <div class="admin-section user-section">
+    <div class="admin-section user-section" data-perm="bookingInbox">
       <div class="admin-panel">
         <div class="admin-panel-header" id="bookingInboxHeader" onclick="toggleAdminSection('bookingInbox')">
           <div class="admin-section-title">Booking Inbox<span class="inbox-count" id="bookingInboxCount" style="display:none;"></span></div>
@@ -1615,7 +1615,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- ADD NEW TRIP -->
-    <div class="admin-section">
+    <div class="admin-section" data-perm="createTrips">
       <div class="admin-panel">
         <div class="admin-panel-header" id="addTripSectionHeader" onclick="toggleAdminSection('addTripSection')">
           <div class="admin-section-title">Add New Trip</div>
@@ -1664,7 +1664,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     </div>
 
     <!-- AI ASSISTANT (users see only trips they can manage) -->
-    <div class="admin-section user-section">
+    <div class="admin-section user-section" data-perm="aiAssistant">
       <div class="admin-panel">
         <div class="admin-panel-header" id="aiSectionHeader" onclick="toggleAdminSection('aiSection')">
           <div class="admin-section-title">AI Trip Assistant</div>
@@ -1832,6 +1832,37 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
             <button id="addUserBtn" class="form-btn" onclick="addUser()">Add User</button>
             <button id="cancelEditUserBtn" class="form-btn" onclick="cancelEditUser()" style="display:none;background:none;color:var(--muted);border:1px solid var(--border);margin-top:8px;">Cancel</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USER POLICIES -->
+    <div class="admin-section admin-only-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="userPoliciesSectionHeader" onclick="toggleAdminSection('userPoliciesSection')">
+          <div class="admin-section-title">User Policies</div>
+          <span class="admin-panel-toggle" id="userPoliciesSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="userPoliciesSectionBody" style="display:none;padding-bottom:8px;">
+          <p style="color:var(--muted);font-size:13px;margin:0 0 12px;">Choose what Guests and Users can do, or add a role of your own. A role can turn off anything its tier allows; Guest-tier roles only get access to the trips you pick for each person.</p>
+          <div id="userPolicyList" class="admin-card" style="padding:0;overflow:hidden;margin-bottom:12px;"></div>
+          <div class="admin-card" id="userPolicyEditor" style="display:none;">
+            <div id="userPolicyEditorTitle" style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Edit Role</div>
+            <label class="form-label">Role Name</label>
+            <input class="form-input" id="userPolicyName" placeholder="e.g. Viewer" style="margin-bottom:8px;">
+            <label class="form-label">Tier</label>
+            <select class="form-input" id="userPolicyBase" onchange="renderUserPolicyPerms()" style="margin-bottom:4px;">
+              <option value="guest">Guest — only trips you pick</option>
+              <option value="user">User — can also create and manage trips</option>
+            </select>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">The tier sets the most this role can ever do.</div>
+            <label class="form-label">Permissions</label>
+            <div id="userPolicyPerms" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+            <button class="form-btn" onclick="saveUserPolicy()">Save Role</button>
+            <button class="form-btn" id="deleteUserPolicyBtn" onclick="deleteUserPolicy()" style="background:none;color:var(--terracotta);border:1px solid var(--terracotta-border);margin-top:8px;">Delete Role</button>
+            <button class="form-btn" onclick="closeUserPolicyEditor()" style="background:none;color:var(--muted);border:1px solid var(--border);margin-top:8px;">Cancel</button>
+          </div>
+          <button class="form-btn secondary" id="newUserPolicyBtn" onclick="editUserPolicy(null)">＋ New Role</button>
         </div>
       </div>
     </div>
@@ -2513,7 +2544,7 @@ function setupAuth() {
       lastOutstandingPopupAt = null;
       stopBookingInboxListener();
       stopAccessApprovalWatch();
-      try { localStorage.removeItem(ACCESS_LS); localStorage.removeItem(ACCESS_LIST_LS); } catch(e) {}
+      try { localStorage.removeItem(ACCESS_LS); localStorage.removeItem(ACCESS_LIST_LS); localStorage.removeItem(ROLE_POLICIES_LS); } catch(e) {}
       const tripId = new URLSearchParams(window.location.search).get('trip');
       if (tripId) {
         initUnauthenticatedShareView(tripId);
@@ -2573,6 +2604,7 @@ async function handleSignedInUser(user) {
       }
     }
     userRole = access.role;
+    await applyRolePolicy(access);
     adminUser = access.name || user.displayName || email;
     guestTripIds = access.trips ? Object.keys(access.trips) : [];
     lastOutstandingPopupAt = access.lastOutstandingPopupAt || null;
@@ -2585,7 +2617,7 @@ async function handleSignedInUser(user) {
     // booking inbox, trip creation and the AI assistant (see showScreen)
     document.getElementById('adminNavBtn').style.display = (userRole === 'admin' || userRole === 'user') ? '' : 'none';
     if (userRole === 'admin') checkOutstandingBookings();
-    if (userRole === 'admin' || userRole === 'user') startBookingInboxListener();
+    if (userRole === 'admin' || (userRole === 'user' && can('bookingInbox'))) startBookingInboxListener();
     if (userRole === 'admin') announcePendingAccessRequests();
     loadActivityMutes();
     initApp();
@@ -2606,6 +2638,7 @@ async function handleSignedInUser(user) {
 // straight away rather than waiting for a connection. Signing out forgets them.
 const ACCESS_LS = 'hardinTripsAccess';           // access/{you}
 const ACCESS_LIST_LS = 'hardinTripsAccessList';  // access (admins only)
+const ROLE_POLICIES_LS = 'hardinTripsRolePolicies'; // config/rolePolicies
 async function cachedGet(path, lsKey) {
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(lsKey) || 'null'); } catch(e) {}
@@ -3368,6 +3401,10 @@ function showScreen(id) {
     document.querySelectorAll('#screen-admin .user-only-control').forEach(el => {
       el.style.display = isUser ? '' : 'none';
     });
+    // Sections a user's policy turns off
+    document.querySelectorAll('#screen-admin [data-perm]').forEach(el => {
+      el.style.display = (isAdmin || isUser) && can(el.dataset.perm) ? '' : 'none';
+    });
     document.getElementById('adminScreenEyebrow').textContent = isAdmin ? 'Admin' : 'Settings';
     document.getElementById('adminScreenTitle').textContent = isAdmin ? 'Manage Trips' : 'My Trips';
   }
@@ -3378,6 +3415,7 @@ window.lockApp = async function(toastMsg) {
   await forgetPushDevice();
   _activityMutes = {};
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
+  userPerms = null; rolePolicies = {};
   userOwnerEmails = null; userOwnerEmailsPromise = null;
   outstandingBookingsCheckStarted = false;
   lastOutstandingPopupAt = null;
@@ -3561,6 +3599,87 @@ function canManageTrip(tripId) {
   return userRole === 'admin' || (userRole === 'user' && (isTripOwner(tripId) || guestTripIds.includes(tripId)));
 }
 
+// ════════════════════════════════════════
+//  USER POLICIES
+// ════════════════════════════════════════
+// A policy turns individual features on or off for Guest- and User-tier accounts.
+// The tier (access/{key}/role) is what the database rules enforce, so a policy can
+// only take away what its tier allows — never grant more. Built-in policies
+// 'guest' and 'user' apply to accounts with no access/{key}/policy; admins can
+// add custom roles on either tier. Stored at config/rolePolicies/{policyId}.
+const PERMISSIONS = [
+  { key: 'editItinerary',   tier: 'guest', label: 'Edit itinerary',        desc: 'Add and change activities on each day' },
+  { key: 'memories',        tier: 'guest', label: 'Memories',              desc: 'Add, edit and delete trip memories' },
+  { key: 'wishlist',        tier: 'guest', label: 'Wishlist',              desc: 'See the wishlist tab and add ideas' },
+  { key: 'changesTab',      tier: 'guest', label: 'Change log',            desc: 'See the Changes tab' },
+  { key: 'shareLink',       tier: 'guest', label: 'Share link',            desc: 'Create a read-only share link' },
+  { key: 'createTrips',     tier: 'user',  label: 'Create trips',          desc: 'Add new trips of their own' },
+  { key: 'editTripDetails', tier: 'user',  label: 'Edit trip details',     desc: 'Rename, re-date and edit flights' },
+  { key: 'logistics',       tier: 'user',  label: 'Logistics',             desc: 'See and edit the Logistics tab' },
+  { key: 'setLocations',    tier: 'user',  label: 'Set activity locations', desc: 'Pin activities to a map location' },
+  { key: 'promoteWishlist', tier: 'user',  label: 'Promote wishlist ideas', desc: 'Move a wishlist idea onto a day' },
+  { key: 'bookingInbox',    tier: 'user',  label: 'Booking inbox',         desc: 'Forward and file booking emails' },
+  { key: 'aiAssistant',     tier: 'user',  label: 'AI trip assistant',     desc: 'Use the AI assistant in Settings' },
+];
+const BUILTIN_POLICIES = {
+  guest: { name: 'Guest', base: 'guest', builtIn: true },
+  user:  { name: 'User',  base: 'user',  builtIn: true },
+};
+let rolePolicies = {};   // config/rolePolicies, merged over BUILTIN_POLICIES
+let userPerms = null;    // effective permissions for the signed-in account; null = all
+
+function tierAllows(base, key) {
+  const p = PERMISSIONS.find(x => x.key === key);
+  return !!p && (p.tier === 'guest' || base === 'user');
+}
+
+function allPolicies() {
+  const out = {};
+  Object.keys(BUILTIN_POLICIES).forEach(id => { out[id] = { ...BUILTIN_POLICIES[id], ...(rolePolicies[id] || {}), base: id, builtIn: true }; });
+  Object.entries(rolePolicies).forEach(([id, p]) => {
+    if (!out[id] && p && (p.base === 'guest' || p.base === 'user')) out[id] = { ...p, builtIn: false };
+  });
+  return out;
+}
+
+// The policy an access record runs under: its own if it names one on the same
+// tier, else its tier's built-in policy.
+function policyForAccess(access) {
+  const all = allPolicies();
+  const p = access && access.policy && all[access.policy];
+  if (p && p.base === access.role) return p;
+  return all[access && access.role] || null;
+}
+
+// Every permission the tier allows, unless the policy turns it off.
+function effectivePerms(policy) {
+  const perms = {};
+  PERMISSIONS.forEach(({ key }) => {
+    perms[key] = tierAllows(policy.base, key) && !(policy.perms && policy.perms[key] === false);
+  });
+  return perms;
+}
+
+async function loadRolePolicies() {
+  try {
+    rolePolicies = (await cachedGet('config/rolePolicies', ROLE_POLICIES_LS)) || {};
+  } catch (e) {
+    rolePolicies = {};
+  }
+}
+
+async function applyRolePolicy(access) {
+  await loadRolePolicies();
+  if (!access || access.role === 'admin') { userPerms = null; return; }
+  const policy = policyForAccess(access);
+  userPerms = policy ? effectivePerms(policy) : {};
+}
+
+// Admins (userPerms null) can do everything.
+function can(key) {
+  return !userPerms || !!userPerms[key];
+}
+
 // Splits a set of trip IDs into trips created by a 'user'-role account (bucketed
 // by owner, for a collapsed per-creator section) and everything else. Only admins
 // can read the access list, so non-admins just get everything back as "remaining".
@@ -3661,7 +3780,7 @@ async function renderHome() {
     list.innerHTML = '';
     empty.innerHTML = '<div class="empty-state-icon">🌍</div><div class="empty-state-text">No trips yet — add your first!</div>';
     empty.style.display = '';
-    if (userRole === 'admin' || userRole === 'user') {
+    if (userRole === 'admin' || (userRole === 'user' && can('createTrips'))) {
       empty.appendChild(buildAddTripBtn());
     }
     return;
@@ -3709,7 +3828,7 @@ async function renderHome() {
       byUserOwner[ownerId].forEach(k => body.appendChild(buildTripCard(k)));
     });
 
-  if (userRole === 'admin' || userRole === 'user') {
+  if (userRole === 'admin' || (userRole === 'user' && can('createTrips'))) {
     list.appendChild(buildAddTripBtn());
   }
 }
@@ -3725,12 +3844,12 @@ function openTrip(tripId, defaultTab) {
   document.getElementById('tripDetailTitle').innerHTML = trip.name || 'Trip';
   document.getElementById('tripRefreshBtn').style.display = '';
   const canManage = canManageTrip(tripId);
-  document.getElementById('tripAdminBtn').style.display = canManage ? '' : 'none';
+  document.getElementById('tripAdminBtn').style.display = (canManage && can('editTripDetails')) ? '' : 'none';
   const isUpcomingOrActive = trip.status === 'upcoming' || trip.status === 'active';
   const hasAccess = !isShareView && hasTripAccess(tripId);
-  document.getElementById('logisticsTabBtn').style.display = (canManage && isUpcomingOrActive) ? '' : 'none';
-  document.getElementById('changesTabBtn').style.display = hasAccess ? '' : 'none';
-  document.getElementById('wishlistTabBtn').style.display = hasAccess ? '' : 'none';
+  document.getElementById('logisticsTabBtn').style.display = (canManage && isUpcomingOrActive && can('logistics')) ? '' : 'none';
+  document.getElementById('changesTabBtn').style.display = (hasAccess && can('changesTab')) ? '' : 'none';
+  document.getElementById('wishlistTabBtn').style.display = (hasAccess && can('wishlist')) ? '' : 'none';
   renderTripItinerary(trip);
   renderTripOverview(trip);
 
@@ -3824,7 +3943,7 @@ function activitySearchUrl(text, day) {
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
-  panel.innerHTML = canEditCurrentTrip() ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
+  panel.innerHTML = canEditCurrentTrip() && can('shareLink') ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
 
   // Trip progress bar (active trips only)
   const _prog = getTripProgress(trip);
@@ -3953,7 +4072,7 @@ function renderTripItinerary(trip) {
             ${day.city ? `<div class="day-city-label">${day.city}</div>` : ''}
             <div class="day-chips-row"></div>
           </div>
-          ${_canEdit ? `<button class="quick-act-pencil-btn" onclick="event.stopPropagation();openQuickActivityEditor('${dayId}')" title="Edit activities">✏️</button>` : ''}
+          ${_canEdit && can('editItinerary') ? `<button class="quick-act-pencil-btn" onclick="event.stopPropagation();openQuickActivityEditor('${dayId}')" title="Edit activities">✏️</button>` : ''}
           <div class="day-chevron">›</div>
         </div>
         <div class="day-body">
@@ -4882,7 +5001,7 @@ function _bottomSheet(innerHTML) {
 }
 
 // Admins and trip users only — guests and share links just get Google Maps / Waze
-const _canSetLocation = (dayId, actIdx) => !!(dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId && !isShareView && canManageTrip(currentTripId));
+const _canSetLocation = (dayId, actIdx) => !!(dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId && !isShareView && canManageTrip(currentTripId) && can('setLocations'));
 
 window.openMapsChoice = function(query, dayId, actKey, actIdx) {
   const info = (dayId && actIdx != null && typeof currentTripId !== 'undefined' && currentTripId) ? _locActivity(dayId, actIdx) : null;
@@ -4949,7 +5068,7 @@ async function renderWishlistPanel(tripId) {
     // Cache items by ID so promoteWishlistItem can look them up without passing JSON through onclick
     _wishlistCache[tripId] = raw;
 
-    const _wishCanEdit = !isShareView && hasTripAccess(tripId);
+    const _wishCanEdit = !isShareView && hasTripAccess(tripId) && can('wishlist');
     const addFormHTML = _wishCanEdit ? `
       <div id="wishlistAddForm" class="requires-network" style="margin:16px;background:var(--warm-white);border:1px solid var(--border);border-radius:14px;padding:14px;">
         <div style="font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Add Idea</div>
@@ -4978,7 +5097,7 @@ async function renderWishlistPanel(tripId) {
           </div>
           ${_wishCanEdit ? `
           <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-            ${canManageTrip(tripId) ? `<button onclick="promoteWishlistItem('${tripId}','${id}')"
+            ${canManageTrip(tripId) && can('promoteWishlist') ? `<button onclick="promoteWishlistItem('${tripId}','${id}')"
               style="background:var(--sage);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">
               → Add to Day
             </button>` : ''}
@@ -5253,7 +5372,7 @@ window.openNotes = function(dayId, actKey, actText) {
   document.getElementById('notesActivityTitle').textContent = actText;
   exitNoteEditMode();
   // Show add form only if user can edit this trip
-  document.getElementById('addNoteForm').style.display = canEditCurrentTrip() ? '' : 'none';
+  document.getElementById('addNoteForm').style.display = canEditCurrentTrip() && can('memories') ? '' : 'none';
   // Recommend checkbox — admin only, not for day-level memories
   const recommendRow = document.getElementById('recommendRow');
   if (userRole === 'admin' && actKey !== '__daily__') {
@@ -5310,7 +5429,7 @@ function renderNotesList(dayId, actKey) {
     currentNotesData = notes;
     const entries = Object.entries(notes).sort((a,b)=>(a[1].ts||0)-(b[1].ts||0));
     if (entries.length === 0) {
-      list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet${canEditCurrentTrip() ? ' — be the first to add one!' : '.'}</div>`;
+      list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:4px 0;font-style:italic;">No memories yet${canEditCurrentTrip() && can('memories') ? ' — be the first to add one!' : '.'}</div>`;
       return;
     }
     list.innerHTML = entries.map(([noteId, n]) => {
@@ -5331,7 +5450,7 @@ function renderNotesList(dayId, actKey) {
             ${n.text ? `<div class="note-card-text">${escHtml(n.text)}</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
               <div class="note-card-meta">${new Date(n.ts||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-              ${canEditCurrentTrip() ? `<div style="display:flex;gap:4px;"><button data-noteid="${noteId}" onclick="editNote(this.dataset.noteid)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button><button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
+              ${canEditCurrentTrip() && can('memories') ? `<div style="display:flex;gap:4px;"><button data-noteid="${noteId}" onclick="editNote(this.dataset.noteid)" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Edit memory">✏️ Edit</button><button onclick="deleteNote('${noteId}')" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;line-height:1;" title="Delete memory">🗑️ Delete</button></div>` : ''}
             </div>
           </div>
         </div>`;
@@ -6364,6 +6483,165 @@ window.deleteTrip = async function(tripId) {
 // ════════════════════════════════════════
 //  USER ACCESS MANAGEMENT
 // ════════════════════════════════════════
+// ── User Policies (admin) ──
+let _editingPolicyId = null;   // null = new role
+
+// The Role picker's value: the tier for built-in roles, 'policy:<id>' for custom ones.
+function roleSelectValue(u) {
+  const p = u && u.policy && allPolicies()[u.policy];
+  return p && !p.builtIn && p.base === u.role ? 'policy:' + u.policy : (u && u.role) || 'guest';
+}
+function parseRoleSelect(v) {
+  if (v.startsWith('policy:')) {
+    const id = v.slice(7);
+    const p = allPolicies()[id];
+    return { role: p ? p.base : 'guest', policy: id };
+  }
+  return { role: v, policy: null };
+}
+function roleLabel(u) {
+  if (u.role === 'admin') return 'Admin';
+  const p = policyForAccess(u);
+  return p ? p.name : (u.role === 'user' ? 'User' : 'Guest');
+}
+
+function populateRoleSelect() {
+  const sel = document.getElementById('newUserRole');
+  if (!sel) return;
+  const cur = sel.value;
+  const custom = Object.entries(allPolicies()).filter(([, p]) => !p.builtIn)
+    .sort(([, a], [, b]) => (a.name || '').localeCompare(b.name || ''));
+  sel.innerHTML =
+    '<option value="guest">Guest</option><option value="user">User</option><option value="admin">Admin</option>' +
+    (custom.length ? '<optgroup label="Custom roles">' +
+      custom.map(([id, p]) => `<option value="policy:${escAttr(id)}">${escHtml(p.name || id)} (${p.base === 'user' ? 'User' : 'Guest'} tier)</option>`).join('') +
+      '</optgroup>' : '');
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : 'guest';
+}
+
+async function renderUserPolicies() {
+  const list = document.getElementById('userPolicyList');
+  if (!list) return;
+  list.innerHTML = '<div style="padding:12px 14px;color:var(--muted);font-size:13px;">Loading…</div>';
+  await loadRolePolicies();
+  let access = {};
+  try { access = (await window._get(window._ref(window._db, 'access'))).val() || {}; } catch(e) {}
+  const counts = {};
+  Object.values(access).forEach(u => {
+    if (!u || u.role === 'admin') return;
+    const id = (u.policy && allPolicies()[u.policy] && allPolicies()[u.policy].base === u.role) ? u.policy : u.role;
+    counts[id] = (counts[id] || 0) + 1;
+  });
+  const entries = Object.entries(allPolicies()).sort(([ia, a], [ib, b]) =>
+    (b.builtIn - a.builtIn) || (a.builtIn ? (ia === 'guest' ? -1 : 1) : (a.name || '').localeCompare(b.name || '')));
+  list.innerHTML = entries.map(([id, p]) => {
+    const perms = effectivePerms(p);
+    const avail = PERMISSIONS.filter(x => tierAllows(p.base, x.key));
+    const on = avail.filter(x => perms[x.key]).length;
+    const n = counts[id] || 0;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:500;color:var(--ink);">${escHtml(p.name || id)}${p.builtIn ? ' <span style="font-size:10px;color:var(--muted);font-weight:400;">built-in</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px;">${p.base === 'user' ? 'User' : 'Guest'} tier · ${on} of ${avail.length} permissions · ${n} ${n === 1 ? 'person' : 'people'}</div>
+        </div>
+        <button onclick="editUserPolicy('${escAttr(id)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0;">Edit</button>
+      </div>`;
+  }).join('');
+  list.dataset.counts = JSON.stringify(counts);
+}
+
+window.renderUserPolicyPerms = function() {
+  const base = document.getElementById('userPolicyBase').value;
+  const box = document.getElementById('userPolicyPerms');
+  // Keep what's ticked while switching tier; first render reads the saved policy
+  const current = {};
+  box.querySelectorAll('input[type=checkbox]').forEach(cb => { current[cb.value] = cb.checked; });
+  const saved = _editingPolicyId ? allPolicies()[_editingPolicyId] : null;
+  box.innerHTML = PERMISSIONS.map(({ key, label, desc, tier }) => {
+    const allowed = tierAllows(base, key);
+    const checked = allowed && (key in current ? current[key] : !(saved && saved.perms && saved.perms[key] === false));
+    return `
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--ink);cursor:${allowed ? 'pointer' : 'default'};opacity:${allowed ? 1 : 0.45};">
+        <input type="checkbox" value="${key}" ${checked ? 'checked' : ''} ${allowed ? '' : 'disabled'} style="accent-color:var(--terracotta);width:16px;height:16px;margin-top:1px;flex-shrink:0;">
+        <span>${escHtml(label)}<span style="display:block;font-size:11px;color:var(--muted);">${escHtml(desc)}${allowed ? '' : ' — User tier only'}</span></span>
+      </label>`;
+  }).join('');
+};
+
+window.editUserPolicy = function(id) {
+  _editingPolicyId = id;
+  const p = id ? allPolicies()[id] : null;
+  document.getElementById('userPolicyEditorTitle').textContent = p ? 'Edit Role' : 'New Role';
+  const nameEl = document.getElementById('userPolicyName');
+  nameEl.value = p ? (p.name || id) : '';
+  nameEl.readOnly = !!(p && p.builtIn);
+  nameEl.style.opacity = p && p.builtIn ? '0.6' : '';
+  const baseEl = document.getElementById('userPolicyBase');
+  baseEl.value = p ? p.base : 'guest';
+  baseEl.disabled = !!p;   // moving a role between tiers would change people's database access
+  document.getElementById('userPolicyPerms').innerHTML = '';
+  renderUserPolicyPerms();
+  document.getElementById('deleteUserPolicyBtn').style.display = p && !p.builtIn ? '' : 'none';
+  document.getElementById('userPolicyEditor').style.display = '';
+  document.getElementById('newUserPolicyBtn').style.display = 'none';
+  document.getElementById('userPolicyEditorTitle').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+window.closeUserPolicyEditor = function() {
+  _editingPolicyId = null;
+  document.getElementById('userPolicyEditor').style.display = 'none';
+  document.getElementById('newUserPolicyBtn').style.display = '';
+};
+
+window.saveUserPolicy = async function() {
+  const existing = _editingPolicyId ? allPolicies()[_editingPolicyId] : null;
+  const name = document.getElementById('userPolicyName').value.trim();
+  if (!name) { showToast('Give the role a name'); return; }
+  const base = existing ? existing.base : document.getElementById('userPolicyBase').value;
+  const taken = Object.entries(allPolicies()).some(([id, p]) =>
+    id !== _editingPolicyId && (p.name || '').toLowerCase() === name.toLowerCase());
+  if (taken) { showToast('A role with that name already exists'); return; }
+  const perms = {};
+  document.querySelectorAll('#userPolicyPerms input[type=checkbox]:not(:disabled)').forEach(cb => { perms[cb.value] = cb.checked; });
+  const id = _editingPolicyId || ('r' + Date.now().toString(36));
+  const record = { name, base, perms };
+  try {
+    await window._set(window._ref(window._db, `config/rolePolicies/${id}`), record);
+    rolePolicies[id] = record;
+    try { localStorage.removeItem(ROLE_POLICIES_LS); } catch(e) {}
+    closeUserPolicyEditor();
+    populateRoleSelect();
+    await renderUserPolicies();
+    showToast(existing ? 'Role updated ✓' : 'Role added ✓');
+  } catch(e) {
+    showToast('Error saving role — try again');
+    console.error('saveUserPolicy error:', e);
+  }
+};
+
+window.deleteUserPolicy = async function() {
+  const id = _editingPolicyId;
+  const p = id && allPolicies()[id];
+  if (!p || p.builtIn) return;
+  let counts = {};
+  try { counts = JSON.parse(document.getElementById('userPolicyList').dataset.counts || '{}'); } catch(e) {}
+  if (counts[id]) { showToast(`Move the ${counts[id] === 1 ? 'person' : counts[id] + ' people'} in this role to another role first`); return; }
+  if (!(await showConfirmDialog('Delete role?', `“${p.name}” will be removed.`, 'Delete'))) return;
+  try {
+    await window._remove(window._ref(window._db, `config/rolePolicies/${id}`));
+    delete rolePolicies[id];
+    try { localStorage.removeItem(ROLE_POLICIES_LS); } catch(e) {}
+    closeUserPolicyEditor();
+    populateRoleSelect();
+    await renderUserPolicies();
+    showToast('Role deleted');
+  } catch(e) {
+    showToast('Error deleting role');
+    console.error('deleteUserPolicy error:', e);
+  }
+};
+
 window.toggleUserAccessSection = function() {
   const body = document.getElementById('userAccessSectionBody');
   const toggle = document.getElementById('userAccessSectionToggle');
@@ -6374,19 +6652,21 @@ window.toggleUserAccessSection = function() {
   if (toggle) toggle.textContent = opening ? '−' : '+';
   if (header) header.classList.toggle('open', opening);
   if (opening) {
+    loadRolePolicies().then(populateRoleSelect);
     renderUserManagement();
     populateNewUserTripChecks();
   }
 };
 
 window.toggleNewUserTripSelect = function() {
-  const role = document.getElementById('newUserRole').value;
+  const { role } = parseRoleSelect(document.getElementById('newUserRole').value);
   document.getElementById('newUserTripSection').style.display = (role === 'guest' || role === 'user') ? '' : 'none';
 };
 
 let _editingUserKey = null;
 
-window.editUser = function(emailKey, name, role, tripsJson) {
+window.editUser = function(emailKey, name, roleValue, tripsJson) {
+  const { role } = parseRoleSelect(roleValue);
   _editingUserKey = emailKey;
   const trips = tripsJson ? JSON.parse(tripsJson) : {};
   const userEmail = emailKey.replace(/,/g, '.');
@@ -6395,7 +6675,8 @@ window.editUser = function(emailKey, name, role, tripsJson) {
   document.getElementById('newUserEmail').value = userEmail;
   document.getElementById('newUserEmail').readOnly = true;
   document.getElementById('newUserEmail').style.opacity = '0.6';
-  document.getElementById('newUserRole').value = role;
+  populateRoleSelect();
+  document.getElementById('newUserRole').value = roleValue;
   document.getElementById('newUserTripSection').style.display = (role === 'guest' || role === 'user') ? '' : 'none';
   document.querySelectorAll('#newUserTripChecks input[type=checkbox]').forEach(cb => {
     // Trips this person created show as checked (they already have access via ownership) —
@@ -6470,12 +6751,12 @@ async function renderUserManagement() {
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);">
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:500;color:var(--ink);">${escHtml(u.name||emailKey)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px;">${escHtml(u.email||emailKey.replace(/,/g,'.'))} · ${u.role==='admin'?'Admin':u.role==='user'?'User':'Guest'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px;">${escHtml(u.email||emailKey.replace(/,/g,'.'))} · ${escHtml(roleLabel(u))}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:1px;">Last login: ${lastLoginStr}</div>
             ${tripNames ? `<div style="font-size:11px;color:var(--sage);margin-top:2px;">${escHtml(tripNames)}</div>` : ''}
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
-            <button onclick="editUser('${escAttr(emailKey)}','${escAttr(u.name||'')}','${u.role}','${escAttr(JSON.stringify(u.trips||{}))}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Edit</button>
+            <button onclick="editUser('${escAttr(emailKey)}','${escAttr(u.name||'')}','${escAttr(roleSelectValue(u))}','${escAttr(JSON.stringify(u.trips||{}))}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Edit</button>
             ${u.role !== 'admin' ? `<button onclick="removeUser('${escAttr(emailKey)}')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;">Remove</button>` : ''}
           </div>
         </div>`;
@@ -6529,11 +6810,12 @@ async function notifyAccessApproved(emailKey) {
 window.addUser = async function() {
   const name = document.getElementById('newUserName').value.trim();
   const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
-  const role = document.getElementById('newUserRole').value;
+  const { role, policy } = parseRoleSelect(document.getElementById('newUserRole').value);
   if (!name || !email) { showToast('Name and email required'); return; }
   if (!email.includes('@')) { showToast('Enter a valid email address'); return; }
   const emailKey = _editingUserKey || email.replace(/\./g, ',');
   const data = { name, email, role };
+  if (policy) data.policy = policy;
   if (role === 'guest' || role === 'user') {
     const checks = document.querySelectorAll('#newUserTripChecks input[type=checkbox]:checked');
     if (role === 'guest' && !checks.length) { showToast('Select at least one trip for guest access'); return; }
@@ -7779,7 +8061,7 @@ window.saveDayEdit = async function() {
 // ════════════════════════════════════════
 
 window.openQuickActivityEditor = function(dayId) {
-  if (!canEditCurrentTrip()) return;
+  if (!canEditCurrentTrip() || !can('editItinerary')) return;
   quickEditingTripId = currentTripId;
   quickEditingDayId  = dayId;
   const trip = allTrips[currentTripId];
@@ -10724,7 +11006,7 @@ window.assignInboxItem = async function(itemId) {
   if (!tripId) { showToast('Choose a trip first'); return; }
   const trip = allTrips[tripId];
   if (!trip) { showToast('Trip not found'); return; }
-  if (!canManageTrip(tripId)) { showToast('You can’t add bookings to that trip'); return; }
+  if (!canManageTrip(tripId) || !can('bookingInbox')) { showToast('You can’t add bookings to that trip'); return; }
   let plan;
   try {
     plan = await _planInboxAssignment(itemId, it, tripId, trip);
@@ -10777,6 +11059,9 @@ window.toggleAdminSection = function(sectionId) {
   }
   if (sectionId === 'notifySection' && opening) {
     loadNotifySettings();
+  }
+  if (sectionId === 'userPoliciesSection' && opening) {
+    renderUserPolicies();
   }
   if (sectionId === 'bookingInbox' && opening) {
     loadBookingInboxAddress();
