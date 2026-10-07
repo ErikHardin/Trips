@@ -325,11 +325,7 @@ async function widgetNextTrip(env, trip, days, todayISO) {
       '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + from + '&end_date=' + to);
     const d = w && w.daily;
     if (!d || !d.time) return;
-    out.weather = d.time.map((iso, i) => ({
-      label: W_DOW[wIsoDate(iso).getUTCDay()] + ' ' + wIsoDate(iso).getUTCDate(),
-      icon: wWeatherText(d.weathercode[i]).split(' ')[0],
-      hi: Math.round(d.temperature_2m_max[i]), lo: Math.round(d.temperature_2m_min[i]),
-    }));
+    out.weather = wForecastDays(d, 0);
   })().catch(() => {});
 
   // Outbound: the legs on the first flight date at or before the trip's first day
@@ -2055,19 +2051,106 @@ function addHHMM(hhmm, mins) {
   return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
 }
 
-// WMO weather codes (Open-Meteo), condensed — same groups as the app's icons
 // The day's forecast for its city: { text: '🌤️ Partly cloudy', hi, lo } (°F),
 // or null when the city can't be placed. Used by the morning brief and widget.
+// The widget also gets what's left of the day in words ("Showers this morning,
+// storms this afternoon"), the chance of rain, sunset, and the next 3 days.
 async function wDayWeather(env, day, dateISO) {
   const place = wCleanCity(day.city) || wCleanCity(day.region);
   const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
   if (!c) return null;
   const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
-    '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + dateISO);
+    '&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunset' +
+    '&hourly=weathercode&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + wAddDays(dateISO, 3));
   const d = w && w.daily;
   if (!d || !d.weathercode || !d.weathercode.length) return null;
-  return { text: wWeatherText(d.weathercode[0]), hi: Math.round(d.temperature_2m_max[0]), lo: Math.round(d.temperature_2m_min[0]) };
+  const rain = d.precipitation_probability_max && d.precipitation_probability_max[0];
+  return {
+    text: wWeatherText(d.weathercode[0]), hi: Math.round(d.temperature_2m_max[0]), lo: Math.round(d.temperature_2m_min[0]),
+    summary: wWeatherSummary(w.hourly, w.utc_offset_seconds || 0, dateISO),
+    rain: rain >= 20 ? Math.round(rain) : null,
+    sunset: d.sunset && d.sunset[0] ? wClock(d.sunset[0].slice(11, 16)) : null,
+    forecast: wForecastDays(d, 1),
+  };
 }
+
+// Open-Meteo daily → [{ label: 'THU 8', icon: '⛈️', hi, lo }], from day `from` on
+function wForecastDays(d, from) {
+  return (d.time || []).slice(from).map((iso, j) => {
+    const i = from + j;
+    return {
+      label: W_DOW[wIsoDate(iso).getUTCDay()] + ' ' + wIsoDate(iso).getUTCDate(),
+      icon: wWeatherText(d.weathercode[i]).split(' ')[0],
+      hi: Math.round(d.temperature_2m_max[i]), lo: Math.round(d.temperature_2m_min[i]),
+    };
+  });
+}
+
+// "19:28" → "7:28pm", "17:00" → "5pm"
+function wClock(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h % 12 || 12) + (m ? ':' + String(m).padStart(2, '0') : '') + (h < 12 ? 'am' : 'pm');
+}
+
+// Weather code → group, in rising severity. Wet groups (drizzle and up) are
+// what the summary talks about when there are any.
+const W_SKY = ['Sunny', 'Partly cloudy', 'Cloudy', 'Foggy', 'Drizzle', 'Showers', 'Rain', 'Snow', 'Storms'];
+function wWeatherGroup(code) {
+  if (code === 0) return 0;
+  if (code <= 2) return 1;
+  if (code === 3) return 2;
+  if (code <= 48) return 3;
+  if (code <= 57) return 4;
+  if (code <= 67) return 6;
+  if (code <= 77) return 7;
+  if (code <= 82) return 5;
+  if (code <= 86) return 7;
+  return 8;
+}
+
+// What's left of the day in a few words: "Showers this morning, storms this
+// afternoon", "Storms this afternoon and evening", "Sunny all day". Each part
+// of the day (morning 6–12, afternoon 12–18, evening 18–24) takes its most
+// severe weather that lasts 2+ hours; parts already over are left out.
+function wWeatherSummary(hourly, offsetSec, dateISO) {
+  if (!hourly || !hourly.time || !hourly.weathercode) return null;
+  const local = new Date(Date.now() + offsetSec * 1000).toISOString();
+  const nowHour = local.slice(0, 10) === dateISO ? Number(local.slice(11, 13)) : 0;
+  const PARTS = [['morning', 6, 12], ['afternoon', 12, 18], ['evening', 18, 24]];
+  const parts = [];
+  for (const [name, from, to] of PARTS) {
+    if (to <= nowHour) continue;
+    const counts = {};
+    hourly.time.forEach((t, i) => {
+      const h = Number(t.slice(11, 13));
+      if (t.slice(0, 10) !== dateISO || h < Math.max(from, nowHour) || h >= to || hourly.weathercode[i] == null) return;
+      const g = wWeatherGroup(hourly.weathercode[i]);
+      counts[g] = (counts[g] || 0) + 1;
+    });
+    const groups = Object.keys(counts).map(Number).sort((a, b) => b - a);
+    if (!groups.length) continue;
+    parts.push({ name, g: groups.find(g => counts[g] >= 2) ?? groups[0] });
+  }
+  if (!parts.length) return null;
+
+  // Neighboring parts with the same weather read as one: "this afternoon and evening"
+  const runs = [];
+  parts.forEach(p => {
+    const last = runs[runs.length - 1];
+    if (last && last.g === p.g) last.names.push(p.name); else runs.push({ g: p.g, names: [p.name] });
+  });
+  const when = r => r.names.length === 3 ? 'all day' : 'this ' + r.names.join(' and ');
+  const word = (r, first) => {
+    const w = r.g === 8 && r.names.length === 3 ? 'Thunderstorms' : W_SKY[r.g];
+    return first ? w : w.toLowerCase();
+  };
+  const wet = runs.filter(r => r.g >= 4);
+  const shown = wet.length ? wet : runs.length > 1 ? runs.slice(0, 2) : runs;
+  if (!wet.length && shown.length === 2) return word(shown[0], true) + ', ' + word(shown[1]) + ' ' + when(shown[1]);
+  return shown.map((r, i) => word(r, i === 0) + ' ' + when(r)).join(', ');
+}
+
+// WMO weather codes (Open-Meteo), condensed — same groups as the app's icons
 
 function wWeatherText(code) {
   if (code === 0) return '☀️ Clear';
