@@ -53,12 +53,24 @@ struct DayWeather: Decodable, Hashable {
     let text: String?   // "🌤️ Partly cloudy"
     let hi: Int?
     let lo: Int?
+    var summary: String? = nil   // "Showers this morning, storms this afternoon"
+    var rain: Int? = nil         // chance of rain, %, when 20+
+    var sunset: String? = nil    // "7:28pm"
+    var forecast: [NextWeatherDay]? = nil   // the next 3 days
 
-    // "🌤️ 64°/51°": just the icon, which is the first word
+    // Just the icon, which is the first word
+    var icon: String { (text ?? "").split(separator: " ").first.map(String.init) ?? "" }
+
+    // "🌤️ 64°/51°"
     var short: String {
-        let icon = (text ?? "").split(separator: " ").first.map(String.init) ?? ""
         guard let hi = hi, let lo = lo else { return icon }
         return icon + " \(hi)°/\(lo)°"
+    }
+
+    // "☔ 70%  ·  🌅 Sunset 7:28pm", or nil when neither is known
+    var extras: String? {
+        let parts = [rain.map { "☔ \($0)%" }, sunset.map { "🌅 Sunset " + $0 }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
     }
 }
 
@@ -171,7 +183,11 @@ struct TodayEntry: TimelineEntry {
             TodayActivity(time: "7:30pm", timeSort: "", emoji: "🚗", text: "Dinner in Windsor",
                           drive: DriveInfo(mins: 55, leaveBy: "6:25pm", live: true)),
         ],
-        weather: DayWeather(text: "🌤️ Partly cloudy", hi: 64, lo: 51),
+        weather: DayWeather(text: "🌤️ Partly cloudy", hi: 64, lo: 51,
+                            summary: "Showers this afternoon", rain: 40, sunset: "7:12pm",
+                            forecast: [NextWeatherDay(label: "THU 8", icon: "🌧️", hi: 61, lo: 50),
+                                       NextWeatherDay(label: "FRI 9", icon: "🌤️", hi: 66, lo: 52),
+                                       NextWeatherDay(label: "SAT 10", icon: "☀️", hi: 70, lo: 54)]),
         hotel: "The Hoxton, Holborn",
         flights: [],
         tomorrow: TomorrowPreview(city: "Paris", activities: [
@@ -296,7 +312,7 @@ struct TodayWidgetView: View {
                 SectionLabel(text: header, extra: max(0, remaining.count - limit))
                 if !small, let weather = entry.weather {
                     Spacer(minLength: 4)
-                    WeatherText(weather: weather, size: 10)
+                    WeatherText(weather: weather, size: 12)
                 }
             }
             if remaining.isEmpty {
@@ -318,19 +334,46 @@ struct TodayWidgetView: View {
         // Rows that fit under the header block; each flight takes one
         let limit = max(3, 6 - entry.flights.count)
         let shown = Array(remaining.prefix(limit))
-        let tomorrowRoom = 5 - shown.count
+        let weather = entry.weather
+        // The summary lines take about a row's room
+        let hasSummary = weather?.summary != nil || weather?.extras != nil
+        let tomorrowRoom = 5 - shown.count - (hasSummary ? 1 : 0)
+        let showTomorrow = tomorrowRoom >= 2 && entry.tomorrow != nil
+        let tomorrowLimit = shown.isEmpty ? 6 : min(tomorrowRoom, 4)
+        let tomorrowRows = showTomorrow ? min(entry.tomorrow?.activities.count ?? 0, tomorrowLimit) : 0
+        // A light day leaves the bottom free for the next few days' weather
+        let forecast = weather?.forecast ?? []
+        let showForecast = !forecast.isEmpty && entry.flights.count <= 1 && shown.count + tomorrowRows <= 3
         return VStack(alignment: .leading, spacing: 6) {
-            // The trip on top, with the weather beside it; "TODAY · city" under
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if let trip = entry.trip {
-                    Text(String((trip.emoji ?? "✈️").prefix(2)) + "  " + (trip.name ?? "Trip"))
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+            // The trip on top, with the weather beside it, and what to expect
+            // under it; then "TODAY · city"
+            HStack(alignment: .top, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let trip = entry.trip {
+                        Text(String((trip.emoji ?? "✈️").prefix(2)) + "  " + (trip.name ?? "Trip"))
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(Palette.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    if let summary = weather?.summary {
+                        Text(summary)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Palette.ink.opacity(0.85))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let extras = weather?.extras {
+                        Text(extras)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
                 }
                 Spacer(minLength: 4)
-                if let weather = entry.weather { WeatherText(weather: weather, size: 12) }
+                if let weather = weather { WeatherBadge(weather: weather) }
             }
             SectionLabel(text: header, extra: max(0, remaining.count - limit))
             if let hotel = entry.hotel, !hotel.isEmpty {
@@ -348,10 +391,13 @@ struct TodayWidgetView: View {
                 }
             }
             // Once today is done, tomorrow is the main event: full rows, wrapped
-            if tomorrowRoom >= 2, let tomorrow = entry.tomorrow {
-                TomorrowSection(tomorrow: tomorrow, limit: shown.isEmpty ? 6 : min(tomorrowRoom, 4),
-                                prominent: shown.isEmpty)
+            if showTomorrow, let tomorrow = entry.tomorrow {
+                TomorrowSection(tomorrow: tomorrow, limit: tomorrowLimit, prominent: shown.isEmpty)
                     .padding(.top, 4)
+            }
+            if showForecast {
+                Spacer(minLength: 6)
+                ForecastStrip(days: Array(forecast.prefix(3)))
             }
         }
     }
@@ -461,6 +507,59 @@ private struct WeatherText: View {
             .foregroundStyle(Palette.ink)
             .lineLimit(1)
             .fixedSize()
+    }
+}
+
+// The large widget's corner: a big icon, the high over the low
+//   ⛈️ 87°
+//      77°
+private struct WeatherBadge: View {
+    let weather: DayWeather
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Text(weather.icon)
+                .font(.system(size: 28))
+            if let hi = weather.hi, let lo = weather.lo {
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(hi)°")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Palette.ink)
+                    Text("\(lo)°")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                }
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+}
+
+// "WED 7 / ☀️ / 88° 76°" for each day, on a sand strip
+private struct ForecastStrip: View {
+    let days: [NextWeatherDay]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(days, id: \.self) { d in
+                VStack(spacing: 1) {
+                    Text(d.label ?? "")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Palette.muted)
+                    Text(d.icon ?? "")
+                        .font(.system(size: 15))
+                    (Text("\(d.hi ?? 0)° ").foregroundColor(Palette.ink)
+                        + Text("\(d.lo ?? 0)°").foregroundColor(Palette.muted))
+                        .font(.system(size: 11, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
     }
 }
 
@@ -637,25 +736,7 @@ private struct NextTripLarge: View {
     @ViewBuilder private var weatherRow: some View {
         let days = Array((next.weather ?? []).prefix(5))
         if !days.isEmpty {
-            HStack(spacing: 0) {
-                ForEach(days, id: \.self) { d in
-                    VStack(spacing: 1) {
-                        Text(d.label ?? "")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Palette.muted)
-                        Text(d.icon ?? "")
-                            .font(.system(size: 15))
-                        (Text("\(d.hi ?? 0)° ").foregroundColor(Palette.ink)
-                            + Text("\(d.lo ?? 0)°").foregroundColor(Palette.muted))
-                            .font(.system(size: 11, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+            ForecastStrip(days: days)
         } else if let from = next.forecastFrom {
             Text("🌤️  Forecast appears 16 days out (\(from))")
                 .font(.system(size: 11, weight: .semibold))
