@@ -171,11 +171,12 @@ struct UpcomingWidgetView: View {
 struct SectionLabel: View {
     let text: String
     let extra: Int
+    var color: Color = Palette.muted
 
     var body: some View {
         Text(extra > 0 ? "\(text)  ·  +\(extra)" : text)
             .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(Palette.muted)
+            .foregroundStyle(color)
             .padding(.bottom, 1)
     }
 }

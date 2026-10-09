@@ -2111,7 +2111,9 @@ function wWeatherGroup(code) {
 // What's left of the day in a few words: "Showers this morning, storms this
 // afternoon", "Storms this afternoon and evening", "Sunny all day". Each part
 // of the day (morning 6–12, afternoon 12–18, evening 18–24) takes its most
-// severe weather that lasts 2+ hours; parts already over are left out.
+// severe weather that lasts 2+ hours; parts already over are left out. When
+// rain or storms are over and the rest is dry, it says so ("Storms earlier,
+// cloudy this evening"), so it agrees with the day's icon and rain chance.
 function wWeatherSummary(hourly, offsetSec, dateISO) {
   if (!hourly || !hourly.time || !hourly.weathercode) return null;
   const local = new Date(Date.now() + offsetSec * 1000).toISOString();
@@ -2133,6 +2135,13 @@ function wWeatherSummary(hourly, offsetSec, dateISO) {
   }
   if (!parts.length) return null;
 
+  // The worst of today's hours already gone
+  let earlier = -1;
+  hourly.time.forEach((t, i) => {
+    if (t.slice(0, 10) === dateISO && Number(t.slice(11, 13)) < nowHour && hourly.weathercode[i] != null)
+      earlier = Math.max(earlier, wWeatherGroup(hourly.weathercode[i]));
+  });
+
   // Neighboring parts with the same weather read as one: "this afternoon and evening"
   const runs = [];
   parts.forEach(p => {
@@ -2146,6 +2155,8 @@ function wWeatherSummary(hourly, offsetSec, dateISO) {
   };
   const wet = runs.filter(r => r.g >= 4);
   const shown = wet.length ? wet : runs.length > 1 ? runs.slice(0, 2) : runs;
+  const last = shown[shown.length - 1];
+  if (!wet.length && earlier >= 4) return W_SKY[earlier] + ' earlier, ' + word(last) + ' ' + when(last);
   if (!wet.length && shown.length === 2) return word(shown[0], true) + ', ' + word(shown[1]) + ' ' + when(shown[1]);
   return shown.map((r, i) => word(r, i === 0) + ' ' + when(r)).join(', ');
 }
