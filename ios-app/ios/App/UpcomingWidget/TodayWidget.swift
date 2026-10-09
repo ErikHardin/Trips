@@ -328,40 +328,40 @@ struct TodayWidgetView: View {
     }
 
     // Large: the trip, a weather table (today and the next 3 days), then the
-    // plans day by day: today's still ahead with flights and drive times, and
-    // tomorrow under it, as full rows once today is done
+    // day as a timeline: plans already done in gray, the next one with an
+    // orange dot and its countdown, then tomorrow under it, as full rows once
+    // today is done. Rows are fitted by their estimated height, so a drive's
+    // extra line or a long name that wraps doesn't squeeze the bottom row.
     private var largeDay: some View {
-        let remaining = entry.remaining
-        let weather = entry.weather
-        // Rows that fit under the header block (the weather table takes about
-        // two); each flight takes one
-        let limit = weather != nil ? max(2, 4 - entry.flights.count) : max(3, 6 - entry.flights.count)
-        let shown = Array(remaining.prefix(limit))
-        let tomorrowRoom = (weather != nil ? 4 : 5) - shown.count
-        let tomorrowLimit = shown.isEmpty ? (weather != nil ? 3 : 6) : tomorrowRoom
+        let plan = LargePlan(entry: entry)
         return VStack(alignment: .leading, spacing: 6) {
             if let trip = entry.trip {
-                Text(String((trip.emoji ?? "✈️").prefix(2)) + "  " + (trip.name ?? "Trip"))
+                Text((trip.emoji ?? "✈️") + "  " + (trip.name ?? "Trip"))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            if let weather = weather { WeatherTable(weather: weather) }
-            SectionLabel(text: header, extra: max(0, remaining.count - limit), color: Palette.terracotta)
+            if let weather = entry.weather { WeatherTable(weather: weather) }
+            SectionLabel(text: header, extra: plan.moreToday, color: Palette.terracotta)
                 .padding(.top, 2)
             ForEach(entry.flights, id: \.self) { FlightRow(flight: $0) }
-            if shown.isEmpty {
+            if plan.today.isEmpty {
                 NothingElseRow()
             } else {
-                ForEach(shown, id: \.self) { a in
-                    ActivityRow(activity: a, size: .large, isNext: a == entry.nextUp, now: entry.date)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(plan.today.enumerated()), id: \.offset) { i, a in
+                        TimelineRow(activity: a,
+                                    style: plan.past.contains(a) ? .done : (a == entry.nextUp ? .next : .ahead),
+                                    first: i == 0, last: i == plan.today.count - 1, now: entry.date)
+                    }
                 }
+                if plan.upcoming.isEmpty { NothingElseRow() }
             }
-            if tomorrowRoom >= 1, let tomorrow = entry.tomorrow {
+            if plan.tomorrowLimit > 0, let tomorrow = entry.tomorrow {
                 Rectangle().fill(Palette.ink.opacity(0.1)).frame(height: 1)
-                TomorrowSection(tomorrow: tomorrow, limit: tomorrowLimit, prominent: shown.isEmpty)
+                TomorrowSection(tomorrow: tomorrow, limit: plan.tomorrowLimit, prominent: plan.upcoming.isEmpty)
             }
         }
     }
@@ -582,6 +582,153 @@ private struct FlightRow: View {
     }
 }
 
+// What the large widget fits under the weather: today's plans still ahead
+// first (each by its estimated height), then tomorrow, then today's plans
+// already done, newest first, in whatever room is left. When today is done,
+// tomorrow comes before them.
+private struct LargePlan {
+    let upcoming: [TodayActivity]   // shown, still ahead
+    let past: [TodayActivity]       // shown, done
+    let today: [TodayActivity]      // past + upcoming, in the day's order
+    let moreToday: Int              // still ahead but no room
+    let tomorrowLimit: Int
+
+    init(entry: TodayEntry) {
+        let all = entry.activities ?? []
+        let remaining = entry.remaining
+        let done = all.filter { !remaining.contains($0) }
+        // Room under "TODAY · city", in points: the widget less its padding,
+        // the title, the weather table and the label; then each flight
+        var room: CGFloat = entry.weather != nil ? 176 : 270
+        room -= CGFloat(entry.flights.count) * 42
+
+        var ahead: [TodayActivity] = []
+        for a in remaining {
+            let h = TimelineRow.height(a, style: a == entry.nextUp ? .next : .ahead)
+            if h > room && !ahead.isEmpty { break }
+            ahead.append(a)
+            room -= h
+        }
+        if ahead.isEmpty { room -= TimelineRow.oneLine }   // "Nothing else planned today"
+
+        // Tomorrow: its label and divider, then rows. Full rows once today is
+        // done, otherwise one-line gray rows in what's left.
+        var tomorrow = 0
+        let tomorrowActs = entry.tomorrow?.activities ?? []
+        if !tomorrowActs.isEmpty && room >= 24 + TimelineRow.oneLine {
+            room -= 24
+            for a in tomorrowActs.prefix(ahead.isEmpty ? 3 : 4) {
+                let h = TimelineRow.height(a, style: ahead.isEmpty ? .ahead : .later)
+                if h > room { break }
+                tomorrow += 1
+                room -= h
+            }
+        }
+
+        // Done plans, newest first, while one-line rows still fit
+        let keep = min(done.count, max(0, Int(room / TimelineRow.oneLine)))
+        let past = Array(done.suffix(keep))
+
+        upcoming = ahead
+        self.past = past
+        today = all.filter { past.contains($0) || ahead.contains($0) }
+        moreToday = remaining.count - ahead.count
+        tomorrowLimit = tomorrow
+    }
+}
+
+// One plan on the large widget's timeline:
+//   11am  ●  🚗 Drive to Sayulita
+//         │  in 40 min · 🚗 38 min · leave by 10:15am
+//    1pm  ○  🌮 Lunch at Don Pedro's
+// Done plans and tomorrow's (while today is still going) are gray, one line.
+private struct TimelineRow: View {
+    enum Style { case done, next, ahead, later }
+
+    let activity: TodayActivity
+    let style: Style
+    var first = false
+    var last = false
+    var now = Date()
+
+    private var gray: Bool { style == .done || style == .later }
+
+    // One-line row: the 13.5pt name plus the gap under it
+    static let oneLine: CGFloat = 23
+
+    // Estimated height, for fitting rows: a second line when the name is long
+    // enough to wrap, and one more for the countdown or drive time
+    static func height(_ a: TodayActivity, style: Style) -> CGFloat {
+        if style == .done || style == .later { return oneLine }
+        var h = oneLine
+        if (a.text ?? "").count > 30 { h += 17 }
+        if style == .next || a.drive?.mins != nil { h += 15 }
+        return h
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(activity.time ?? "")
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundStyle(gray ? Palette.muted : Palette.terracotta)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(width: 50, alignment: .trailing)
+            // The dot; the line joining it to the rows above and below is drawn
+            // behind the row, so it runs the row's full height
+            VStack(spacing: 0) {
+                Rectangle().fill(first ? Color.clear : Palette.ink.opacity(0.15)).frame(width: 1, height: 4)
+                Circle()
+                    .strokeBorder(style == .next ? Palette.terracotta : Palette.muted, lineWidth: 1.5)
+                    .background(Circle().fill(style == .next ? Palette.terracotta : Palette.background))
+                    .frame(width: 9, height: 9)
+            }
+            .frame(width: 10)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(String((activity.emoji ?? "📌").prefix(1)) + " " + (activity.text ?? ""))
+                    .font(.system(size: gray ? 12.5 : 13.5, weight: gray ? .medium : .bold))
+                    .foregroundStyle(gray ? Palette.muted : Palette.ink)
+                    .lineLimit(gray ? 1 : 2)
+                    .fixedSize(horizontal: false, vertical: !gray)
+                if !gray, let line = subline {
+                    line
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .padding(.bottom, last ? 0 : 6)
+            Spacer(minLength: 0)
+        }
+        .background(alignment: .topLeading) {
+            // x: the time column (50) and the gap (8), to the dot's middle
+            if !last {
+                Rectangle()
+                    .fill(Palette.ink.opacity(0.15))
+                    .frame(width: 1)
+                    .padding(.top, first ? 8 : 0)
+                    .offset(x: 62.5)
+            }
+        }
+    }
+
+    // "in 40 min · 🚗 38 min · leave by 10:15am" for the next plan, the drive
+    // time for a later drive; orange when it's the next plan or traffic is live
+    private var subline: Text? {
+        let drive = activity.drive.flatMap { d -> String? in
+            guard let mins = d.mins else { return nil }
+            if let leave = d.leaveBy { return "🚗 \(mins) min · leave by \(leave)" }
+            return "🚗 \(mins) min drive"
+        }
+        if style == .next, let start = activity.start(on: now) {
+            return (Text("in ") + Text(start, style: .relative) + Text(drive.map { " · " + $0 } ?? ""))
+                .foregroundColor(Palette.terracotta)
+        }
+        guard let drive = drive else { return nil }
+        return Text(drive).foregroundColor(activity.drive?.leaveBy != nil ? Palette.terracotta : Palette.muted)
+    }
+}
+
 // "TOMORROW · PARIS", then its first few plans: muted and one line each under
 // today's, or, once today is done, as full rows that wrap
 private struct TomorrowSection: View {
@@ -597,21 +744,11 @@ private struct TomorrowSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             SectionLabel(text: label, extra: max(0, tomorrow.activities.count - limit))
-            ForEach(Array(tomorrow.activities.prefix(limit)), id: \.self) { a in
-                if prominent {
-                    ActivityRow(activity: a, size: .large)
-                } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(a.time ?? "")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Palette.muted)
-                            .lineLimit(1)
-                            .frame(width: 66, alignment: .leading)
-                        Text(String((a.emoji ?? "📌").prefix(1)) + " " + (a.text ?? ""))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Palette.muted)
-                            .lineLimit(1)
-                    }
+            VStack(alignment: .leading, spacing: 0) {
+                let shown = Array(tomorrow.activities.prefix(limit))
+                ForEach(Array(shown.enumerated()), id: \.offset) { i, a in
+                    TimelineRow(activity: a, style: prominent ? .ahead : .later,
+                                first: i == 0, last: i == shown.count - 1)
                 }
             }
         }
