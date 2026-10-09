@@ -2311,6 +2311,45 @@ function wFlightPollEvery(depAt, now) {
   return 12 * 3600e3;
 }
 
+// FlightAware AeroAPI (FLIGHTAWARE_KEY, optional) for the departure gate,
+// which airlines often post there days before AeroDataBox has it. Asked only
+// in the 24 hours before departure while the gate is missing, and in the last
+// 4 hours to catch gate changes; its gate wins. Without the key, or when it
+// fails, nothing changes. A gate already known isn't lost to a lookup without one.
+async function addFlightAwareGate(env, leg, info, prev, now) {
+  const dep = info.depUtc || info.schedUtc;
+  const known = info.gate || prev.gate;
+  if (env.FLIGHTAWARE_KEY && dep && dep - now <= 24 * 3600e3 && (!known || dep - now <= 4 * 3600e3)) {
+    const fa = await lookupFlightGate(env, leg.num, leg.dateISO, info).catch(() => null);
+    if (fa && fa.gate) { info.gate = fa.gate; info.terminal = fa.terminal || ''; }
+  }
+  if (!info.gate && prev.gate) { info.gate = prev.gate; info.terminal = prev.terminal || ''; }
+}
+
+async function lookupFlightGate(env, num, dateISO, info) {
+  if (!env.FLIGHTAWARE_KEY) return null;
+  const r = await fetch('https://aeroapi.flightaware.com/aeroapi/flights/' + encodeURIComponent(num) +
+    '?ident_type=designator&start=' + dateISO + '&end=' + wAddDays(dateISO, 2),
+    { headers: { 'x-apikey': env.FLIGHTAWARE_KEY } });
+  if (!r.ok) return null;
+  const data = await r.json().catch(() => null);
+  return pickFlightAwareGate(data && data.flights, info);
+}
+
+// The AeroAPI flight that is this leg: leaving within 6 hours of AeroDataBox's
+// scheduled time (another day's flight never counts), from the same airport
+// when there's a choice; with no scheduled time, the first one not canceled
+function pickFlightAwareGate(flights, info) {
+  const list = (Array.isArray(flights) ? flights : []).filter(f => f && !f.cancelled);
+  const near = f => {
+    const out = Date.parse(f.scheduled_out || '');
+    return !info.schedUtc || (out && Math.abs(out - info.schedUtc) < 6 * 3600e3);
+  };
+  const f = list.filter(near).find(f => !info.from || (f.origin && f.origin.code_iata) === info.from) ||
+    list.find(near);
+  return f && f.gate_origin ? { gate: String(f.gate_origin), terminal: String(f.terminal_origin || '') } : null;
+}
+
 async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightState, send, now) {
   const who = recipients.filter(k => prefsOf(k).flights);
   if (!who.length) return;
@@ -2332,6 +2371,7 @@ async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightSta
         const next = new Date(Date.parse(leg.dateISO) + 864e5).toISOString().slice(0, 10);
         info = await lookupFlight(env, leg.num, next).catch(() => null);
       }
+      if (info) await addFlightAwareGate(env, leg, info, st || {}, now);
       const prev = st || {};
       st = Object.assign({}, prev, info || {}, { at: now });
       await fbWrite(env, 'PUT', 'pushState/flights/' + key, st).catch(() => {});

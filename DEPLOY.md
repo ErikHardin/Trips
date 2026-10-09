@@ -41,7 +41,8 @@ Runtime) and match it in `wrangler.toml` if it differs from what's there.
 The Worker reads: `ANTHROPIC_KEY`, `FIREBASE_URL`, `FIREBASE_SECRET`,
 `AERODATABOX_KEY`, `ADMIN_PIN`, `ADMIN_PIN_2`, and for push notifications
 `APNS_KEY_P8`, `APNS_KEY_ID`, `APPLE_TEAM_ID` and optionally `MAPS_KEY_P8`,
-`MAPS_KEY_ID` (see below). `NTFY_TOPIC` and `NTFY_TOKEN` are no longer used and
+`MAPS_KEY_ID` (see below), and optionally `FLIGHTAWARE_KEY` (FlightAware
+AeroAPI, for departure gates). `NTFY_TOPIC` and `NTFY_TOKEN` are no longer used and
 can be deleted.
 
 ### 2. Connect the repo
