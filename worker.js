@@ -95,7 +95,13 @@ export default {
       const depT = fmt12(f.departure?.scheduledTime?.local);
       const arrT = fmt12(f.arrival?.scheduledTime?.local);
       const formatted = `${flightNumber.toUpperCase()} ${dep} → ${arr}${depT && arrT ? ' · ' + depT + ' – ' + arrT : ''}`;
-      return new Response(JSON.stringify({ formatted, departure: dep, arrival: arr }), {
+      // Live fields too, for checking what AeroDataBox has (the app ignores them)
+      const best = x => (x && (x.revisedTime || x.predictedTime || x.scheduledTime)) || {};
+      const live = {
+        gate: f.departure?.gate || '', terminal: f.departure?.terminal || '',
+        status: String(f.status || ''), depLocal: fmt12(best(f.departure).local),
+      };
+      return new Response(JSON.stringify({ formatted, departure: dep, arrival: arr, ...live }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     }
@@ -340,25 +346,16 @@ async function widgetNextTrip(env, trip, days, todayISO) {
   });
   const flightsJob = Promise.all(outbound.map(async leg => {
     const formatted = String(leg.formatted || '').trim();
-    const m = formatted.match(/^\S+\s+(\S+)\s*→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
+    const t = wFlightTimes(formatted);
     const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
     const st = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
-    const f = {
+    return Object.assign({
       name: names[formatted] || '',
       num: leg.num,
-      route: st && st.from && st.to ? st.from + ' → ' + st.to : (m ? m[1] + ' → ' + m[2] : ''),
-      time: (st && (st.depLocal || st.schedLocal)) || (m && m[3] ? m[3].trim() : ''),
-      arrives: m && m[4] ? m[4].trim() : '',
-      status: 'Scheduled', alert: false, ok: false, gate: '',
-    };
-    if (st && (st.depLocal || st.schedLocal)) {
-      const delay = st.depUtc && st.schedUtc ? Math.round((st.depUtc - st.schedUtc) / 60000) : 0;
-      if (/cancel/i.test(st.status || '')) { f.status = 'Canceled'; f.alert = true; }
-      else if (delay >= 15) { f.status = 'Delayed ' + delay + ' min'; f.alert = true; }
-      else { f.status = 'On time'; f.ok = true; }
-      if (st.gate) f.gate = 'Gate ' + st.gate + (st.terminal ? ' · T' + st.terminal : '');
-    }
-    return f;
+      route: st && st.from && st.to ? st.from + ' → ' + st.to : t.route,
+      time: (st && (st.depLocal || st.schedLocal)) || t.departs,
+      arrives: t.arrives,
+    }, wFlightStatus(st));
   })).then(list => {
     // By local departure time
     const mins = f => { const m = wActStartMinutes(f.time); return m == null ? 9999 : m; };
@@ -431,24 +428,54 @@ async function widgetDrives(env, tripId, row, activities, raws) {
   }));
 }
 
-// Today's flights for the widget: "UA100 · DEN → LIS · 8:00am", plus gate or
-// delay from the flight-alert cron's last lookup (pushState/flights) when it
-// has one; otherwise the itinerary's own flight line.
+// A flight's status from the flight-alert cron's last lookup (pushState/flights):
+// "On time" (ok), "Delayed 40 min" / "Canceled" (alert), or "Scheduled" before
+// any lookup; and its gate, "Gate B31 · T2", when the airline has posted one.
+function wFlightStatus(st) {
+  const f = { status: 'Scheduled', alert: false, ok: false, gate: '' };
+  if (!st || !(st.depLocal || st.schedLocal)) return f;
+  const delay = st.depUtc && st.schedUtc ? Math.round((st.depUtc - st.schedUtc) / 60000) : 0;
+  if (/cancel/i.test(st.status || '')) { f.status = 'Canceled'; f.alert = true; }
+  else if (delay >= 15) { f.status = 'Delayed ' + delay + ' min'; f.alert = true; }
+  else { f.status = 'On time'; f.ok = true; }
+  if (st.gate) f.gate = 'Gate ' + st.gate + (st.terminal ? ' · T' + st.terminal : '');
+  return f;
+}
+
+// The itinerary's flight line, "UA2257 DEN → PVR · 9:40am – 12:53pm", in parts
+function wFlightTimes(formatted) {
+  const m = String(formatted || '').trim().match(/^\S+\s+(\S+)\s*→\s*(\S+)(?:\s*·\s*([^–]+?)\s*–\s*(.+))?$/);
+  return {
+    route: m ? m[1] + ' → ' + m[2] : '',
+    departs: m && m[3] ? m[3].trim() : '',
+    arrives: m && m[4] ? m[4].trim() : '',
+  };
+}
+
+// Today's flights for the widget: "UA100 · DEN → LIS · 8:00am", and under it
+// "On time · Gate B31 · arrives 12:53pm" from the flight-alert cron's last
+// lookup. `detail` is what the widget shows; `status` and `ok` are for a
+// widget that colors the status itself.
 async function widgetFlights(env, trip, dateISO) {
   const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO);
   return Promise.all(legs.map(async leg => {
     const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
     const st = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
-    if (!st || !(st.depLocal || st.schedLocal)) return { line: String(leg.formatted || leg.num).trim(), detail: '', alert: false };
-    const route = st.from && st.to ? st.from + ' → ' + st.to : '';
-    const delayMin = st.depUtc && st.schedUtc ? Math.round((st.depUtc - st.schedUtc) / 60000) : 0;
-    let detail = '', alert = false;
-    if (/cancel/i.test(st.status || '')) { detail = 'Canceled'; alert = true; }
-    else if (delayMin >= 15) { detail = 'Delayed ' + delayMin + ' min'; alert = true; }
-    const gate = st.gate ? 'Gate ' + st.gate + (st.terminal ? ' · T' + st.terminal : '') : '';
-    if (gate) detail = detail ? detail + ' · ' + gate : gate;
-    return { line: [leg.num, route, st.depLocal || st.schedLocal].filter(Boolean).join(' · '), detail, alert };
+    return widgetFlightRow(leg, st);
   }));
+}
+
+function widgetFlightRow(leg, st) {
+  const t = wFlightTimes(leg.formatted);
+  const s = wFlightStatus(st);
+  const looked = st && (st.depLocal || st.schedLocal);
+  const route = looked && st.from && st.to ? st.from + ' → ' + st.to : t.route;
+  const line = [leg.num, route, (looked && (st.depLocal || st.schedLocal)) || t.departs].filter(Boolean).join(' · ');
+  // The arrival is the scheduled one, so it's left off a delayed or canceled flight
+  const gate = s.gate || (s.status === 'Canceled' ? '' : 'Gate not posted yet');
+  const detail = [s.status, gate, !s.alert && t.arrives ? 'arrives ' + t.arrives : '']
+    .filter(Boolean).join(' · ');
+  return { line: line || String(leg.formatted || leg.num).trim(), detail, alert: s.alert, status: s.status, ok: s.ok };
 }
 
 async function handleWidgetUpcoming(env, request) {
@@ -2275,6 +2302,15 @@ async function lookupFlight(env, num, dateISO) {
   };
 }
 
+// How often the cron looks a flight up: every 20 minutes from 4 hours before
+// departure until 30 minutes after, every 2 hours on the day before that (so a
+// gate the airline posts early shows up), otherwise every 12 hours
+function wFlightPollEvery(depAt, now) {
+  if (depAt && depAt - now <= 4 * 3600e3 && now <= depAt + 30 * 60000) return 20 * 60000;
+  if (depAt && depAt - now <= 24 * 3600e3) return 2 * 3600e3;
+  return 12 * 3600e3;
+}
+
 async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightState, send, now) {
   const who = recipients.filter(k => prefsOf(k).flights);
   if (!who.length) return;
@@ -2288,7 +2324,7 @@ async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightSta
     if (st && st.depUtc && now > st.depUtc + 3 * 3600e3) continue;   // long gone
 
     const depAt = st && (st.depUtc || st.schedUtc);
-    const pollEvery = depAt && depAt - now <= 4 * 3600e3 && now <= depAt + 30 * 60000 ? 20 * 60000 : 12 * 3600e3;
+    const pollEvery = wFlightPollEvery(depAt, now);
     if (!st || now - (st.at || 0) >= pollEvery) {
       let info = await lookupFlight(env, leg.num, leg.dateISO).catch(() => null);
       // A later leg of a connection can leave the next day
