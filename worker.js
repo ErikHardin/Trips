@@ -457,14 +457,25 @@ function wFlightTimes(formatted) {
 // Today's flights for the widget: "UA100 · DEN → LIS · 8:00am", and under it
 // "On time · Gate B31 · arrives 12:53pm" from the flight-alert cron's last
 // lookup. `detail` is what the widget shows; `status` and `ok` are for a
-// widget that colors the status itself.
+// widget that colors the status itself. A flight drops off once it has landed.
 async function widgetFlights(env, trip, dateISO) {
   const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO);
-  return Promise.all(legs.map(async leg => {
+  const now = Date.now();
+  const rows = await Promise.all(legs.map(async leg => {
     const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
     const st = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
-    return widgetFlightRow(leg, st);
+    return wFlightLanded(st, now) ? null : widgetFlightRow(leg, st);
   }));
+  return rows.filter(Boolean);
+}
+
+// Past its landing time (the last lookup's, with any delay), or with no
+// landing time known, 6 hours after it left. Unknown flights stay.
+function wFlightLanded(st, now) {
+  if (!st) return false;
+  if (st.arrUtc) return now >= st.arrUtc;
+  const dep = st.depUtc || st.schedUtc;
+  return !!dep && now >= dep + 6 * 3600e3;
 }
 
 function widgetFlightRow(leg, st) {
@@ -2304,6 +2315,7 @@ async function lookupFlight(env, num, dateISO) {
     schedLocal: aeroLocal((dep.scheduledTime || {}).local), depLocal: aeroLocal(best(dep).local),
     gate: dep.gate || '', terminal: dep.terminal || '',
     arrLocal: aeroLocal(best(arr).local),   // with any delay, the arrival airport's time
+    arrUtc: aeroUtc(best(arr).utc),
     status: String(f.status || ''),
   };
 }
@@ -2331,7 +2343,7 @@ async function addFlightAware(env, leg, info, prev, now) {
   if (env.FLIGHTAWARE_KEY && dep && dep - now <= 24 * 3600e3 && (!known || dep - now <= 4 * 3600e3)) {
     const fa = await lookupFlightAware(env, leg.num, leg.dateISO, info).catch(() => null);
     if (fa && fa.gate) { info.gate = fa.gate; info.terminal = fa.terminal || ''; }
-    if (fa && fa.arrLocal) info.arrLocal = fa.arrLocal;
+    if (fa && fa.arrLocal) { info.arrLocal = fa.arrLocal; info.arrUtc = fa.arrUtc; }
     if (fa && fa.depUtc && fa.depLocal) { info.depUtc = fa.depUtc; info.depLocal = fa.depLocal; info.depFrom = 'fa'; }
   }
   if (!info.gate && prev.gate) { info.gate = prev.gate; info.terminal = prev.terminal || ''; }
@@ -2373,6 +2385,7 @@ function pickFlightAware(flights, info) {
   let depLocal = '';
   if (outAt && depTz) { try { depLocal = fmtLocalTime(outAt, depTz); } catch (e) {} }
   return { gate: f.gate_origin ? String(f.gate_origin) : '', terminal: String(f.terminal_origin || ''), arrLocal,
+    arrUtc: arrLocal ? inAt : null,
     depUtc: depLocal ? outAt : null, depLocal };
 }
 
