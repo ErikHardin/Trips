@@ -346,6 +346,7 @@ struct TodayWidgetView: View {
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
             if let weather = weather { WeatherTable(weather: weather) }
             SectionLabel(text: header, extra: max(0, remaining.count - limit), color: Palette.terracotta)
