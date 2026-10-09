@@ -2054,13 +2054,14 @@ function addHHMM(hhmm, mins) {
 // The day's forecast for its city: { text: '🌤️ Partly cloudy', hi, lo } (°F),
 // or null when the city can't be placed. Used by the morning brief and widget.
 // The widget also gets what's left of the day in words ("Showers this morning,
-// storms this afternoon"), the chance of rain, sunset, and the next 3 days.
+// storms this afternoon"), the chance of rain, sunrise and sunset, and the
+// next 3 days.
 async function wDayWeather(env, day, dateISO) {
   const place = wCleanCity(day.city) || wCleanCity(day.region);
   const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
   if (!c) return null;
   const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
-    '&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunset' +
+    '&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset' +
     '&hourly=weathercode&temperature_unit=fahrenheit&timezone=auto&start_date=' + dateISO + '&end_date=' + wAddDays(dateISO, 3));
   const d = w && w.daily;
   if (!d || !d.weathercode || !d.weathercode.length) return null;
@@ -2070,8 +2071,18 @@ async function wDayWeather(env, day, dateISO) {
     summary: wWeatherSummary(w.hourly, w.utc_offset_seconds || 0, dateISO),
     rain: rain >= 20 ? Math.round(rain) : null,
     sunset: d.sunset && d.sunset[0] ? wClock(d.sunset[0].slice(11, 16)) : null,
+    sun: wSunTimes(d, w.utc_offset_seconds || 0),
     forecast: wForecastDays(d, 1),
   };
+}
+
+// Today's sunrise and sunset and tomorrow's sunrise, for the widget to show
+// whichever comes next: [{ at: epoch ms, label: '6:43pm', rise: false }, …].
+// Open-Meteo gives them in the place's local time ("2026-10-09T18:43").
+function wSunTimes(d, offsetSec) {
+  const ev = (iso, rise) => iso ? { at: Date.parse(iso + ':00Z') - offsetSec * 1000, label: wClock(iso.slice(11, 16)), rise } : null;
+  return [ev(d.sunrise && d.sunrise[0], true), ev(d.sunset && d.sunset[0], false), ev(d.sunrise && d.sunrise[1], true)]
+    .filter(e => e && !isNaN(e.at));
 }
 
 // Open-Meteo daily → [{ label: 'THU 8', icon: '⛈️', hi, lo }], from day `from` on

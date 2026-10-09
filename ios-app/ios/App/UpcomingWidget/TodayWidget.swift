@@ -57,6 +57,7 @@ struct DayWeather: Decodable, Hashable {
     var summary: String? = nil   // "Showers this morning, storms this afternoon"
     var rain: Int? = nil         // chance of rain, %, when 20+
     var sunset: String? = nil    // "7:28pm"
+    var sun: [SunEvent]? = nil   // today's sunrise and sunset, tomorrow's sunrise
     var forecast: [NextWeatherDay]? = nil   // the next 3 days
 
     // Just the icon, which is the first word
@@ -68,11 +69,27 @@ struct DayWeather: Decodable, Hashable {
         return icon + " \(hi)°/\(lo)°"
     }
 
-    // "Storms this evening · ☔ 100% · 🌅 6:43pm", or nil when none is known
-    var line: String? {
-        let parts = [summary, rain.map { "☔ \($0)%" }, sunset.map { "🌅 " + $0 }].compactMap { $0 }
+    // Whichever comes next: "🌅 Sunset 6:43pm", or after it "🌄 Sunrise 7:02am"
+    func sunText(at date: Date) -> String? {
+        if let next = (sun ?? []).first(where: { $0.date.map { $0 > date } ?? false }), let label = next.label {
+            return next.rise == true ? "🌄 Sunrise " + label : "🌅 Sunset " + label
+        }
+        return sun == nil ? sunset.map { "🌅 Sunset " + $0 } : nil
+    }
+
+    // "☔ 100% · 🌅 Sunset 6:43pm", or nil when neither is known
+    func details(at date: Date) -> String? {
+        let parts = [rain.map { "☔ \($0)%" }, sunText(at: date)].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+}
+
+struct SunEvent: Decodable, Hashable {
+    let at: Double?      // epoch ms
+    let label: String?   // "6:43pm", the place's local time
+    let rise: Bool?
+
+    var date: Date? { at.map { Date(timeIntervalSince1970: $0 / 1000) } }
 }
 
 // "BA286 · SFO → LHR · 5:10pm" / "Delayed 30 min · Gate A12"
@@ -186,6 +203,8 @@ struct TodayEntry: TimelineEntry {
         ],
         weather: DayWeather(text: "🌤️ Partly cloudy", hi: 64, lo: 51,
                             summary: "Showers this afternoon", rain: 40, sunset: "7:12pm",
+                            sun: [SunEvent(at: Date().addingTimeInterval(8 * 3600).timeIntervalSince1970 * 1000,
+                                           label: "7:12pm", rise: false)],
                             forecast: [NextWeatherDay(label: "THU 8", icon: "🌧️", hi: 61, lo: 50),
                                        NextWeatherDay(label: "FRI 9", icon: "🌤️", hi: 66, lo: 52),
                                        NextWeatherDay(label: "SAT 10", icon: "☀️", hi: 70, lo: 54)]),
@@ -215,7 +234,9 @@ struct TodayProvider: TimelineProvider {
             // on) and as each drops off, so the list keeps up through the day
             // without waiting on a refresh
             let starts = (entry.activities ?? []).compactMap { $0.start(on: now) }
-            let changes = (starts + starts.map { $0.addingTimeInterval(activityGrace) }).filter { $0 > now }
+            // and at sunrise and sunset, when the weather's sun time switches
+            let sun = (entry.weather?.sun ?? []).compactMap { $0.date }
+            let changes = (starts + starts.map { $0.addingTimeInterval(activityGrace) } + sun).filter { $0 > now }
             let entries = [entry] + Set(changes).sorted().map { entry.at($0) }
 
             // Refetch every 30 minutes on a trip day (drive times and flights
@@ -343,7 +364,7 @@ struct TodayWidgetView: View {
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            if let weather = entry.weather { WeatherTable(weather: weather) }
+            if let weather = entry.weather { WeatherTable(weather: weather, now: entry.date) }
             SectionLabel(text: header, extra: plan.moreToday, color: Palette.terracotta)
                 .padding(.top, 2)
             ForEach(entry.flights, id: \.self) { FlightRow(flight: $0) }
@@ -482,6 +503,7 @@ private struct WeatherText: View {
 //   Storms this evening · ☔ 100% · 🌅 6:43pm
 private struct WeatherTable: View {
     let weather: DayWeather
+    let now: Date
 
     var body: some View {
         let days = Array((weather.forecast ?? []).prefix(3))
@@ -494,20 +516,36 @@ private struct WeatherTable: View {
                            icon: d.icon ?? "", hi: d.hi, lo: d.lo, today: false)
                 }
             }
-            if let line = weather.line {
-                Text(line)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.muted)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
-            }
+            outlook
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
         }
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+    }
+
+    // "Storms this evening · ☔ 100% · 🌅 Sunset 6:43pm" on one line when it
+    // fits; otherwise the summary, then the rain and sun on their own line,
+    // so a wrap never splits the sun from its time
+    @ViewBuilder private var outlook: some View {
+        let details = weather.details(at: now)
+        let all = [weather.summary, details].compactMap { $0 }
+        if !all.isEmpty {
+            ViewThatFits(in: .horizontal) {
+                Text(all.joined(separator: " · ")).lineLimit(1)
+                VStack(spacing: 1) {
+                    if let summary = weather.summary {
+                        Text(summary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let details = details {
+                        Text(details).lineLimit(1).minimumScaleFactor(0.85)
+                    }
+                }
+            }
+        }
     }
 
     private func column(label: String, icon: String, hi: Int?, lo: Int?, today: Bool) -> some View {
@@ -673,7 +711,8 @@ private struct TimelineRow: View {
                 .foregroundStyle(gray ? Palette.muted : Palette.terracotta)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-                .frame(width: 50, alignment: .trailing)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 54, alignment: .trailing)
             // The dot; the line joining it to the rows above and below is drawn
             // behind the row, so it runs the row's full height
             VStack(spacing: 0) {
@@ -685,11 +724,16 @@ private struct TimelineRow: View {
             }
             .frame(width: 10)
             VStack(alignment: .leading, spacing: 1) {
-                Text(String((activity.emoji ?? "📌").prefix(1)) + " " + (activity.text ?? ""))
-                    .font(.system(size: gray ? 12.5 : 13.5, weight: gray ? .medium : .bold))
-                    .foregroundStyle(gray ? Palette.muted : Palette.ink)
-                    .lineLimit(gray ? 1 : 2)
-                    .fixedSize(horizontal: false, vertical: !gray)
+                // The emoji apart, so a wrapped name lines up under itself
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(String((activity.emoji ?? "📌").prefix(1)))
+                        .fixedSize()
+                    Text(activity.text ?? "")
+                        .lineLimit(gray ? 1 : 2)
+                        .fixedSize(horizontal: false, vertical: !gray)
+                }
+                .font(.system(size: gray ? 12.5 : 13.5, weight: gray ? .medium : .bold))
+                .foregroundStyle(gray ? Palette.muted : Palette.ink)
                 if !gray, let line = subline {
                     line
                         .font(.system(size: 11, weight: .semibold))
@@ -701,13 +745,13 @@ private struct TimelineRow: View {
             Spacer(minLength: 0)
         }
         .background(alignment: .topLeading) {
-            // x: the time column (50) and the gap (8), to the dot's middle
+            // x: the time column (54) and the gap (8), to the dot's middle
             if !last {
                 Rectangle()
                     .fill(Palette.ink.opacity(0.15))
                     .frame(width: 1)
                     .padding(.top, first ? 8 : 0)
-                    .offset(x: 62.5)
+                    .offset(x: 66.5)
             }
         }
     }
@@ -758,8 +802,9 @@ private struct TomorrowSection: View {
 // Large: "✓ Nothing else planned today", in the activity rows' columns
 private struct NothingElseRow: View {
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Color.clear.frame(width: 66, height: 1)
+        // Lined up with the timeline's emoji: time (54), gap, dot (10), gap
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Color.clear.frame(width: 72, height: 1)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("✓").font(.system(size: 14, weight: .bold))
                 Text("Nothing else planned today").font(.system(size: 13, weight: .medium))
