@@ -2318,23 +2318,29 @@ function wFlightPollEvery(depAt, now) {
 }
 
 // FlightAware AeroAPI (FLIGHTAWARE_KEY, optional) for the departure gate,
-// which airlines often post there days before AeroDataBox has it, and its
-// estimated arrival. Asked only in the 24 hours before departure while the
-// gate is missing, and in the last 4 hours to catch gate changes; its gate and
-// arrival win. Without the key, or when it fails, nothing changes. A gate
-// already known isn't lost to a lookup without one.
-async function addFlightAwareGate(env, leg, info, prev, now) {
+// which airlines often post there days before AeroDataBox has it, and the
+// estimated departure and arrival, where delays also show up there first.
+// Asked only in the 24 hours before departure while the gate is missing, and
+// in the last 4 hours (each lookup, every 20 minutes); its gate and times win.
+// Without the key, or when it fails, nothing changes. A gate already known
+// isn't lost to a lookup without one, and FlightAware's last departure time is
+// kept when one call fails, so a delay doesn't flap back to on time.
+async function addFlightAware(env, leg, info, prev, now) {
   const dep = info.depUtc || info.schedUtc;
   const known = info.gate || prev.gate;
   if (env.FLIGHTAWARE_KEY && dep && dep - now <= 24 * 3600e3 && (!known || dep - now <= 4 * 3600e3)) {
-    const fa = await lookupFlightGate(env, leg.num, leg.dateISO, info).catch(() => null);
+    const fa = await lookupFlightAware(env, leg.num, leg.dateISO, info).catch(() => null);
     if (fa && fa.gate) { info.gate = fa.gate; info.terminal = fa.terminal || ''; }
     if (fa && fa.arrLocal) info.arrLocal = fa.arrLocal;
+    if (fa && fa.depUtc && fa.depLocal) { info.depUtc = fa.depUtc; info.depLocal = fa.depLocal; info.depFrom = 'fa'; }
   }
   if (!info.gate && prev.gate) { info.gate = prev.gate; info.terminal = prev.terminal || ''; }
+  if (info.depFrom !== 'fa' && prev.depFrom === 'fa' && prev.depUtc && prev.depUtc > (info.depUtc || 0)) {
+    info.depUtc = prev.depUtc; info.depLocal = prev.depLocal; info.depFrom = 'fa';
+  }
 }
 
-async function lookupFlightGate(env, num, dateISO, info) {
+async function lookupFlightAware(env, num, dateISO, info) {
   if (!env.FLIGHTAWARE_KEY) return null;
   const r = await fetch('https://aeroapi.flightaware.com/aeroapi/flights/' + encodeURIComponent(num) +
     '?ident_type=designator&start=' + dateISO + '&end=' + wAddDays(dateISO, 2),
@@ -2361,7 +2367,13 @@ function pickFlightAware(flights, info) {
   const tz = f.destination && f.destination.timezone;
   let arrLocal = '';
   if (inAt && tz) { try { arrLocal = fmtLocalTime(inAt, tz); } catch (e) {} }
-  return { gate: f.gate_origin ? String(f.gate_origin) : '', terminal: String(f.terminal_origin || ''), arrLocal };
+  // Departure: actual once it's left, else estimated, in the departure airport's time
+  const outAt = Date.parse(f.actual_out || f.estimated_out || '');
+  const depTz = f.origin && f.origin.timezone;
+  let depLocal = '';
+  if (outAt && depTz) { try { depLocal = fmtLocalTime(outAt, depTz); } catch (e) {} }
+  return { gate: f.gate_origin ? String(f.gate_origin) : '', terminal: String(f.terminal_origin || ''), arrLocal,
+    depUtc: depLocal ? outAt : null, depLocal };
 }
 
 async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightState, send, now) {
@@ -2385,7 +2397,7 @@ async function runFlightAlerts(env, tripId, trip, recipients, prefsOf, flightSta
         const next = new Date(Date.parse(leg.dateISO) + 864e5).toISOString().slice(0, 10);
         info = await lookupFlight(env, leg.num, next).catch(() => null);
       }
-      if (info) await addFlightAwareGate(env, leg, info, st || {}, now);
+      if (info) await addFlightAware(env, leg, info, st || {}, now);
       const prev = st || {};
       st = Object.assign({}, prev, info || {}, { at: now });
       await fbWrite(env, 'PUT', 'pushState/flights/' + key, st).catch(() => {});
