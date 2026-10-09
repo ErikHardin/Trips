@@ -42,6 +42,7 @@ crons = ["*/5 * * * *"]
 #   FIREBASE_URL      Realtime Database base URL      (see note below)
 #   FIREBASE_SECRET   Realtime Database auth token
 #   AERODATABOX_KEY   /flight-lookup
+#   FLIGHTAWARE_KEY   departure gates (optional; flight-alert cron)
 #   ADMIN_PIN         /verify-pin
 #   ADMIN_PIN_2       /verify-pin
 #   APNS_KEY_P8       push: APNs auth key (.p8 contents)
