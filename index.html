@@ -418,9 +418,6 @@ body {
 @keyframes fadeSlide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .day-card.today-card > .day-header { border-left: 3px solid var(--accent); background: rgba(188,111,79,0.06); }
 .today-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--accent); text-transform: uppercase; padding: 2px 6px; border: 1px solid currentColor; border-radius: 4px; white-space: nowrap; }
-.act-bell-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px; flex-shrink: 0; opacity: 0.4; transition: opacity 0.2s; line-height: 1; }
-.act-bell-btn:hover { opacity: 1; }
-.act-bell-btn.reminded { opacity: 1; color: var(--accent); }
 .quick-act-pencil-btn {
   background: none; border: none; cursor: pointer;
   font-size: 14px; padding: 4px 2px;
@@ -444,18 +441,50 @@ body {
 .activity-time { font-size: 11px; color: var(--muted); white-space: nowrap; margin-top: 1px; }
 .activity-notes-indicator { position: absolute; top: 8px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--terracotta); }
 .activity-notes-count { font-size: 10px; color: var(--terracotta); margin-top: 3px; }
+.act-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.act-meta .act-mem { color: var(--terracotta); }
+.act-chip { font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; background: var(--blue-light); color: var(--blue); }
+.act-chip.hotel { background: var(--sage-light); color: var(--sage); }
+.conf-pill { font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--sand); color: var(--ink); white-space: nowrap; }
+.act-search-btn { font-family: inherit; background: none; border: none; font-size: 14px; padding: 4px; opacity: 0.45; flex-shrink: 0; cursor: pointer; line-height: 1; }
+.act-search-btn:hover { opacity: 0.9; }
+.stay-card { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 10px 12px; background: var(--sage-light); border: 1px solid color-mix(in srgb, var(--sage) 40%, transparent); border-radius: 10px; cursor: pointer; }
+.stay-card-name { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.stay-card-sub { font-size: 11.5px; color: var(--sage); margin-top: 1px; }
+/* Item detail sheets (activity, rental car, hotel stay) */
+.det-meta { font-size: 13px; color: var(--muted); }
+.det-note { font-size: 14px; line-height: 1.5; color: var(--ink); margin: 14px 0 4px; white-space: pre-wrap; }
+.det-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); font-size: 14px; color: var(--ink); }
+.det-row-label { color: var(--muted); flex-shrink: 0; }
+.det-row-value { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.det-row-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.det-copy { font-family: inherit; background: none; border: none; color: var(--terracotta); font-size: 13px; cursor: pointer; padding: 0 0 0 6px; }
+.det-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; margin: 14px 0 4px; }
+.det-act { font-family: inherit; background: var(--sand); border: 1px solid var(--border); border-radius: 14px; padding: 10px 2px; text-align: center; font-size: 11.5px; color: var(--ink); cursor: pointer; text-decoration: none; }
+.det-act b { display: block; font-size: 20px; font-weight: 400; margin-bottom: 3px; }
+.det-act.on { color: var(--terracotta); }
+.det-btns { display: flex; gap: 8px; }
+.det-btn { font-family: inherit; display: block; width: 100%; padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 500; margin-top: 10px; text-align: center; cursor: pointer; text-decoration: none; box-sizing: border-box; }
+.det-btn.plain { background: var(--sand); border: 1px solid var(--border); color: var(--ink); }
+.det-btn.primary { background: var(--terracotta); border: none; color: #fff; }
+.det-btn.danger { background: none; border: 1px solid color-mix(in srgb, var(--terracotta) 55%, transparent); color: var(--terracotta); }
+.det-hint { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 8px; }
+.det-edit-link { font-family: inherit; background: none; border: none; color: var(--terracotta); font-size: 15px; font-weight: 500; padding: 6px 0; cursor: pointer; flex-shrink: 0; }
+/* Logistics → Bookings */
+.bk-sub { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 14px 0 8px; }
+.bk-card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 14px; padding: 12px 13px; margin-bottom: 8px; cursor: pointer; }
+.bk-card.tonight { border-color: color-mix(in srgb, var(--sage) 55%, transparent); }
+.bk-card.warn { border-style: dashed; }
+.bk-card-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--ink); }
+.bk-card-head .bk-name { flex: 1; min-width: 0; }
+.bk-card-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.bk-nights { display: flex; gap: 3px; margin-top: 8px; }
+.bk-nights i { flex: 1; height: 5px; border-radius: 3px; background: var(--sand); }
+.bk-nights i.on { background: var(--sage); }
 .daily-memories-row { display:flex;align-items:center;gap:10px;padding:9px 12px 9px 10px;border-bottom:1px solid var(--divider);cursor:pointer;background:rgba(192,106,61,0.04); }
 .daily-memories-label { font-size:13px;font-weight:500;color:var(--ink); }
 .daily-memories-chevron { opacity:0.35;font-size:18px;flex-shrink:0; }
 
-.hotel-badge {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 10px; padding: 9px 12px;
-  background: var(--sage-light);
-  border: 1px solid var(--sage-border);
-  border-radius: 10px;
-}
-.hotel-badge-text { font-size: 12.5px; color: var(--sage); font-weight: 500; }
 .spend-badge { display:flex; align-items:center; gap:8px; margin-top:0; margin-bottom:8px; padding:8px 12px; background:var(--terracotta-light); border:1px solid var(--terracotta-border); border-radius:10px; }
 .spend-badge-label { font-size:12.5px; color:var(--terracotta); font-weight:500; flex:1; }
 .spend-badge-amount { font-size:14px; color:var(--terracotta); font-weight:600; }
@@ -1067,8 +1096,8 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .ov-act-item { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
 .ov-act-emoji { font-size: 14px; flex-shrink: 0; }
 .ov-act-text { color: var(--ink); flex: 1; }
-/* Activity names that open a search: a visible dotted underline in the accent color */
-.act-search-link { cursor: pointer; text-decoration: underline dotted; text-decoration-color: color-mix(in srgb, var(--terracotta) 70%, transparent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+/* Overview activity names open a search; no underline, the row reads cleaner */
+.act-search-link { cursor: pointer; text-decoration: none; }
 .ov-act-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
 /* ── LOGISTICS TAB ── */
@@ -2393,7 +2422,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 367 };
+window.BUILD_INFO = { prNumber: 368 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3955,9 +3984,546 @@ function activitySearchUrl(text, day) {
   return 'https://www.google.com/search?q=' + encodeURIComponent(q) + (cc ? '&gl=' + cc : '') + '&noiga=1';
 }
 
+// ════════════════════════════════════════
+//  ITEM DETAIL SHEETS
+// ════════════════════════════════════════
+// Every itinerary row opens a sheet. Activities get search, maps, memories,
+// reminder, edit and delete; rental cars and hotel check-ins open their booking.
+
+// Fields the day editors don't show but must carry through a save
+function _actExtras(a) {
+  if (!a || typeof a !== 'object') return {};
+  const out = {};
+  ['note', 'type', 'bookingId', 'booking'].forEach(k => { if (a[k] != null) out[k] = a[k]; });
+  return out;
+}
+
+function _actList(day) {
+  const raw = day && day.activities;
+  return raw ? (Array.isArray(raw) ? raw : Object.values(raw)) : [];
+}
+
+// 'car' | 'hotel' | '' — bookings added from email carry a type; older rows are
+// recognised by the text the booking inbox gave them
+function _bookingKind(a) {
+  if (!a || typeof a !== 'object') return '';
+  if (a.type === 'car' || a.type === 'hotel') return a.type;
+  const t = a.text || '';
+  if (/^(Pick up|Return) rental car\b/.test(t)) return 'car';
+  if (/^Check in — /.test(t)) return 'hotel';
+  return '';
+}
+
+// Same activity as when a sheet opened — guards against the day changing underneath it
+function _sameAct(cur, a) {
+  if (cur == null || a == null) return false;
+  if (typeof cur !== 'object' || typeof a !== 'object') return String(cur.text ?? cur) === String(a.text ?? a);
+  return a.key ? cur.key === a.key : (cur.text || '') === (a.text || '');
+}
+
+function _detailDateLabel(trip, day) {
+  const iso = dayISO(day, trip.year);
+  return iso ? isoToDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+             : [day.dateMonth, day.dateNum].filter(Boolean).join(' ');
+}
+
+async function _copyText(text) {
+  try { await navigator.clipboard.writeText(text); showToast('Copied ' + text); }
+  catch (e) { window.prompt('Copy:', text); }
+}
+
+// Firebase-safe key for a hotel name, used for trip.stayDetails
+function _hotelKey(name) {
+  return String(name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'hotel';
+}
+
+// Runs of consecutive nights at the same hotel, from each day's hotel field.
+// Optional details (confirmation, times, address, phone) live in trip.stayDetails.
+function _tripStays(trip) {
+  const stays = [];
+  _tripDayEntries(trip).forEach(([dayId, day, iso], i) => {
+    const name = String(day.hotel || '').trim();
+    if (!name) return;
+    const prev = stays[stays.length - 1];
+    if (prev && prev.name === name && prev.lastIdx === i - 1) {
+      prev.dayIds.push(dayId); prev.isos.push(iso); prev.lastIdx = i;
+      return;
+    }
+    stays.push({ name, key: _hotelKey(name), dayIds: [dayId], isos: [iso], firstIdx: i, lastIdx: i });
+  });
+  stays.forEach(st => {
+    st.firstISO = st.isos[0] || null;
+    st.lastISO = st.isos[st.isos.length - 1] || null;
+    st.checkOutISO = st.lastISO ? _addDaysISO(st.lastISO, 1) : null;
+    st.details = (trip.stayDetails && trip.stayDetails[st.key]) || {};
+  });
+  return stays;
+}
+
+// The stay covering a day's night, plus which night of it this is
+function _stayFor(trip, dayId, stays) {
+  const st = (stays || _tripStays(trip)).find(s => s.dayIds.includes(dayId));
+  return st ? Object.assign({ night: st.dayIds.indexOf(dayId) + 1 }, st) : null;
+}
+
+// "Check-in 3pm · Night 1 of 2"
+function _staySubLabel(st) {
+  const n = st.dayIds.length;
+  const parts = [];
+  if (st.night === 1 && st.details.checkInTime) parts.push('Check-in ' + st.details.checkInTime);
+  parts.push(n > 1 ? 'Night ' + st.night + ' of ' + n : '1 night');
+  return parts.join(' · ');
+}
+
+// Company named in a rental-car row: "Pick up rental car — Hertz, Lisbon Airport"
+function _carCompany(a) {
+  if (a.booking && a.booking.company) return a.booking.company;
+  const m = String(a.text || '').match(/ — ([^,]+)/);
+  return m ? m[1].trim() : '';
+}
+
+// Where a car row picks up or returns: the booking's location, else the text after the company
+function _carPlace(a, pickup) {
+  const b = a.booking || {};
+  const loc = pickup ? b.pickupLocation : b.dropoffLocation;
+  if (loc) return loc;
+  const m = String(a.text || '').match(/ — [^,]+,\s*(.+)$/);
+  return m ? m[1].trim() : '';
+}
+
+// Everything about the rental a car row belongs to: both rows (pick-up and
+// return), its Logistics checklist line, and the confirmation number
+function _carBooking(trip, dayId, idx) {
+  const a = _actList(trip.days && trip.days[dayId])[idx];
+  if (_bookingKind(a) !== 'car') return null;
+  const company = _carCompany(a);
+  const same = x => a.bookingId ? x.bookingId === a.bookingId : (!x.bookingId && _carCompany(x) === company);
+  const rows = [];
+  _tripDayEntries(trip).forEach(([dId, day, iso]) => {
+    _actList(day).forEach((x, i) => {
+      if (_bookingKind(x) === 'car' && same(x)) rows.push({ dayId: dId, idx: i, iso, act: x, pickup: !/^Return\b/.test(x.text || '') });
+    });
+  });
+  const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems).carRentalBooked;
+  const sub = (a.bookingId && subs.find(s => s && s.bookingId === a.bookingId))
+    || (company && subs.find(s => s && !s.bookingId && String(s.label || '').toLowerCase().includes(company.toLowerCase())))
+    || null;
+  const confMatch = sub && String(sub.label || '').match(/#\s*([A-Za-z0-9-]+)\s*$/);
+  return {
+    company, rows, sub,
+    pickup: rows.find(r => r.pickup) || null,
+    dropoff: rows.find(r => !r.pickup) || null,
+    confirmation: (a.booking && a.booking.confirmation) || (confMatch ? confMatch[1] : ''),
+  };
+}
+
+window.openActivityDetail = function(dayId, idx) {
+  const trip = allTrips[currentTripId];
+  const day = trip && trip.days && trip.days[dayId];
+  const raw = day ? _actList(day)[idx] : null;
+  if (raw == null) return;
+  const a = typeof raw === 'object' ? raw : { text: String(raw) };
+  const kind = _bookingKind(a);
+  if (kind === 'car') return openCarBooking(dayId, idx);
+  if (kind === 'hotel' && day.hotel) return openStaySheet(dayId);
+
+  const text = a.text || '';
+  const emoji = a.emoji || getEmoji(text);
+  const status = BOOKING_STATUSES.find(s => s.key === a.bookingStatus);
+  const noteKey = (a.key != null && a.key !== '') ? a.key : idx;
+  const memCount = Object.keys((day.notes && day.notes[noteKey]) || {}).length;
+  const canEdit = canEditCurrentTrip() && can('editItinerary');
+  const showBell = currentUser && !isShareView && a.time && (trip.status === 'active' || trip.status === 'upcoming');
+  const muted = showBell && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
+  const pin = a.coords && typeof a.coords.lat === 'number' ? a.coords : null;
+  const region = (day.region || '').trim();
+  const meta = [_detailDateLabel(trip, day), a.time, status && status.emoji + ' ' + status.label, a.drive && '🚗 Driving']
+    .filter(Boolean).join(' · ');
+  const m = _bottomSheet(`
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div class="modal-title" style="margin-bottom:2px;">${emoji} ${escHtml(text)}</div>
+      ${canEdit ? '<button type="button" class="det-edit-link" data-act="edit">Edit</button>' : ''}
+    </div>
+    <div class="det-meta">${escHtml(meta)}</div>
+    ${a.note ? `<div class="det-note">${escHtml(a.note)}</div>` : ''}
+    ${pin ? `<div class="det-row" style="margin-top:12px;"><span class="det-row-label">📍 Location</span><span class="det-row-value">${escHtml(pin.name || pin.address || 'Pinned')}${pin.name && pin.address ? `<div class="det-row-sub">${escHtml(pin.address)}</div>` : ''}</span></div>` : ''}
+    <div class="det-actions">
+      <button type="button" class="det-act" data-act="search"><b>🔎</b>Search</button>
+      <button type="button" class="det-act" data-act="maps"><b>🗺️</b>Maps</button>
+      <button type="button" class="det-act${memCount ? ' on' : ''}" data-act="notes"><b>📝</b>Memories${memCount ? ' · ' + memCount : ''}</button>
+      ${showBell ? `<button type="button" class="det-act${muted ? '' : ' on'}" data-act="bell"><b>${muted ? '🔕' : '🔔'}</b>Reminder ${muted ? 'off' : 'on'}</button>` : ''}
+    </div>
+    ${canEdit ? '<button type="button" class="det-btn danger" data-act="delete">Delete activity</button>' : ''}`);
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'search') window.open(activitySearchUrl(text, day), '_blank');
+    else if (act === 'maps') { m.remove(); openMapsChoice(text + (region ? ', ' + region : ''), dayId, noteKey, idx); }
+    else if (act === 'notes') { m.remove(); openNotes(dayId, noteKey, text); }
+    else if (act === 'bell') toggleActivityReminder(dayId, idx, b);
+    else if (act === 'edit') { m.remove(); openActivityEditor(dayId, idx); }
+    else if (act === 'delete') _deleteActivityFromSheet(dayId, idx, a, m);
+  });
+};
+
+async function _deleteActivityFromSheet(dayId, idx, a, sheet) {
+  const tripId = currentTripId;
+  const result = await showActivityDeleteDialog();
+  if (result === 'cancel') return;
+  const day = allTrips[tripId].days[dayId];
+  const acts = _actList(day).slice();
+  if (!_sameAct(acts[idx], a)) { showToast('This day just changed — reopen and try again'); return; }
+  const text = a.text || '';
+  if (result === 'wishlist') await _moveActivityToWishlist(tripId, a.emoji || '', text);
+  acts.splice(idx, 1);
+  try {
+    await window._set(window._ref(window._db, `trips/${tripId}/days/${dayId}/activities`), acts);
+  } catch (e) {
+    showToast('Delete failed — check connection');
+    return;
+  }
+  sheet.remove();
+  const city = day.description || day.city || day.dayName || '';
+  logChange(tripId, 'Activity removed', (a.emoji ? a.emoji + ' ' : '') + text + (a.time ? ' · ' + a.time : '') + (city ? ' · ' + city : ''));
+  if (result !== 'wishlist') showToast('Activity deleted');
+}
+
+// One form for everything about an activity: name, time, status, description
+// and its location (the location picker saves the pin as soon as one is chosen)
+window.openActivityEditor = function(dayId, idx) {
+  const tripId = currentTripId;
+  const day = allTrips[tripId] && allTrips[tripId].days[dayId];
+  const raw = day ? _actList(day)[idx] : null;
+  if (raw == null) return;
+  const a = typeof raw === 'object' ? raw : { text: String(raw) };
+  const canPin = _canSetLocation(dayId, idx);
+  const m = _bottomSheet(`
+    <div class="modal-title">Edit activity</div>
+    <label class="form-label">Activity</label>
+    <div style="display:flex;gap:8px;">
+      <input class="form-input ae-emoji" maxlength="8" aria-label="Emoji" style="width:56px;flex:none;text-align:center;font-size:18px;padding:8px 4px;">
+      <input class="form-input ae-text" placeholder="Activity name" style="flex:1;min-width:0;">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;min-width:0;"><label class="form-label">Time</label><input class="form-input ae-time" placeholder="e.g. 3pm"></div>
+      <div style="flex:1;min-width:0;"><label class="form-label">Status</label>
+        <select class="form-input ae-status"><option value="">None</option>${BOOKING_STATUSES.map(s => `<option value="${s.key}">${s.emoji} ${s.label}</option>`).join('')}</select></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);margin:2px 0 14px;"><input type="checkbox" class="ae-drive"> 🚗 Driving</label>
+    <label class="form-label">Description (optional)</label>
+    <textarea class="form-input ae-note" rows="3" style="resize:vertical;" placeholder="Tickets, tips, who’s going…"></textarea>
+    ${canPin ? '<label class="form-label" style="margin-top:6px;">Location</label><div class="ae-pin"></div><div class="ae-loc"></div>' : ''}
+    <button type="button" class="det-btn primary ae-save">Save</button>`);
+  m.querySelector('.ae-emoji').value = a.emoji || getEmoji(a.text || '');
+  m.querySelector('.ae-text').value = a.text || '';
+  m.querySelector('.ae-time').value = a.time || '';
+  m.querySelector('.ae-status').value = a.bookingStatus || '';
+  m.querySelector('.ae-drive').checked = !!a.drive;
+  m.querySelector('.ae-note').value = a.note || '';
+
+  const renderPin = () => {
+    const host = m.querySelector('.ae-pin');
+    if (!host) return;
+    const info = _locActivity(dayId, idx);
+    const pin = info && info.coords;
+    host.innerHTML = pin
+      ? `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border);border-radius:12px;background:var(--sand);">
+          <div>📍</div><div style="min-width:0;"><div style="font-size:14px;font-weight:500;color:var(--ink);">${escHtml(pin.name || pin.address || pin.lat.toFixed(5) + ', ' + pin.lng.toFixed(5))}</div>
+          ${pin.name && pin.address ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(pin.address)}</div>` : ''}</div></div>`
+      : '';
+  };
+  if (canPin) {
+    renderPin();
+    mountLocationPicker(m.querySelector('.ae-loc'), dayId, idx, () => { renderPin(); setTimeout(renderPin, 400); });
+  }
+
+  m.querySelector('.ae-save').addEventListener('click', async () => {
+    const text = m.querySelector('.ae-text').value.trim();
+    const time = m.querySelector('.ae-time').value.trim();
+    if (!text) { showToast('Give the activity a name'); return; }
+    if (time && !/am|pm/i.test(time)) { showToast('Include am/pm in times — e.g. 3pm or 10am–2pm'); return; }
+    const info = _locActivity(dayId, idx);
+    const cur = _actList(allTrips[tripId].days[dayId])[idx];
+    if (!info || !_sameAct(cur, a)) { showToast('This day just changed — reopen and try again'); return; }
+    const upd = {
+      emoji: m.querySelector('.ae-emoji').value.trim() || '📍',
+      text,
+      time: time || null,
+      bookingStatus: m.querySelector('.ae-status').value || null,
+      drive: m.querySelector('.ae-drive').checked || null,
+      note: m.querySelector('.ae-note').value.trim() || null,
+    };
+    // A legacy plain-string activity becomes an object with a stable key
+    if (typeof cur !== 'object') upd.key = Math.random().toString(36).slice(2, 8);
+    try {
+      await window._update(window._ref(window._db, info.path.replace(/\/coords$/, '')), upd);
+    } catch (e) {
+      showToast('Save failed — check connection');
+      return;
+    }
+    m.remove();
+    logChange(tripId, 'Activity updated', upd.emoji + ' ' + text + (time ? ' · ' + time : ''));
+    showToast('Saved ✓');
+  });
+};
+
+// ── Rental car: one booking across its pick-up and return rows ──
+window.openCarBooking = function(dayId, idx) {
+  const trip = allTrips[currentTripId];
+  const bk = _carBooking(trip, dayId, idx);
+  if (!bk) return;
+  const a = _actList(trip.days[dayId])[idx];
+  const status = BOOKING_STATUSES.find(s => s.key === a.bookingStatus);
+  const canEdit = canEditCurrentTrip() && can('editItinerary');
+  const when = r => [_detailDateLabel(trip, trip.days[r.dayId]), r.act.time].filter(Boolean).join(' · ');
+  const range = [bk.pickup, bk.dropoff].filter(Boolean).map(r => _inboxShortDate(r.iso)).filter(Boolean).join(' → ');
+  const row = (label, r) => r ? `<div class="det-row"><span class="det-row-label">${label}</span><span class="det-row-value">${escHtml(when(r))}${_carPlace(r.act, r.pickup) ? `<div class="det-row-sub">${escHtml(_carPlace(r.act, r.pickup))}</div>` : ''}</span></div>` : '';
+  const m = _bottomSheet(`
+    <div class="modal-title" style="margin-bottom:2px;">🚗 ${escHtml(bk.company ? bk.company + ' rental car' : 'Rental car')}</div>
+    <div class="det-meta" style="margin-bottom:12px;">${escHtml([status && status.emoji + ' ' + status.label, range].filter(Boolean).join(' · '))}</div>
+    ${!isShareView && bk.confirmation ? `<div class="det-row"><span class="det-row-label">Confirmation</span><span class="det-row-value"><span class="conf-pill">${escHtml(bk.confirmation)}</span><button type="button" class="det-copy" data-act="copy">Copy</button></span></div>` : ''}
+    ${row('Pick up', bk.pickup)}
+    ${row('Return', bk.dropoff)}
+    <div class="det-btns">
+      <button type="button" class="det-btn plain" data-act="maps">🗺️ Directions</button>
+      ${canEdit ? '<button type="button" class="det-btn plain" data-act="edit">✏️ Edit</button>' : ''}
+    </div>
+    ${canEdit ? `<button type="button" class="det-btn danger" data-act="cancel">Cancel booking</button>
+      <div class="det-hint">Removes the ${bk.pickup && bk.dropoff ? 'pick-up and return' : 'booking'} from your itinerary${bk.sub ? ' and its Logistics checklist line' : ''}.</div>` : ''}`);
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'copy') _copyText(bk.confirmation);
+    else if (act === 'maps') {
+      const place = _carPlace(a, !/^Return\b/.test(a.text || ''));
+      m.remove();
+      openMapsChoice([bk.company, place].filter(Boolean).join(' ') || a.text, dayId, a.key, idx);
+    }
+    else if (act === 'edit') { m.remove(); openActivityEditor(dayId, idx); }
+    else if (act === 'cancel') _cancelCarBooking(dayId, idx, m);
+  });
+};
+
+async function _cancelCarBooking(dayId, idx, sheet) {
+  const tripId = currentTripId;
+  const trip = allTrips[tripId];
+  const bk = _carBooking(trip, dayId, idx);
+  if (!bk) return;
+  const items = bk.rows.map(r => (r.act.text || '') + (r.iso ? ' (' + _inboxShortDate(r.iso) + ')' : ''));
+  if (bk.sub) items.push('Checklist: ' + bk.sub.label);
+  const ok = await showConfirmDialog('Cancel this booking?',
+    'This removes:<br>' + items.map(t => '• ' + escHtml(t)).join('<br>'), 'Yes, cancel booking');
+  if (!ok) return;
+  // One multi-path write, so the rows and the checklist line go together
+  const updates = {};
+  const byDay = {};
+  bk.rows.forEach(r => (byDay[r.dayId] = byDay[r.dayId] || []).push(r.idx));
+  Object.entries(byDay).forEach(([dId, idxs]) => {
+    updates[`trips/${tripId}/days/${dId}/activities`] = _actList(trip.days[dId]).filter((_, i) => !idxs.includes(i));
+  });
+  if (bk.sub) {
+    const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems).carRentalBooked;
+    updates[`trips/${tripId}/logistics/bookingSubItems/carRentalBooked`] = subs.filter(s => s && s.id !== bk.sub.id);
+  }
+  try {
+    await window._update(window._ref(window._db), updates);
+  } catch (e) {
+    showToast('Could not cancel — check connection');
+    return;
+  }
+  sheet.remove();
+  logChange(tripId, 'Rental car cancelled', bk.company || 'Rental car');
+  showToast('Booking cancelled');
+}
+
+// ── Hotel stay: the run of nights at one hotel ──
+window.openStaySheet = function(dayId) {
+  const trip = allTrips[currentTripId];
+  const st = _stayFor(trip, dayId);
+  if (!st) return;
+  const d = st.details;
+  const n = st.dayIds.length;
+  const today = todayISO();
+  const tonight = st.isos.indexOf(today);
+  const sub = [[_inboxShortDate(st.firstISO), _inboxShortDate(st.checkOutISO)].filter(Boolean).join(' → '),
+    n + ' night' + (n === 1 ? '' : 's'), tonight >= 0 && 'tonight is night ' + (tonight + 1)].filter(Boolean).join(' · ');
+  const dateTime = (iso, time) => [iso ? isoToDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '', time].filter(Boolean).join(' · ');
+  const row = (label, value, extra) => value ? `<div class="det-row"><span class="det-row-label">${label}</span><span class="det-row-value">${value}${extra || ''}</span></div>` : '';
+  const phone = String(d.phone || '').replace(/[^\d+]/g, '');
+  const city = (trip.days[st.dayIds[0]] || {}).city || '';
+  const canEdit = canEditCurrentTrip();
+  const m = _bottomSheet(`
+    <div class="modal-title" style="margin-bottom:2px;">🏨 ${escHtml(st.name)}</div>
+    <div class="det-meta" style="margin-bottom:12px;">${escHtml(sub)}</div>
+    ${!isShareView && d.confirmation ? row('Confirmation', `<span class="conf-pill">${escHtml(d.confirmation)}</span>`, '<button type="button" class="det-copy" data-act="copy">Copy</button>') : ''}
+    ${row('Check-in', escHtml(dateTime(st.firstISO, d.checkInTime)))}
+    ${row('Check-out', escHtml(dateTime(st.checkOutISO, d.checkOutTime)))}
+    ${row('Address', escHtml(d.address || ''))}
+    ${row('Phone', escHtml(d.phone || ''))}
+    <div class="det-btns">
+      <button type="button" class="det-btn plain" data-act="maps">🗺️ Maps</button>
+      ${phone ? `<a class="det-btn plain" href="tel:${escAttr(phone)}">📞 Call</a>` : ''}
+      ${canEdit ? '<button type="button" class="det-btn plain" data-act="edit">✏️ Edit</button>' : ''}
+    </div>`);
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'copy') _copyText(d.confirmation);
+    else if (act === 'maps') { m.remove(); openMapsChoice(d.address || (st.name + (city ? ', ' + city : ''))); }
+    else if (act === 'edit') { m.remove(); openStayEditor(dayId); }
+  });
+};
+
+window.openStayEditor = function(dayId) {
+  const tripId = currentTripId;
+  const st = _stayFor(allTrips[tripId], dayId);
+  if (!st) return;
+  const fields = [
+    ['confirmation', 'Confirmation #', ''], ['checkInTime', 'Check-in time', 'e.g. 3pm'],
+    ['checkOutTime', 'Check-out time', 'e.g. 11am'], ['address', 'Address', ''], ['phone', 'Phone', ''],
+  ];
+  const m = _bottomSheet(`
+    <div class="modal-title" style="margin-bottom:4px;">${escHtml(st.name)}</div>
+    <div class="det-meta" style="margin-bottom:14px;">Shown on every night of this stay</div>
+    ${fields.map(([k, label, ph]) => `<label class="form-label">${label}</label><input class="form-input" data-field="${k}" placeholder="${ph}">`).join('')}
+    <button type="button" class="det-btn primary se-save">Save</button>`);
+  fields.forEach(([k]) => { m.querySelector(`[data-field="${k}"]`).value = st.details[k] || ''; });
+  m.querySelector('.se-save').addEventListener('click', async () => {
+    const upd = {};
+    fields.forEach(([k]) => { upd[k] = m.querySelector(`[data-field="${k}"]`).value.trim().slice(0, 300) || null; });
+    try {
+      await window._update(window._ref(window._db, `trips/${tripId}/stayDetails/${st.key}`), upd);
+    } catch (e) {
+      showToast('Save failed — check connection');
+      return;
+    }
+    m.remove();
+    logChange(tripId, 'Hotel details updated', st.name);
+    showToast('Saved ✓');
+    openStaySheet(dayId);
+  });
+};
+
+// A night with no hotel yet, from the Logistics bookings list
+window.openSetHotel = function(dayId) {
+  const tripId = currentTripId;
+  const day = allTrips[tripId] && allTrips[tripId].days[dayId];
+  if (!day) return;
+  const m = _bottomSheet(`
+    <div class="modal-title" style="margin-bottom:4px;">Where are you staying?</div>
+    <div class="det-meta" style="margin-bottom:14px;">${escHtml(_detailDateLabel(allTrips[tripId], day))}${day.city ? ' · ' + escHtml(day.city) : ''}</div>
+    <label class="form-label">Hotel</label><input class="form-input sh-name" placeholder="Hotel name">
+    <button type="button" class="det-btn primary sh-save">Save</button>`);
+  m.querySelector('.sh-save').addEventListener('click', async () => {
+    const name = m.querySelector('.sh-name').value.trim();
+    if (!name) { showToast('Enter the hotel name'); return; }
+    try {
+      await window._update(window._ref(window._db, `trips/${tripId}/days/${dayId}`), { hotel: name });
+    } catch (e) {
+      showToast('Save failed — check connection');
+      return;
+    }
+    m.remove();
+    logChange(tripId, 'Hotel updated', name + ' · ' + _detailDateLabel(allTrips[tripId], day));
+    showToast('Saved ✓');
+    renderLogisticsPanel(tripId);
+  });
+};
+
+// ── Logistics → Bookings: flights, where you sleep each night, and cars ──
+function _bookingsSectionHTML(trip, tripId) {
+  const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems);
+  const confFrom = (list, needle) => {
+    const s = needle && list.find(x => x && String(x.label || '').includes(needle) && /#\s*[A-Za-z0-9-]+\s*$/.test(x.label || ''));
+    return s ? s.label.match(/#\s*([A-Za-z0-9-]+)\s*$/)[1] : '';
+  };
+  const pill = c => c ? `<span class="conf-pill">${escHtml(c)}</span>` : '';
+  const canEdit = canEditCurrentTrip();
+
+  // Flights: outbound, in-trip, return — one card per flight, travelers merged
+  const flights = [];
+  const addFlight = (line, who, when) => {
+    if (!line) return;
+    const ex = flights.find(f => f.line === line);
+    if (ex) { if (who && !ex.who.includes(who)) ex.who.push(who); return; }
+    flights.push({ line, who: who ? [who] : [], when });
+  };
+  String(trip.flightOut || '').split('\n').filter(Boolean).forEach((l, i) => addFlight(l, (trip.flightOutNames || [])[i], trip.flightOutDate));
+  _tripDayEntries(trip).forEach(([, day]) => {
+    const infos = Array.isArray(day.flightInfo) ? day.flightInfo : (day.flightInfo ? [day.flightInfo] : []);
+    infos.forEach(fi => fi && addFlight(fi.formatted, fi.travelerName, fi.date));
+  });
+  String(trip.flightReturn || '').split('\n').filter(Boolean).forEach((l, i) => addFlight(l, (trip.flightReturnNames || [])[i], trip.flightReturnDate));
+  const flightsHTML = flights.map(f => {
+    const num = f.line.split(' ')[0];
+    return `<div class="bk-card" style="cursor:default;"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(f.line.split(' · ')[0])}</span>${pill(confFrom(subs.flightsBooked, num))}</div>
+      <div class="bk-card-sub">${escHtml([f.when, f.line.split(' · ').slice(1).join(' · '), f.who.join(', ')].filter(Boolean).join(' · '))}</div></div>`;
+  }).join('');
+
+  // Stays, in date order, with a warning for any night that has no hotel
+  const entries = _tripDayEntries(trip);
+  const stays = _tripStays(trip);
+  const last = entries.length - 1;
+  const nightCount = entries.length - (last >= 0 && !String(entries[last][1].hotel || '').trim() ? 1 : 0);
+  const today = todayISO();
+  let staysHTML = '';
+  entries.forEach(([dayId, day, iso], i) => {
+    const st = stays.find(s => s.firstIdx === i);
+    if (st) {
+      const n = st.dayIds.length;
+      const tonight = trip.status === 'active' && st.isos.includes(today);
+      const conf = st.details.confirmation;
+      const bar = nightCount > 1 && nightCount <= 21
+        ? `<div class="bk-nights">${Array.from({ length: nightCount }, (_, k) => `<i class="${k >= st.firstIdx && k <= st.lastIdx ? 'on' : ''}"></i>`).join('')}</div>` : '';
+      staysHTML += `<div class="bk-card${tonight ? ' tonight' : ''}" onclick="openStaySheet('${dayId}')">
+        <div class="bk-card-head"><span class="bk-name">${escHtml(st.name)}</span>${pill(conf)}</div>
+        <div class="bk-card-sub">${escHtml([_inboxShortDate(st.firstISO), _inboxShortDate(st.checkOutISO)].filter(Boolean).join(' → '))}${st.firstISO ? ' · ' : ''}${n} night${n === 1 ? '' : 's'}${tonight ? ' · <span style="color:var(--sage);">tonight</span>' : ''}${!conf && canEdit ? ` · <span style="color:var(--terracotta);" onclick="event.stopPropagation();openStayEditor('${dayId}')">+ add confirmation #</span>` : ''}</div>
+        ${bar}</div>`;
+    } else if (!String(day.hotel || '').trim() && i < last) {
+      staysHTML += `<div class="bk-card warn"${canEdit ? ` onclick="openSetHotel('${dayId}')"` : ' style="cursor:default;"'}>
+        <div class="bk-card-head" style="color:var(--gold);">⚠️ ${escHtml(_inboxShortDate(iso) || _detailDateLabel(trip, day))} · no hotel</div>
+        ${canEdit ? '<div class="bk-card-sub">Tap to add where you’re staying</div>' : ''}</div>`;
+    }
+  });
+
+  // Cars: one card per booking
+  const seen = new Set();
+  let carsHTML = '';
+  entries.forEach(([dayId, day]) => {
+    _actList(day).forEach((a, i) => {
+      if (_bookingKind(a) !== 'car') return;
+      const id = a.bookingId || 'co:' + _carCompany(a);
+      if (seen.has(id)) return;
+      seen.add(id);
+      const bk = _carBooking(trip, dayId, i);
+      const end = r => r ? [_inboxShortDate(r.iso), r.act.time, _carPlace(r.act, r.pickup)].filter(Boolean).join(' ') : '';
+      carsHTML += `<div class="bk-card" onclick="openCarBooking('${dayId}',${i})">
+        <div class="bk-card-head"><span class="bk-name">🚗 ${escHtml(bk.company || 'Rental car')}</span>${pill(bk.confirmation)}</div>
+        <div class="bk-card-sub">${escHtml([end(bk.pickup), end(bk.dropoff)].filter(Boolean).join(' → '))}</div></div>`;
+    });
+  });
+
+  if (!flightsHTML && !staysHTML && !carsHTML) return '';
+  return '<div class="logistics-section" style="padding-top:0;padding-bottom:8px;">' +
+      '<div class="logistics-section-title" style="padding:0 0 4px;">Bookings</div>' +
+      (flightsHTML ? '<div class="bk-sub">✈️ Flights</div>' + flightsHTML : '') +
+      (staysHTML ? '<div class="bk-sub">🏨 Where you’re sleeping</div>' + staysHTML : '') +
+      (carsHTML ? '<div class="bk-sub">🚗 Cars</div>' + carsHTML : '') +
+    '</div>';
+}
+
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
+  // A re-render (any save fires the trips listener) rebuilds every card closed;
+  // keep the days that were open, as long as it's still the same trip
+  const _openCards = panel.dataset.tripId === String(currentTripId)
+    ? [...panel.querySelectorAll('.day-card.open')].map(el => el.id) : [];
+  panel.dataset.tripId = String(currentTripId);
   panel.innerHTML = canEditCurrentTrip() && can('shareLink') ? `<div class="share-bar"><button id="shareItineraryBtn" onclick="shareTrip()">🔗 Share</button></div>` : '';
 
   // Trip progress bar (active trips only)
@@ -3984,6 +4550,8 @@ function renderTripItinerary(trip) {
         </div>
       </div>`;
   }
+
+  const _stays = _tripStays(trip);
 
   // Group days by region
   const days = trip.days ? Object.entries(trip.days) : [];
@@ -4028,26 +4596,27 @@ function renderTripItinerary(trip) {
       const actNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.[noteKey] || {}).length;
       const regionClean = (day.region||'').trim();
       const searchUrl = activitySearchUrl(text, day);
-      const mapsQuery = text + (regionClean ? ', ' + regionClean : '');
+      const kind = _bookingKind(a);
+      const muted = currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming')
+        && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
+      const meta = [];
+      if (time || bookingInfo) meta.push(`<span>${time ? escHtml(time) : ''}${bookingInfo ? (time ? ' · ' : '') + bookingInfo.emoji : ''}</span>`);
+      if (kind) {
+        const conf = isShareView ? '' : (kind === 'car' ? _carBooking(trip, dayId, i)?.confirmation : _stayFor(trip, dayId, _stays)?.details.confirmation);
+        meta.push(`<span class="act-chip${kind === 'hotel' ? ' hotel' : ''}">${kind === 'car' ? 'Car' : 'Hotel'}</span>`);
+        if (conf) meta.push(`<span class="conf-pill">#${escHtml(conf)}</span>`);
+      }
+      if (actNoteCount > 0) meta.push(`<span class="act-mem">📝 ${actNoteCount}</span>`);
+      if (drive) meta.push('<span>🚗 driving</span>');
+      if (muted) meta.push('<span title="Reminder off">🔕</span>');
       return `
-        <div class="activity-item" data-day="${dayId}" data-date="${day.dateISO||''}" data-datenum="${day.dateNum||''}" data-datemonth="${day.dateMonth||''}" data-year="${trip.year||''}" data-key="${noteKey}" data-idx="${i}" data-text="${escAttr(text)}" data-time="${escAttr(time)}" data-drive="${drive}" data-search="${escAttr(searchUrl)}">
+        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-idx="${i}" data-search="${escAttr(searchUrl)}">
           <div class="activity-emoji">${emoji}</div>
           <div style="flex:1;min-width:0;">
-            <div class="activity-text act-search-link">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
-            ${(time||bookingInfo)?`<div class="activity-time">${time?escHtml(time):''}${bookingInfo?(time?'  ':'')+bookingInfo.emoji:''}</div>`:''}
-            ${drive?`<div style="font-size:10px;color:var(--muted);opacity:0.6;">🚗 driving</div>`:''}
+            <div class="activity-text">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
+            ${meta.length ? `<div class="act-meta">${meta.join('')}</div>` : ''}
           </div>
-          <button data-mapsq="${escAttr(mapsQuery)}" onclick="openMapsChoice(this.dataset.mapsq,this.closest('.activity-item').dataset.day,this.closest('.activity-item').dataset.key,this.closest('.activity-item').dataset.idx)" title="Open in Maps"
-            style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;opacity:0.45;display:inline-flex;align-items:center;">📍</button>
-          <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-            <button class="notes-open-btn" title="Notes & Photos"
-              style="background:none;border:none;font-size:17px;cursor:pointer;padding:4px;opacity:0.5;">📝</button>
-            ${actNoteCount > 0 ? `<div class="activity-notes-count">${actNoteCount}</div>` : ''}
-          </div>
-          ${currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming') ? (() => {
-            const muted = !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
-            return `<button class="act-bell-btn${muted ? '' : ' reminded'}" title="${muted ? 'Reminder off — tap to turn on' : 'Reminder on — tap to turn off'}" onclick="onBellClick(event)">${muted ? '🔕' : '🔔'}</button>`;
-          })() : ''}
+          ${kind ? '' : '<button class="act-search-btn" title="Search Google">🔎</button>'}
         </div>`;
     }).join('');
 
@@ -4091,11 +4660,16 @@ function renderTripItinerary(trip) {
           <div class="day-chevron">›</div>
         </div>
         <div class="day-body">
+          ${(() => {
+            const st = day.hotel ? _stayFor(trip, dayId, _stays) : null;
+            if (!st) return '';
+            const conf = !isShareView && st.details.confirmation;
+            return `<div class="stay-card" onclick="openStaySheet('${dayId}')"><span style="font-size:18px;">🏨</span><div style="flex:1;min-width:0;"><div class="stay-card-name">${escHtml(st.name)}</div><div class="stay-card-sub">${escHtml(_staySubLabel(st))}</div></div>${conf ? `<span class="conf-pill">#${escHtml(conf)}</span>` : ''}</div>`;
+          })()}
           ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight${Array.isArray(day.flightInfo) && day.flightInfo.length > 1 ? 's' : ''}</div>${(Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}</div></div>` : ''}
           ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (day.description||day.city ? ' — ' + (day.description||day.city) : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
           <div class="activity-list">${activitiesHTML}</div>
           ${spendBadge}
-          ${day.hotel?`<div class="hotel-badge"><span>🏨</span><span class="hotel-badge-text">${day.hotel}</span></div>`:''}
         </div>
       </div>`;
 
@@ -4202,6 +4776,7 @@ function renderTripItinerary(trip) {
         </div>
       </div>`;
   }
+  _openCards.forEach(id => document.getElementById(id)?.classList.add('open'));
   panel.scrollTop = _savedScroll;
 }
 
@@ -4227,23 +4802,22 @@ function highlightToday(trip) {
 // 🔔 on an activity: reminders (and leave-by alerts) are on by default for
 // every timed activity; the bell mutes or unmutes this one for you. Muted
 // activities are kept at activityMutes/{emailKey}/{pushActId}.
-async function onBellClick(e) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  const item = btn.closest('.activity-item');
+async function toggleActivityReminder(dayId, idx, btn) {
   const key = pushEmailKey();
   if (!key || !currentTripId) return;
   const trip = allTrips[currentTripId];
-  const day = trip && trip.days && trip.days[item.dataset.day];
-  const acts = day && day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
-  const a = acts[parseInt(item.dataset.idx, 10)];
+  const day = trip && trip.days && trip.days[dayId];
+  const a = day ? _actList(day)[idx] : null;
   if (!a || typeof a !== 'object') return;
   const id = pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a);
   const muting = !_activityMutes[id];
   if (!(await setActivityMute(id, muting))) return;
-  btn.textContent = muting ? '🔕' : '🔔';
-  btn.classList.toggle('reminded', !muting);
-  btn.title = muting ? 'Reminder off — tap to turn on' : 'Reminder on — tap to turn off';
+  if (btn) {
+    btn.classList.toggle('on', !muting);
+    btn.innerHTML = muting ? '<b>🔕</b>Reminder off' : '<b>🔔</b>Reminder on';
+  }
+  // The row shows 🔕 for muted activities
+  if (document.getElementById('tripItineraryPanel').classList.contains('active')) renderTripItinerary(trip);
   showToast(muting ? 'Reminder off for this activity' : (isNativeApp() || _pushToken
     ? 'Reminder on — you’ll get a notification before it starts'
     : 'Reminder on — notifications arrive in the Hardin Trips iPhone app'));
@@ -4461,9 +5035,9 @@ async function renderTripOverview(trip) {
   const hotelsHTML = hotels.length ? `
     <div style="padding:16px 16px 8px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Where you stayed</div>
     <div style="margin:0 16px 0;">${hotels.map((h,i)=>`
-      <div class="hotel-row">
+      <div class="hotel-row" style="cursor:pointer;" onclick="openStaySheet('${(_tripStays(trip).find(st => st.name === String(h).trim()) || {dayIds:['']}).dayIds[0]}')">
         <div class="hotel-color" style="background:${['#c06a3d','#6d9b72','#4a7fb5','#8a6aad','#b8943f','#c45c7a'][i%6]}"></div>
-        <div><div class="hotel-row-name">${h}</div></div>
+        <div><div class="hotel-row-name">${escHtml(h)}</div></div>
       </div>`).join('')}
     </div>` : '';
 
@@ -8096,7 +8670,7 @@ window.saveDayEdit = async function() {
     const michelin = (existActByText || posAct)?.michelin;
     // Preserve existing stable key or mint a new one so notes survive reorders
     const key = existAct?.key || genKey();
-    return { emoji: emoji||'📍', text, time, key, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }), ...(michelin && { michelin: true }) };
+    return { emoji: emoji||'📍', text, time, key, ...(drive && { drive: true }), ...(bookingStatus && { bookingStatus }), ...(coords && { coords }), ...(michelin && { michelin: true }), ..._actExtras(existAct) };
   }).filter(a => a.text);
 
   // Migrate notes from old numeric-index paths to stable key paths (first save after key assignment)
@@ -8387,6 +8961,7 @@ window.saveQuickActivityEdit = async function() {
       ...(bookingStatus && { bookingStatus }),
       ...(coords        && { coords }),
       ...(michelin      && { michelin: true }),
+      ..._actExtras(existAct),
     };
   }).filter(a => a.text);
 
@@ -8428,6 +9003,8 @@ window.saveQuickActivityEdit = async function() {
     ...(existing.flightInfo  != null && { flightInfo:  existing.flightInfo  }),
   };
 
+  // The re-render this save triggers keeps open days open; open this one too
+  document.getElementById('dc-' + quickEditingDayId)?.classList.add('open');
   try {
     await window._set(
       window._ref(window._db, `trips/${quickEditingTripId}/days/${quickEditingDayId}`),
@@ -9082,24 +9659,14 @@ document.addEventListener('change', function(e) {
   }
 });
 document.addEventListener('click', function(e) {
-  // Activity text → Google search
-  const actText = e.target.closest('.activity-text');
-  if (actText) {
-    const item = actText.closest('.activity-item');
-    if (item && item.dataset.search) {
-      window.open(item.dataset.search, '_blank');
-      return;
-    }
-  }
-  // Notes button
-  const btn = e.target.closest('.notes-open-btn');
-  if (!btn) return;
-  const item = btn.closest('.activity-item');
+  const item = e.target.closest('#tripItineraryPanel .activity-item');
   if (!item) return;
-  const dayId = item.dataset.day;
-  const key   = item.dataset.key;
-  const text  = item.dataset.text;
-  openNotes(dayId, key, text);
+  // 🔎 → Google search; anywhere else on the row opens its detail sheet
+  if (e.target.closest('.act-search-btn')) {
+    if (item.dataset.search) window.open(item.dataset.search, '_blank');
+    return;
+  }
+  openActivityDetail(item.dataset.day, Number(item.dataset.idx));
 });
 
 // ════════════════════════════════════════
@@ -9742,6 +10309,8 @@ async function _renderLogisticsInner(tripId, panel) {
 
   panel.innerHTML =
     '<div style="height:16px;"></div>' +
+
+    _bookingsSectionHTML(allTrips[tripId] || {}, tripId) +
 
     spendSummaryHTML +
 
@@ -10968,17 +11537,17 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     const acts = actsFor(dayId, day);
     if (acts.some(a => (a && typeof a === 'object' ? a.text : a) === act.text)) return false;
     acts.push(Object.assign({ emoji: act.emoji, text: act.text }, act.time ? { time: act.time } : {},
-      { key: genKey(), bookingStatus: act.bookingStatus || 'booked' }));
+      { key: genKey(), bookingStatus: act.bookingStatus || 'booked' }, act.extra || {}));
     return true;
   };
 
   const subItems = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems);
   const subTouched = {};
   let subSeq = 0;
-  const addSub = (key, iso, text) => {
+  const addSub = (key, iso, text, extra) => {
     const label = (_inboxShortDate(iso) ? _inboxShortDate(iso) + ' — ' : '') + text;
     if (subItems[key].some(s => s.label === label)) return;
-    subItems[key].push({ id: 'bi' + Date.now() + '_' + (subSeq++), label, checked: true });
+    subItems[key].push(Object.assign({ id: 'bi' + Date.now() + '_' + (subSeq++), label, checked: true }, extra || {}));
     subTouched[key] = true;
   };
   const confTag = x => x.confirmation ? ' · #' + x.confirmation : '';
@@ -11054,8 +11623,13 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
       if (!ok) return null;
     }
     nights.forEach(([dayId]) => { updates[base + '/days/' + dayId + '/hotel'] = h.name; });
+    // Details shown on every night of the stay; only fields the email has, so manual edits survive
+    const stayBase = base + '/stayDetails/' + _hotelKey(h.name) + '/';
+    if (h.confirmation) updates[stayBase + 'confirmation'] = String(h.confirmation).slice(0, 100);
+    if (h.checkInTime) updates[stayBase + 'checkInTime'] = normalizeTimeLabel(h.checkInTime);
+    if (h.address) updates[stayBase + 'address'] = String(h.address).slice(0, 300);
     const ci = _findTripDay(trip, h.checkInISO);
-    if (ci) addActivity(ci[0], ci[1], { emoji: '🏨', text: 'Check in — ' + h.name, time: h.checkInTime ? normalizeTimeLabel(h.checkInTime) : '' });
+    if (ci) addActivity(ci[0], ci[1], { emoji: '🏨', text: 'Check in — ' + h.name, time: h.checkInTime ? normalizeTimeLabel(h.checkInTime) : '', extra: { type: 'hotel' } });
     const n = Math.round((isoToDate(checkOut) - isoToDate(h.checkInISO)) / 86400000);
     addSub('hotelsBooked', h.checkInISO, h.name + ' · ' + n + ' night' + (n === 1 ? '' : 's') + confTag(h));
     log.push(['Hotel added from email', h.name + ' · ' + _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(checkOut)]);
@@ -11066,10 +11640,15 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     const pu = _findTripDay(trip, c.pickupISO), dr = _findTripDay(trip, c.dropoffISO);
     const company = c.company || 'Rental car';
     if (!pu && !dr) { problems.push('no trip days for the ' + company + ' rental'); return; }
-    if (pu) addActivity(pu[0], pu[1], { emoji: '🚗', text: 'Pick up rental car' + (c.company || c.pickupLocation ? ' — ' + [c.company, c.pickupLocation].filter(Boolean).join(', ') : ''), time: c.pickupTime ? normalizeTimeLabel(c.pickupTime) : '' });
-    if (dr) addActivity(dr[0], dr[1], { emoji: '🚗', text: 'Return rental car' + (c.company || c.dropoffLocation ? ' — ' + [c.company, c.dropoffLocation].filter(Boolean).join(', ') : ''), time: c.dropoffTime ? normalizeTimeLabel(c.dropoffTime) : '' });
+    // Both rows and the checklist line share a bookingId, so the booking can be cancelled as one
+    const bookingId = 'bk' + genKey() + genKey();
+    const booking = {};
+    ['company', 'confirmation', 'pickupLocation', 'dropoffLocation'].forEach(k => { if (c[k]) booking[k] = String(c[k]).slice(0, 200); });
+    const extra = { type: 'car', bookingId, booking };
+    if (pu) addActivity(pu[0], pu[1], { emoji: '🚗', text: 'Pick up rental car' + (c.company || c.pickupLocation ? ' — ' + [c.company, c.pickupLocation].filter(Boolean).join(', ') : ''), time: c.pickupTime ? normalizeTimeLabel(c.pickupTime) : '', extra });
+    if (dr) addActivity(dr[0], dr[1], { emoji: '🚗', text: 'Return rental car' + (c.company || c.dropoffLocation ? ' — ' + [c.company, c.dropoffLocation].filter(Boolean).join(', ') : ''), time: c.dropoffTime ? normalizeTimeLabel(c.dropoffTime) : '', extra });
     addSub('carRentalBooked', c.pickupISO || c.dropoffISO, [company, c.pickupLocation].filter(Boolean).join(', ') +
-      (c.dropoffISO ? ' → ' + _inboxShortDate(c.dropoffISO) : '') + confTag(c));
+      (c.dropoffISO ? ' → ' + _inboxShortDate(c.dropoffISO) : '') + confTag(c), { bookingId });
     log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO)]);
   });
 
