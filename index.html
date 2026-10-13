@@ -11648,7 +11648,7 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
         leg.lines.push(formatted); leg.names.push(traveler); leg.offs.push(offset);
         if (!leg.date) leg.date = humanDate;
         leg.touched = true;
-        log.push([(leg === out ? 'Outbound' : 'Return') + ' flight added from email', formatted]);
+        log.push([(leg === out ? 'Outbound' : 'Return') + ' flight added from email', formatted + confTag(f)]);
       }
     } else {
       const match = _findTripDay(trip, f.dateISO);
@@ -11658,7 +11658,7 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
         Array.isArray(day.flightInfo) ? day.flightInfo.slice() : (day.flightInfo ? [day.flightInfo] : []));
       if (!infos.some(fi => (fi.formatted || '').split(' ')[0] === num && (fi.travelerName || '') === traveler)) {
         infos.push({ formatted, date: humanDate, travelerName: traveler, dayOffset: offset });
-        log.push(['Flight added from email', formatted]);
+        log.push(['Flight added from email', formatted + confTag(f)]);
       }
     }
     addSub('flightsBooked', f.dateISO, formatted.split(' · ')[0] + (traveler ? ' (' + traveler + ')' : '') + confTag(f));
@@ -11698,7 +11698,7 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     if (ci) addActivity(ci[0], ci[1], { emoji: '🏨', text: 'Check in — ' + h.name, time: h.checkInTime ? normalizeTimeLabel(h.checkInTime) : '', extra: { type: 'hotel' } });
     const n = Math.round((isoToDate(checkOut) - isoToDate(h.checkInISO)) / 86400000);
     addSub('hotelsBooked', h.checkInISO, h.name + ' · ' + n + ' night' + (n === 1 ? '' : 's') + confTag(h));
-    log.push(['Hotel added from email', h.name + ' · ' + _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(checkOut)]);
+    log.push(['Hotel added from email', h.name + ' · ' + _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(checkOut) + confTag(h)]);
   }
 
   // ── Rental cars: pick-up and return activities on their days
@@ -11715,7 +11715,7 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     if (dr) addActivity(dr[0], dr[1], { emoji: '🚗', text: 'Return rental car' + (c.company || c.dropoffLocation ? ' — ' + [c.company, c.dropoffLocation].filter(Boolean).join(', ') : ''), time: c.dropoffTime ? normalizeTimeLabel(c.dropoffTime) : '', extra });
     addSub('carRentalBooked', c.pickupISO || c.dropoffISO, [company, c.pickupLocation].filter(Boolean).join(', ') +
       (c.dropoffISO ? ' → ' + _inboxShortDate(c.dropoffISO) : '') + confTag(c), { bookingId });
-    log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO)]);
+    log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO) + confTag(c)]);
   });
 
   // ── Activities: reservations and tickets go on their day, marked booked. A
@@ -11745,12 +11745,12 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
       if (obj.bookingStatus !== 'paid') obj.bookingStatus = status;
       if (!obj.key) obj.key = genKey();
       acts[idx] = obj;
-      log.push(['Activity booked from email', obj.text + (obj.time ? ' · ' + obj.time : '')]);
+      log.push(['Activity booked from email', obj.text + (obj.time ? ' · ' + obj.time : '') + confTag(a)]);
     } else {
       const guess = getEmoji(title);
       const emoji = guess && guess !== '📍' ? guess : (ACT_CATEGORY_EMOJI[a.category] || '📌');
       if (addActivity(dayId, day, { emoji, text: title, time, bookingStatus: status })) {
-        log.push(['Activity added from email', title + ' · ' + _inboxShortDate(a.dateISO) + (time ? ' · ' + time : '')]);
+        log.push(['Activity added from email', title + ' · ' + _inboxShortDate(a.dateISO) + (time ? ' · ' + time : '') + confTag(a)]);
       }
     }
   });
