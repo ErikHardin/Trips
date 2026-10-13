@@ -1796,7 +1796,7 @@ async function placeSearch(env, q, near, limit) {
       const p = f.properties || {};
       const addr = [[p.housenumber, p.street].filter(Boolean).join(' '), p.city || p.town || p.village, p.state, p.country]
         .filter(Boolean).join(', ');
-      return { name: p.name || q, address: addr, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
+      return { name: p.name || q, address: addr, city: p.city || p.town || p.village || '', lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] };
     });
   } catch (e) { console.warn('Photon search failed: ' + e.message); }
   return results;
@@ -1813,6 +1813,7 @@ async function appleSearch(env, q, near, limit) {
     return ((await r.json()).results || []).filter(x => x.coordinate).map(x => ({
       name: x.name || (x.formattedAddressLines || [])[0] || q,
       address: (x.formattedAddressLines || []).join(', '),
+      city: (x.structuredAddress && x.structuredAddress.locality) || '',
       lat: x.coordinate.latitude,
       lng: x.coordinate.longitude,
     }));
