@@ -469,7 +469,6 @@ body {
 .det-btn.primary { background: var(--terracotta); border: none; color: #fff; }
 .det-btn.danger { background: none; border: 1px solid color-mix(in srgb, var(--terracotta) 55%, transparent); color: var(--terracotta); }
 .det-hint { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 8px; }
-.det-edit-link { font-family: inherit; background: none; border: none; color: var(--terracotta); font-size: 15px; font-weight: 500; padding: 6px 0; cursor: pointer; flex-shrink: 0; }
 /* Logistics → Bookings */
 .bk-sub { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 14px 0 8px; }
 .bk-card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 14px; padding: 12px 13px; margin-bottom: 8px; cursor: pointer; }
@@ -2186,7 +2185,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
     <label class="form-label">Description</label>
     <input class="form-input" id="editDayDescription" placeholder="e.g. 🛬 Arrive Lyon">
     <label class="form-label">Hotel</label>
-    <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon">
+    <input class="form-input" id="editDayHotel" placeholder="e.g. Intercontinental Lyon" onchange="fillCityFromHotel()">
     <label class="form-label">Region Color</label>
     <div style="display:flex;gap:10px;margin-bottom:12px;" id="regionColorSwatches">
       <div class="color-swatch" data-color="#c06a3d" style="background:#c06a3d;" onclick="selectRegionColor('#c06a3d',this)" title="Terracotta"></div>
@@ -2214,12 +2213,20 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   <div class="modal-sheet" style="max-height:88vh;overflow-y:auto;">
     <div class="modal-handle"></div>
     <div class="modal-title" id="quickActivityModalTitle">Edit Activities</div>
+    <label class="form-label">Title</label>
+    <input class="form-input" id="quickDayDescription" placeholder="e.g. 🛬 Arrive Lyon">
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;min-width:0;"><label class="form-label">City</label><input class="form-input" id="quickDayCity" placeholder="e.g. Lyon"></div>
+      <div style="flex:1;min-width:0;"><label class="form-label">Region</label><input class="form-input" id="quickDayRegion" list="quickDayRegionList" placeholder="e.g. Lyon"></div>
+    </div>
+    <datalist id="quickDayRegionList"></datalist>
+    <label class="form-label" style="margin-top:4px;">Activities</label>
     <div id="quickActivityRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
     <button onclick="addQuickActivityRow()"
       style="width:100%;padding:10px;background:var(--sand);border:1.5px dashed var(--sand-dark);border-radius:10px;font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:12px;">
       ＋ Add Activity
     </button>
-    <button class="form-btn" onclick="saveQuickActivityEdit()">Save Activities</button>
+    <button class="form-btn" onclick="saveQuickActivityEdit()">Save</button>
     <button class="form-btn secondary" style="margin-top:8px;" onclick="requestCloseQuickActivity()">Cancel</button>
   </div>
 </div>
@@ -2422,7 +2429,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 368 };
+window.BUILD_INFO = { prNumber: 369 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4143,7 +4150,6 @@ window.openActivityDetail = function(dayId, idx) {
   const m = _bottomSheet(`
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
       <div class="modal-title" style="margin-bottom:2px;">${emoji} ${escHtml(text)}</div>
-      ${canEdit ? '<button type="button" class="det-edit-link" data-act="edit">Edit</button>' : ''}
     </div>
     <div class="det-meta">${escHtml(meta)}</div>
     ${a.note ? `<div class="det-note">${escHtml(a.note)}</div>` : ''}
@@ -4154,7 +4160,7 @@ window.openActivityDetail = function(dayId, idx) {
       <button type="button" class="det-act${memCount ? ' on' : ''}" data-act="notes"><b>📝</b>Memories${memCount ? ' · ' + memCount : ''}</button>
       ${showBell ? `<button type="button" class="det-act${muted ? '' : ' on'}" data-act="bell"><b>${muted ? '🔕' : '🔔'}</b>Reminder ${muted ? 'off' : 'on'}</button>` : ''}
     </div>
-    ${canEdit ? '<button type="button" class="det-btn danger" data-act="delete">Delete activity</button>' : ''}`);
+    ${canEdit ? '<button type="button" class="det-btn plain" data-act="edit">✏️ Edit activity</button><button type="button" class="det-btn danger" data-act="delete">Delete activity</button>' : ''}`);
   m.addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -4421,9 +4427,17 @@ window.openSetHotel = function(dayId) {
   m.querySelector('.sh-save').addEventListener('click', async () => {
     const name = m.querySelector('.sh-name').value.trim();
     if (!name) { showToast('Enter the hotel name'); return; }
+    const btn = m.querySelector('.sh-save');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const upd = { hotel: name };
+    if (!String(day.city || '').trim()) {
+      const city = await _cityForHotel(name, day);
+      if (city) upd.city = city;
+    }
     try {
-      await window._update(window._ref(window._db, `trips/${tripId}/days/${dayId}`), { hotel: name });
+      await window._update(window._ref(window._db, `trips/${tripId}/days/${dayId}`), upd);
     } catch (e) {
+      btn.disabled = false; btn.textContent = 'Save';
       showToast('Save failed — check connection');
       return;
     }
@@ -5449,6 +5463,16 @@ function _pinRecord(lat, lng, place) {
   if (place && place.name) rec.name = String(place.name).slice(0, 200);
   if (place && place.address) rec.address = String(place.address).slice(0, 300);
   return rec;
+}
+
+// The town a hotel is in, from place search biased to the day's area; '' when unknown
+async function _cityForHotel(hotel, day) {
+  try {
+    const area = String((day && (day.region || day.city)) || '').trim();
+    const near = area ? await getCityCoords(area).catch(() => null) : null;
+    const res = await searchPlaces(hotel + (day && day.region ? ', ' + day.region : ''), near, 1);
+    return String((res[0] && res[0].city) || '').trim();
+  } catch (e) { return ''; }
 }
 
 // Where the day is anchored: { coord, hotel } — the day's hotel when it geocodes
@@ -7551,7 +7575,8 @@ function _editDaySnapshot() {
   ]);
 }
 function _quickActSnapshot() {
-  return JSON.stringify(_actRowsSnapshot('#quickActivityRows'));
+  const v = id => document.getElementById(id).value.trim();
+  return JSON.stringify([v('quickDayDescription'), v('quickDayCity'), v('quickDayRegion'), _actRowsSnapshot('#quickActivityRows')]);
 }
 function _editTripDirty() {
   if (!document.getElementById('screen-edit').classList.contains('active') || !editingTripId) return false;
@@ -8369,6 +8394,20 @@ window.refreshEditDayDatePreview = function(fallbackDay) {
     f.dateNum ? `${f.dateNum} ${(f.dateMonth||'').slice(0,3)} · ${f.dayName}` : 'Edit Day';
 };
 
+// Edit Day: a hotel typed while City is blank fills City with the hotel's town
+window.fillCityFromHotel = async function() {
+  const cityEl = document.getElementById('editDayCity');
+  const hotel = document.getElementById('editDayHotel').value.trim();
+  if (!hotel || cityEl.value.trim()) return;
+  const day = { region: document.getElementById('editDayRegion').value.trim(), city: '' };
+  const city = await _cityForHotel(hotel, day);
+  // Only if City is still blank and the hotel hasn't changed meanwhile
+  if (city && !cityEl.value.trim() && document.getElementById('editDayHotel').value.trim() === hotel) {
+    cityEl.value = city;
+    showToast('City set to ' + city + ' from the hotel');
+  }
+};
+
 window.openEditDay = function(dayId) {
   editingDayId = dayId;
   const trip = allTrips[editingTripId];
@@ -8757,6 +8796,14 @@ window.openQuickActivityEditor = function(dayId) {
   const label = (day.description || day.city || day.dayName || '')
     + (day.dateNum ? ' · ' + day.dateNum + ' ' + (day.dateMonth || '') : '');
   document.getElementById('quickActivityModalTitle').textContent = label || 'Edit Activities';
+  document.getElementById('quickDayDescription').value = day.description || '';
+  document.getElementById('quickDayCity').value = day.city || '';
+  document.getElementById('quickDayRegion').value = day.region || '';
+  const regionList = document.getElementById('quickDayRegionList');
+  regionList.innerHTML = '';
+  [...new Set(Object.values(trip.days || {}).map(d => (d.region || '').trim()).filter(Boolean))].forEach(r => {
+    regionList.appendChild(Object.assign(document.createElement('option'), { value: r }));
+  });
 
   const container = document.getElementById('quickActivityRows');
   container.innerHTML = '';
@@ -8981,6 +9028,18 @@ window.saveQuickActivityEdit = async function() {
     }
   }
 
+  // Day details edited at the top of the sheet; a day moved into an existing
+  // region takes that region's color so the group stays one color
+  const qDescription = document.getElementById('quickDayDescription').value.trim();
+  const qCity        = document.getElementById('quickDayCity').value.trim();
+  const qRegion      = document.getElementById('quickDayRegion').value.trim();
+  let qRegionColor   = existing.regionColor ?? '#c06a3d';
+  if (qRegion && qRegion !== (existing.region || '')) {
+    const peer = Object.entries(allTrips[quickEditingTripId].days || {})
+      .find(([id, d]) => id !== quickEditingDayId && (d.region || '').trim() === qRegion && d.regionColor);
+    if (peer) qRegionColor = peer[1].regionColor;
+  }
+
   // Re-derive the date fields rather than echoing them back, so a stale dayName isn't preserved.
   const _qISO = dayISO(existing, allTrips[quickEditingTripId].year);
   const dayData = {
@@ -8990,11 +9049,11 @@ window.saveQuickActivityEdit = async function() {
       dateISO:   null,
       dayName:   existing.dayName   ?? null
     }),
-    city:        existing.city        ?? null,
-    description: existing.description ?? null,
-    hotel:       existing.hotel       ?? null,
-    region:      existing.region      ?? null,
-    regionColor: existing.regionColor ?? '#c06a3d',
+    city:        qCity        || null,
+    description: qDescription || null,
+    hotel:       existing.hotel ?? null,
+    region:      qRegion      || null,
+    regionColor: qRegionColor,
     sortOrder:   existing.sortOrder   ?? 0,
     activities,
     notes: Object.keys(notes).length ? notes : null,
@@ -9029,6 +9088,9 @@ window.saveQuickActivityEdit = async function() {
   for (const [txt, a] of oldSet) {
     if (!newSet.has(txt)) logChange(quickEditingTripId, 'Activity removed', actLabel(a) + (city ? ' · ' + city : ''));
   }
+  const dayChanges = [['Title', existing.description, qDescription], ['City', existing.city, qCity], ['Region', existing.region, qRegion]]
+    .filter(([, was, now]) => (was || '') !== now).map(([f, , now]) => f + ': ' + (now || '—'));
+  if (dayChanges.length) logChange(quickEditingTripId, 'Day updated', dayChanges.join(' · '));
 
   closeQuickActivityModalDirect();
   showToast('Activities saved! ✓');
@@ -11622,7 +11684,11 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
         escHtml('Some of these nights already have ' + clashes.join(', ') + '. Replace with ' + h.name + '?'), 'Replace');
       if (!ok) return null;
     }
-    nights.forEach(([dayId]) => { updates[base + '/days/' + dayId + '/hotel'] = h.name; });
+    nights.forEach(([dayId, d]) => {
+      updates[base + '/days/' + dayId + '/hotel'] = h.name;
+      // The email's city fills in nights that don't have one yet
+      if (h.city && !String(d.city || '').trim()) updates[base + '/days/' + dayId + '/city'] = String(h.city).slice(0, 100);
+    });
     // Details shown on every night of the stay; only fields the email has, so manual edits survive
     const stayBase = base + '/stayDetails/' + _hotelKey(h.name) + '/';
     if (h.confirmation) updates[stayBase + 'confirmation'] = String(h.confirmation).slice(0, 100);
