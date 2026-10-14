@@ -476,6 +476,8 @@ body {
 .bk-card.warn { border-style: dashed; }
 .bk-card-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--ink); }
 .bk-card-head .bk-name { flex: 1; min-width: 0; }
+.bk-x { font-family: inherit; background: none; border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 0 2px 0 6px; cursor: pointer; flex-shrink: 0; }
+.bk-x:hover { color: var(--terracotta); }
 .bk-card-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
 .bk-nights { display: flex; gap: 3px; margin-top: 8px; }
 .bk-nights i { flex: 1; height: 5px; border-radius: 3px; background: var(--sand); }
@@ -4340,9 +4342,160 @@ async function _cancelCarBooking(dayId, idx, sheet) {
     showToast('Could not cancel — check connection');
     return;
   }
-  sheet.remove();
+  if (sheet) sheet.remove();
   logChange(tripId, 'Rental car cancelled', bk.company || 'Rental car');
   showToast('Booking cancelled');
+  _afterBookingChange(tripId);
+}
+
+// Logistics re-renders from the trips listener too; this makes the card go at once
+function _afterBookingChange(tripId) {
+  if (document.getElementById('tripLogisticsPanel').classList.contains('active')) renderLogisticsPanel(tripId);
+}
+
+// Cancel a hotel stay: its nights lose the hotel, and its check-in row,
+// details and checklist line go with it
+async function _cancelStay(dayId, sheet) {
+  const tripId = currentTripId;
+  const trip = allTrips[tripId];
+  const st = _stayFor(trip, dayId);
+  if (!st) return;
+  const n = st.dayIds.length;
+  const updates = {};
+  const items = [st.name + ' · ' + [_inboxShortDate(st.firstISO), _inboxShortDate(st.checkOutISO)].filter(Boolean).join(' → ')
+    + ' (' + n + ' night' + (n === 1 ? '' : 's') + ')'];
+  const isCheckIn = a => _bookingKind(a) === 'hotel' && String(a.text || '').includes(st.name);
+  st.dayIds.forEach(dId => {
+    updates[`trips/${tripId}/days/${dId}/hotel`] = null;
+    const acts = _actList(trip.days[dId]);
+    if (acts.some(isCheckIn)) {
+      acts.filter(isCheckIn).forEach(a => items.push(a.text));
+      updates[`trips/${tripId}/days/${dId}/activities`] = acts.filter(a => !isCheckIn(a));
+    }
+  });
+  // Details are keyed by hotel name; keep them if the same hotel has another stay
+  if (trip.stayDetails && trip.stayDetails[st.key] && !_tripStays(trip).some(s => s.key === st.key && s.dayIds[0] !== st.dayIds[0])) {
+    updates[`trips/${tripId}/stayDetails/${st.key}`] = null;
+    if (st.details.confirmation) items.push('Confirmation #' + st.details.confirmation);
+  }
+  const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems).hotelsBooked;
+  const gone = subs.filter(s => s && String(s.label || '').includes(st.name));
+  if (gone.length) {
+    gone.forEach(s => items.push('Checklist: ' + s.label));
+    updates[`trips/${tripId}/logistics/bookingSubItems/hotelsBooked`] = subs.filter(s => s && !gone.includes(s));
+  }
+  const ok = await showConfirmDialog('Cancel this booking?',
+    'This removes:<br>' + items.map(t => '• ' + escHtml(t)).join('<br>'), 'Yes, cancel booking');
+  if (!ok) return;
+  try {
+    await window._update(window._ref(window._db), updates);
+  } catch (e) {
+    showToast('Could not cancel — check connection');
+    return;
+  }
+  if (sheet) sheet.remove();
+  logChange(tripId, 'Hotel cancelled', items[0]);
+  showToast('Booking cancelled');
+  _afterBookingChange(tripId);
+}
+
+// Every copy of one flight line: outbound/return list positions, in-trip day
+// entries, and the travelers on it
+function _flightCopies(trip, line) {
+  const res = { out: [], ret: [], days: {}, who: [], when: '' };
+  const addWho = w => { if (w && !res.who.includes(w)) res.who.push(w); };
+  [['flightOut', 'out'], ['flightReturn', 'ret']].forEach(([field, k]) => {
+    String(trip[field] || '').split('\n').filter(Boolean).forEach((l, i) => {
+      if (l !== line) return;
+      res[k].push(i);
+      addWho((trip[field + 'Names'] || [])[i]);
+      res.when = res.when || trip[field + 'Date'] || '';
+    });
+  });
+  _tripDayEntries(trip).forEach(([dId, day]) => {
+    const infos = Array.isArray(day.flightInfo) ? day.flightInfo : (day.flightInfo ? [day.flightInfo] : []);
+    infos.forEach((fi, i) => {
+      if (!fi || fi.formatted !== line) return;
+      (res.days[dId] = res.days[dId] || []).push(i);
+      addWho(fi.travelerName);
+      res.when = res.when || fi.date || '';
+    });
+  });
+  return res;
+}
+
+function _flightConf(trip, line) {
+  const num = line.split(' ')[0];
+  const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems).flightsBooked;
+  const s = num && subs.find(x => x && String(x.label || '').includes(num) && /#\s*[A-Za-z0-9-]+\s*$/.test(x.label || ''));
+  return s ? s.label.match(/#\s*([A-Za-z0-9-]+)\s*$/)[1] : '';
+}
+
+window.openFlightSheet = function(line) {
+  const trip = allTrips[currentTripId];
+  const fc = _flightCopies(trip, line);
+  const conf = !isShareView && _flightConf(trip, line);
+  const canEdit = canEditCurrentTrip();
+  const parts = line.split(' · ');
+  const row = (label, value, extra) => value ? `<div class="det-row"><span class="det-row-label">${label}</span><span class="det-row-value">${value}${extra || ''}</span></div>` : '';
+  const m = _bottomSheet(`
+    <div class="modal-title" style="margin-bottom:2px;">✈️ ${escHtml(parts[0])}</div>
+    <div class="det-meta" style="margin-bottom:12px;">${escHtml([fc.when, parts.slice(1).join(' · ')].filter(Boolean).join(' · '))}</div>
+    ${conf ? row('Confirmation', `<span class="conf-pill">${escHtml(conf)}</span>`, '<button type="button" class="det-copy" data-act="copy">Copy</button>') : ''}
+    ${row('Travelers', escHtml(fc.who.join(', ')))}
+    ${canEdit ? '<button type="button" class="det-btn danger" data-act="cancel">Cancel booking</button>' : ''}`);
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'copy') _copyText(conf);
+    else if (b.dataset.act === 'cancel') _cancelFlight(line, m);
+  });
+};
+
+// Cancel a flight for everyone on it: every list it appears in, plus its checklist line
+async function _cancelFlight(line, sheet) {
+  const tripId = currentTripId;
+  const trip = allTrips[tripId];
+  const fc = _flightCopies(trip, line);
+  const updates = {};
+  const base = `trips/${tripId}/`;
+  [['flightOut', fc.out], ['flightReturn', fc.ret]].forEach(([field, idxs]) => {
+    if (!idxs.length) return;
+    const keep = (arr, len) => Array.from({ length: len }, (_, i) => (arr || [])[i] ?? null).filter((_, i) => !idxs.includes(i));
+    const lines = String(trip[field] || '').split('\n').filter(Boolean);
+    const left = lines.filter((_, i) => !idxs.includes(i));
+    updates[base + field] = left.length ? left.join('\n') : null;
+    updates[base + field + 'Names'] = left.length ? keep(trip[field + 'Names'], lines.length).map(x => x || '') : null;
+    updates[base + field + 'DayOffsets'] = left.length ? keep(trip[field + 'DayOffsets'], lines.length) : null;
+    if (!left.length) updates[base + field + 'Date'] = null;
+  });
+  Object.entries(fc.days).forEach(([dId, idxs]) => {
+    const day = trip.days[dId];
+    const infos = Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo];
+    const left = infos.filter((_, i) => !idxs.includes(i));
+    updates[base + 'days/' + dId + '/flightInfo'] = left.length ? left : null;
+  });
+  const items = [line + (fc.who.length ? ' (' + fc.who.join(', ') + ')' : '')];
+  const num = line.split(' ')[0];
+  const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems).flightsBooked;
+  const gone = subs.filter(s => s && num && String(s.label || '').includes(num));
+  if (gone.length) {
+    gone.forEach(s => items.push('Checklist: ' + s.label));
+    updates[base + 'logistics/bookingSubItems/flightsBooked'] = subs.filter(s => s && !gone.includes(s));
+  }
+  const ok = await showConfirmDialog('Cancel this booking?',
+    'This removes:<br>' + items.map(t => '• ' + escHtml(t)).join('<br>'), 'Yes, cancel booking');
+  if (!ok) return;
+  try {
+    await window._update(window._ref(window._db), updates);
+  } catch (e) {
+    showToast('Could not cancel — check connection');
+    return;
+  }
+  if (sheet) sheet.remove();
+  logChange(tripId, 'Flight cancelled', items[0]);
+  showToast('Booking cancelled');
+  _afterBookingChange(tripId);
 }
 
 // ── Hotel stay: the run of nights at one hotel ──
@@ -4373,12 +4526,14 @@ window.openStaySheet = function(dayId) {
       <button type="button" class="det-btn plain" data-act="maps">🗺️ Maps</button>
       ${phone ? `<a class="det-btn plain" href="tel:${escAttr(phone)}">📞 Call</a>` : ''}
       ${canEdit ? '<button type="button" class="det-btn plain" data-act="edit">✏️ Edit</button>' : ''}
-    </div>`);
+    </div>
+    ${canEdit ? '<button type="button" class="det-btn danger" data-act="cancel">Cancel booking</button>' : ''}`);
   m.addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
-    if (act === 'copy') _copyText(d.confirmation);
+    if (act === 'cancel') _cancelStay(dayId, m);
+    else if (act === 'copy') _copyText(d.confirmation);
     else if (act === 'maps') { m.remove(); openMapsChoice(d.address || (st.name + (city ? ', ' + city : ''))); }
     else if (act === 'edit') { m.remove(); openStayEditor(dayId); }
   });
@@ -4457,6 +4612,7 @@ function _bookingsSectionHTML(trip, tripId) {
   };
   const pill = c => c ? `<span class="conf-pill">${escHtml(c)}</span>` : '';
   const canEdit = canEditCurrentTrip();
+  const x = call => canEdit ? `<button type="button" class="bk-x" title="Cancel booking" onclick="event.stopPropagation();${call}">×</button>` : '';
 
   // Flights: outbound, in-trip, return — one card per flight, travelers merged
   const flights = [];
@@ -4474,7 +4630,7 @@ function _bookingsSectionHTML(trip, tripId) {
   String(trip.flightReturn || '').split('\n').filter(Boolean).forEach((l, i) => addFlight(l, (trip.flightReturnNames || [])[i], trip.flightReturnDate));
   const flightsHTML = flights.map(f => {
     const num = f.line.split(' ')[0];
-    return `<div class="bk-card" style="cursor:default;"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(f.line.split(' · ')[0])}</span>${pill(confFrom(subs.flightsBooked, num))}</div>
+    return `<div class="bk-card" data-line="${escAttr(f.line)}" onclick="openFlightSheet(this.dataset.line)"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(f.line.split(' · ')[0])}</span>${pill(confFrom(subs.flightsBooked, num))}${x('_cancelFlight(this.closest(\'.bk-card\').dataset.line)')}</div>
       <div class="bk-card-sub">${escHtml([f.when, f.line.split(' · ').slice(1).join(' · '), f.who.join(', ')].filter(Boolean).join(' · '))}</div></div>`;
   }).join('');
 
@@ -4494,7 +4650,7 @@ function _bookingsSectionHTML(trip, tripId) {
       const bar = nightCount > 1 && nightCount <= 21
         ? `<div class="bk-nights">${Array.from({ length: nightCount }, (_, k) => `<i class="${k >= st.firstIdx && k <= st.lastIdx ? 'on' : ''}"></i>`).join('')}</div>` : '';
       staysHTML += `<div class="bk-card${tonight ? ' tonight' : ''}" onclick="openStaySheet('${dayId}')">
-        <div class="bk-card-head"><span class="bk-name">${escHtml(st.name)}</span>${pill(conf)}</div>
+        <div class="bk-card-head"><span class="bk-name">${escHtml(st.name)}</span>${pill(conf)}${x(`_cancelStay('${dayId}')`)}</div>
         <div class="bk-card-sub">${escHtml([_inboxShortDate(st.firstISO), _inboxShortDate(st.checkOutISO)].filter(Boolean).join(' → '))}${st.firstISO ? ' · ' : ''}${n} night${n === 1 ? '' : 's'}${tonight ? ' · <span style="color:var(--sage);">tonight</span>' : ''}${!conf && canEdit ? ` · <span style="color:var(--terracotta);" onclick="event.stopPropagation();openStayEditor('${dayId}')">+ add confirmation #</span>` : ''}</div>
         ${bar}</div>`;
     } else if (!String(day.hotel || '').trim() && i < last) {
@@ -4516,7 +4672,7 @@ function _bookingsSectionHTML(trip, tripId) {
       const bk = _carBooking(trip, dayId, i);
       const end = r => r ? [_inboxShortDate(r.iso), r.act.time, _carPlace(r.act, r.pickup)].filter(Boolean).join(' ') : '';
       carsHTML += `<div class="bk-card" onclick="openCarBooking('${dayId}',${i})">
-        <div class="bk-card-head"><span class="bk-name">🚗 ${escHtml(bk.company || 'Rental car')}</span>${pill(bk.confirmation)}</div>
+        <div class="bk-card-head"><span class="bk-name">🚗 ${escHtml(bk.company || 'Rental car')}</span>${pill(bk.confirmation)}${x(`_cancelCarBooking('${dayId}',${i})`)}</div>
         <div class="bk-card-sub">${escHtml([end(bk.pickup), end(bk.dropoff)].filter(Boolean).join(' → '))}</div></div>`;
     });
   });
@@ -5605,7 +5761,7 @@ function _bottomSheet(innerHTML) {
   modal.innerHTML = `<div style="background:var(--warm-white);border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 20px 36px;box-sizing:border-box;">${innerHTML}
       <button type="button" class="sheet-cancel"
         style="margin-top:12px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:none;font-size:14px;color:var(--muted);cursor:pointer;">
-        Cancel
+        Close
       </button></div>`;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   modal.querySelector('.sheet-cancel').addEventListener('click', () => modal.remove());
@@ -11606,12 +11762,28 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
   const subItems = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems);
   const subTouched = {};
   let subSeq = 0;
+  // Checklist lines match ignoring their " · #conf" tail, so a re-sent email
+  // with a new confirmation number updates its line instead of adding another.
+  // Returns { status: 'added' | 'updated' | 'same', old: previous number }.
+  const confRe = /\s*·\s*#\s*([A-Za-z0-9-]+)\s*$/;
+  const confOf = l => ((String(l || '').match(confRe) || [])[1] || '');
   const addSub = (key, iso, text, extra) => {
     const label = (_inboxShortDate(iso) ? _inboxShortDate(iso) + ' — ' : '') + text;
-    if (subItems[key].some(s => s.label === label)) return;
-    subItems[key].push(Object.assign({ id: 'bi' + Date.now() + '_' + (subSeq++), label, checked: true }, extra || {}));
+    const bare = label.replace(confRe, '');
+    const ex = subItems[key].find(s => s && String(s.label || '').replace(confRe, '') === bare);
+    if (!ex) {
+      subItems[key].push(Object.assign({ id: 'bi' + Date.now() + '_' + (subSeq++), label, checked: true }, extra || {}));
+      subTouched[key] = true;
+      return { status: 'added', old: '' };
+    }
+    const old = confOf(ex.label);
+    if (!confOf(label) || old === confOf(label)) return { status: 'same', old };
+    ex.label = label;
+    if (extra && extra.bookingId && !ex.bookingId) ex.bookingId = extra.bookingId;
     subTouched[key] = true;
+    return { status: 'updated', old };
   };
+  const confChanged = (what, old, now) => log.push(['Confirmation updated', what + ' · ' + (old ? '#' + old + ' → ' : '→ ') + '#' + now]);
   const confTag = x => x.confirmation ? ' · #' + x.confirmation : '';
 
   // ── Flights: before or on the first day go out, on or after the last day go
@@ -11661,7 +11833,8 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
         log.push(['Flight added from email', formatted + confTag(f)]);
       }
     }
-    addSub('flightsBooked', f.dateISO, formatted.split(' · ')[0] + (traveler ? ' (' + traveler + ')' : '') + confTag(f));
+    const fSub = addSub('flightsBooked', f.dateISO, formatted.split(' · ')[0] + (traveler ? ' (' + traveler + ')' : '') + confTag(f));
+    if (fSub.status === 'updated') confChanged(num + (traveler ? ' (' + traveler + ')' : ''), fSub.old, f.confirmation);
   });
   [['flightOut', out], ['flightReturn', ret]].forEach(([field, leg]) => {
     if (!leg.touched) return;
@@ -11684,6 +11857,9 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
         escHtml('Some of these nights already have ' + clashes.join(', ') + '. Replace with ' + h.name + '?'), 'Replace');
       if (!ok) return null;
     }
+    // Already on every night: a re-send, which may only bring a new confirmation number
+    const resend = nights.every(([, d]) => d.hotel === h.name);
+    const oldHotelConf = ((trip.stayDetails || {})[_hotelKey(h.name)] || {}).confirmation || '';
     nights.forEach(([dayId, d]) => {
       updates[base + '/days/' + dayId + '/hotel'] = h.name;
       // The email's city fills in nights that don't have one yet
@@ -11697,8 +11873,9 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     const ci = _findTripDay(trip, h.checkInISO);
     if (ci) addActivity(ci[0], ci[1], { emoji: '🏨', text: 'Check in — ' + h.name, time: h.checkInTime ? normalizeTimeLabel(h.checkInTime) : '', extra: { type: 'hotel' } });
     const n = Math.round((isoToDate(checkOut) - isoToDate(h.checkInISO)) / 86400000);
-    addSub('hotelsBooked', h.checkInISO, h.name + ' · ' + n + ' night' + (n === 1 ? '' : 's') + confTag(h));
-    log.push(['Hotel added from email', h.name + ' · ' + _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(checkOut) + confTag(h)]);
+    const hSub = addSub('hotelsBooked', h.checkInISO, h.name + ' · ' + n + ' night' + (n === 1 ? '' : 's') + confTag(h));
+    if (!resend) log.push(['Hotel added from email', h.name + ' · ' + _inboxShortDate(h.checkInISO) + ' – ' + _inboxShortDate(checkOut) + confTag(h)]);
+    else if (h.confirmation && String(h.confirmation) !== (oldHotelConf || hSub.old)) confChanged(h.name, oldHotelConf || hSub.old, h.confirmation);
   }
 
   // ── Rental cars: pick-up and return activities on their days
@@ -11706,16 +11883,38 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     const pu = _findTripDay(trip, c.pickupISO), dr = _findTripDay(trip, c.dropoffISO);
     const company = c.company || 'Rental car';
     if (!pu && !dr) { problems.push('no trip days for the ' + company + ' rental'); return; }
-    // Both rows and the checklist line share a bookingId, so the booking can be cancelled as one
-    const bookingId = 'bk' + genKey() + genKey();
     const booking = {};
     ['company', 'confirmation', 'pickupLocation', 'dropoffLocation'].forEach(k => { if (c[k]) booking[k] = String(c[k]).slice(0, 200); });
-    const extra = { type: 'car', bookingId, booking };
-    if (pu) addActivity(pu[0], pu[1], { emoji: '🚗', text: 'Pick up rental car' + (c.company || c.pickupLocation ? ' — ' + [c.company, c.pickupLocation].filter(Boolean).join(', ') : ''), time: c.pickupTime ? normalizeTimeLabel(c.pickupTime) : '', extra });
-    if (dr) addActivity(dr[0], dr[1], { emoji: '🚗', text: 'Return rental car' + (c.company || c.dropoffLocation ? ' — ' + [c.company, c.dropoffLocation].filter(Boolean).join(', ') : ''), time: c.dropoffTime ? normalizeTimeLabel(c.dropoffTime) : '', extra });
-    addSub('carRentalBooked', c.pickupISO || c.dropoffISO, [company, c.pickupLocation].filter(Boolean).join(', ') +
+    const rows = [
+      pu && [pu, { emoji: '🚗', text: 'Pick up rental car' + (c.company || c.pickupLocation ? ' — ' + [c.company, c.pickupLocation].filter(Boolean).join(', ') : ''), time: c.pickupTime ? normalizeTimeLabel(c.pickupTime) : '' }],
+      dr && [dr, { emoji: '🚗', text: 'Return rental car' + (c.company || c.dropoffLocation ? ' — ' + [c.company, c.dropoffLocation].filter(Boolean).join(', ') : ''), time: c.dropoffTime ? normalizeTimeLabel(c.dropoffTime) : '' }],
+    ].filter(Boolean);
+    // A re-sent email finds its rows already there: they keep their bookingId and
+    // take the new details (confirmation included); older rows get one now
+    const existing = rows.map(([[dayId, day], act]) => {
+      const acts = actsFor(dayId, day);
+      const i = acts.findIndex(a => (a && typeof a === 'object' ? a.text : a) === act.text);
+      return i >= 0 ? { acts, i } : null;
+    });
+    const prior = existing.map(e => e && e.acts[e.i]).find(a => a && typeof a === 'object' && a.bookingId);
+    // Both rows and the checklist line share a bookingId, so the booking can be cancelled as one
+    const bookingId = (prior && prior.bookingId) || 'bk' + genKey() + genKey();
+    const oldCarConf = existing.map(e => e && e.acts[e.i] && e.acts[e.i].booking && e.acts[e.i].booking.confirmation).find(Boolean) || '';
+    let added = false;
+    rows.forEach(([[dayId, day], act], k) => {
+      const e = existing[k];
+      if (!e) { added = addActivity(dayId, day, Object.assign({}, act, { extra: { type: 'car', bookingId, booking } })) || added; return; }
+      const cur = e.acts[e.i];
+      const obj = typeof cur === 'object' ? Object.assign({}, cur) : { emoji: '🚗', text: String(cur), key: genKey() };
+      obj.type = 'car';
+      obj.bookingId = obj.bookingId || bookingId;
+      obj.booking = Object.assign({}, obj.booking || {}, booking);
+      e.acts[e.i] = obj;
+    });
+    const cSub = addSub('carRentalBooked', c.pickupISO || c.dropoffISO, [company, c.pickupLocation].filter(Boolean).join(', ') +
       (c.dropoffISO ? ' → ' + _inboxShortDate(c.dropoffISO) : '') + confTag(c), { bookingId });
-    log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO) + confTag(c)]);
+    if (added) log.push(['Rental car added from email', company + ' · ' + _inboxShortDate(c.pickupISO) + ' – ' + _inboxShortDate(c.dropoffISO) + confTag(c)]);
+    else if (c.confirmation && String(c.confirmation) !== (oldCarConf || cSub.old)) confChanged(company + ' rental car', oldCarConf || cSub.old, c.confirmation);
   });
 
   // ── Activities: reservations and tickets go on their day, marked booked. A
