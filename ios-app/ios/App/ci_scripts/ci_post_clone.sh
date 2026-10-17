@@ -26,8 +26,9 @@ if ! grep -q "DEVELOPMENT_TEAM" "$PROJECT/project.pbxproj"; then
   perl -pi -e "s/^(\s*)CODE_SIGN_STYLE = Automatic;/\$1CODE_SIGN_STYLE = Automatic;\n\$1DEVELOPMENT_TEAM = $TEAM_ID;/" "$PROJECT/project.pbxproj"
 fi
 
-# Xcode Cloud won't resolve packages itself without a committed
-# Package.resolved, so make one if it's missing.
+# Xcode Cloud only uses package versions from a committed Package.resolved
+# and won't resolve them itself, so say so plainly if it's missing.
 if [ ! -f "$PROJECT/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" ]; then
-  xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme App
+  echo "error: commit ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved (see IOS.md)" >&2
+  exit 1
 fi
