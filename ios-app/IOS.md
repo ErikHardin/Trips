@@ -141,18 +141,22 @@ automatically.
 Xcode Cloud builds and uploads to TestFlight without the Mac. The scripts in
 `ios/App/ci_scripts/` do the Mac's manual steps:
 
-- `ci_post_clone.sh` installs Node, runs `npm ci` and `npx cap sync ios`, sets
-  the signing Team from `TEAM_ID`, and resolves the Swift packages.
+- `ci_post_clone.sh` installs Node, runs `npm ci` and `npx cap sync ios`, and
+  sets the signing Team from `TEAM_ID`.
 - `ci_pre_xcodebuild.sh` sets **Build** on both targets to Xcode Cloud's build
   number, so nobody bumps it by hand.
 
 The shared **App** scheme (`App.xcodeproj/xcshareddata/xcschemes/`) is
-committed because Xcode Cloud only sees shared schemes.
+committed because Xcode Cloud only sees shared schemes. So is
+`App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`:
+Xcode Cloud only builds with the Swift package versions pinned there and won't
+resolve them itself. When a change adds or updates a native plugin, open the
+project in Xcode once and commit the updated `Package.resolved` with it.
 
 ### One-time setup (on the Mac, the last time you'll need it)
 
 1. Pull, then `npm install` and `npx cap sync ios`, and open the project.
-2. Xcode → **Product → Xcode Cloud → Create Workflow** → product **App**.
+2. Xcode → **Integrate → Create Workflow…** → product **App**.
    Grant access to the `ErikHardin/Trips` repository when asked (installs
    Apple's GitHub app).
 3. Edit the workflow:
@@ -160,17 +164,16 @@ committed because Xcode Cloud only sees shared schemes.
      10-character Team ID (developer.apple.com → Membership). Not secret.
    - **Start Conditions:** remove the default. Add **Branch Changes** → `main`,
      and under **Files and Folders** limit it to `ios-app/`, so website-only
-     merges don't build. Add **Schedule** → **Weekly**, so a fresh build
+     merges don't build. Add **On a Schedule** → **Weekly** (one day is enough), so a fresh build
      always exists and TestFlight never expires.
-   - **Actions:** **Archive**, platform iOS, scheme **App**, deployment
-     preparation **TestFlight (Internal Testing Only)**.
-   - **Post-Actions:** **TestFlight Internal Testing** → your internal group.
+   - **Actions:** **Archive**, platform iOS, scheme **App**, distribution
+     preparation **App Store Connect** (needed for external testers).
+   - **Post-Actions:** **TestFlight Internal Testing** → your internal group,
+     and **TestFlight External Testing** → your external group.
 4. App Store Connect → your app → **Xcode Cloud → Settings → Build Number**:
    set **Next Build Number** above the highest build already in TestFlight,
    or the upload is rejected as a duplicate.
-5. **Start Build** once to prove it, then commit the
-   `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
-   Xcode wrote locally, so cloud builds use the same package versions.
+5. **Integrate → App → Start Build…** on `main` once to prove it.
 
 After that: merging anything under `ios-app/` to `main` ships a TestFlight
 build, and the weekly schedule keeps one from expiring. Builds and logs are in
