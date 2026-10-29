@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import WebKit
+import WidgetKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -21,6 +22,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         SceneDelegateProxy.shared.scene(scene, continue: userActivity)
+    }
+
+    // Opening the app refreshes the home-screen widgets, so a widget stuck on
+    // "Can't reach trips" (or showing stale flights) can be fixed by hand
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
 
