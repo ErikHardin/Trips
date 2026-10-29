@@ -366,6 +366,10 @@ async function widgetNextTrip(env, trip, days, todayISO) {
   return out;
 }
 
+// The app's booking statuses (BOOKING_STATUSES in index.html), as the emoji
+// the Today widget puts after a plan's name
+const W_BOOKING_EMOJI = { booked: '📆', paid: '💲', not_booked: '🗓️', no_reservations: '🚫', walking_in: '🚶🏼' };
+
 // One itinerary day for the widgets: its city, and its activities with the
 // timed ones in time order. Untimed ones ("Check in at the hotel") keep their
 // place in the itinerary. raws[i] is the itinerary activity behind
@@ -387,6 +391,7 @@ function widgetDay(d) {
     emoji:    a.emoji || '📌',
     text:     a.text || a.description || '',
     location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
+    ...(W_BOOKING_EMOJI[a.bookingStatus] && { booking: W_BOOKING_EMOJI[a.bookingStatus] }),
   }));
   return { day: { city: d.city || '', description: city, activities }, raws: sorted.map(x => x.a) };
 }
@@ -610,7 +615,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-05.1';
+const WORKER_VERSION = '2026-10-29.2';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.

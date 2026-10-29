@@ -40,7 +40,13 @@ struct TodayActivity: Decodable, Hashable {
     let timeSort: String?   // "HH:mm", or "" when untimed
     let emoji: String?
     let text: String?
+    var booking: String? = nil   // booking status emoji: 📆 💲 🗓️ 🚫 🚶🏼
     var drive: DriveInfo? = nil
+
+    // "Darling Wines tasting 💲": the name with its booking status after it
+    var name: String {
+        [text ?? "", booking ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+    }
 
     // Start time on the given day, or nil when the activity has no time
     func start(on day: Date) -> Date? {
@@ -414,7 +420,7 @@ private struct ActivityRow: View {
                 .font(.system(size: large ? 14 : 11))
                 .fixedSize()
             VStack(alignment: .leading, spacing: 1) {
-                Text(activity.text ?? "")
+                Text(activity.name)
                     .font(.system(size: large ? 14 : 12, weight: .bold))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(large ? 2 : 1)
@@ -699,7 +705,7 @@ private struct TimelineRow: View {
     static func height(_ a: TodayActivity, style: Style) -> CGFloat {
         if style == .done || style == .later { return oneLine }
         var h = oneLine
-        if (a.text ?? "").count > 30 { h += 17 }
+        if a.name.count > 30 { h += 17 }
         if style == .next || a.drive?.mins != nil { h += 15 }
         return h
     }
@@ -728,7 +734,7 @@ private struct TimelineRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(String((activity.emoji ?? "📌").prefix(1)))
                         .fixedSize()
-                    Text(activity.text ?? "")
+                    Text(activity.name)
                         .lineLimit(gray ? 1 : 2)
                         .fixedSize(horizontal: false, vertical: !gray)
                 }
