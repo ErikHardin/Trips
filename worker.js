@@ -462,7 +462,8 @@ function wFlightTimes(formatted) {
 // Today's flights for the widget: "UA100 · DEN → LIS · 8:00am", and under it
 // "On time · Gate B31 · arrives 12:53pm" from the flight-alert cron's last
 // lookup. `detail` is what the widget shows; `status` and `ok` are for a
-// widget that colors the status itself. A flight drops off once it has landed.
+// widget that colors the status itself. A flight drops off 30 minutes before
+// it lands.
 async function widgetFlights(env, trip, dateISO) {
   const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO);
   const now = Date.now();
@@ -474,13 +475,13 @@ async function widgetFlights(env, trip, dateISO) {
   return rows.filter(Boolean);
 }
 
-// Past its landing time (the last lookup's, with any delay), or with no
-// landing time known, 6 hours after it left. Unknown flights stay.
+// Within 30 minutes of its landing time (the last lookup's, with any delay),
+// or with no landing time known, 5 hours after it left. Unknown flights stay.
 function wFlightLanded(st, now) {
   if (!st) return false;
-  if (st.arrUtc) return now >= st.arrUtc;
+  if (st.arrUtc) return now >= st.arrUtc - 30 * 60e3;
   const dep = st.depUtc || st.schedUtc;
-  return !!dep && now >= dep + 6 * 3600e3;
+  return !!dep && now >= dep + 5 * 3600e3;
 }
 
 function widgetFlightRow(leg, st) {
