@@ -14,10 +14,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
+        // A widget tap that launched the app
+        connectionOptions.urlContexts.map(\.url).filter(WidgetLinks.handles).forEach(WidgetLinks.shared.open)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
+        let widget = URLContexts.filter { WidgetLinks.handles($0.url) }
+        widget.forEach { WidgetLinks.shared.open($0.url) }
+        let rest = URLContexts.subtracting(widget)
+        if !rest.isEmpty { SceneDelegateProxy.shared.scene(scene, openURLContexts: rest) }
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
@@ -46,9 +51,15 @@ class ThemedBridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         webView?.backgroundColor = appBackground
         webView?.scrollView.backgroundColor = appBackground
         webView?.configuration.userContentController.add(WeakMessageHandler(self), name: "theme")
+        webView?.configuration.userContentController.add(WeakMessageHandler(self), name: "widgetLink")
+        WidgetLinks.shared.webView = webView
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "widgetLink" {
+            WidgetLinks.shared.pageReady()
+            return
+        }
         let style: UIUserInterfaceStyle
         switch message.body as? String {
         case "light": style = .light
@@ -56,6 +67,36 @@ class ThemedBridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         default: style = .unspecified
         }
         view.window?.overrideUserInterfaceStyle = style
+    }
+}
+
+// Taps on the Today widget (hardintrips://open?trip=…&day=…) go to the web
+// app's handleWidgetLink. One that launches the app waits for the page to say
+// it's up (its "widgetLink" message), so it isn't lost while the page loads.
+final class WidgetLinks {
+    static let shared = WidgetLinks()
+    static func handles(_ url: URL) -> Bool { url.scheme == "hardintrips" }
+
+    weak var webView: WKWebView?
+    private var pending: URL?
+    private var ready = false
+
+    func open(_ url: URL) {
+        pending = url
+        if ready { deliver() }
+    }
+
+    func pageReady() {
+        ready = true
+        deliver()
+    }
+
+    private func deliver() {
+        guard let url = pending, let webView = webView,
+              let data = try? JSONEncoder().encode(url.absoluteString),
+              let arg = String(data: data, encoding: .utf8) else { return }
+        pending = nil
+        webView.evaluateJavaScript("window.handleWidgetLink && handleWidgetLink(\(arg))")
     }
 }
 

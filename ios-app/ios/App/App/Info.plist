@@ -31,6 +31,13 @@
 				<string>com.googleusercontent.apps.298565083065-j425l2o0ku65odij251ta8qq04u63b08</string>
 			</array>
 		</dict>
+		<dict>
+			<!-- Taps on the Today widget: hardintrips://open?trip=…&day=… (SceneDelegate.swift) -->
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hardintrips</string>
+			</array>
+		</dict>
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

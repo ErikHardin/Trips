@@ -243,6 +243,7 @@ async function handleWidgetData(env, request) {
   }
 
   const tripInfo = {
+    id:            chosenId,
     name:          chosen.name || '',
     emoji:         chosen.emoji || '✈️',
     status:        chosen.status,
@@ -263,6 +264,7 @@ async function handleWidgetData(env, request) {
   if (todayRow) {
     const { day, raws } = widgetDay(todayRow.d);
     todayData = day;
+    todayData.dayId = todayRow.id;
     // Extras for the native Today widget (widget.js ignores them). Each one is
     // best-effort: a failed lookup just leaves its line off the widget.
     const [weather, flights] = await Promise.all([
@@ -277,6 +279,7 @@ async function handleWidgetData(env, request) {
   let tomorrowData = null;
   if (tomorrowRow) {
     tomorrowData = widgetDay(tomorrowRow.d).day;
+    tomorrowData.dayId = tomorrowRow.id;
     tomorrowData.activities = tomorrowData.activities.slice(0, 8);
   }
 
@@ -392,6 +395,7 @@ function widgetDay(d) {
     text:     a.text || a.description || '',
     location: [(a.text || a.description || ''), city].filter(Boolean).join(', '),
     ...(W_BOOKING_EMOJI[a.bookingStatus] && { booking: W_BOOKING_EMOJI[a.bookingStatus] }),
+    ...(a.drive && { driving: true }),
   }));
   return { day: { city: d.city || '', description: city, activities }, raws: sorted.map(x => x.a) };
 }
@@ -616,7 +620,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-29.2';
+const WORKER_VERSION = '2026-10-30.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
