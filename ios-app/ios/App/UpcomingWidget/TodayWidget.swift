@@ -25,6 +25,7 @@ struct TodayTrip: Decodable, Hashable {
     let emoji: String?
     let status: String?
     let daysUntil: Int?
+    var id: String? = nil   // for the links a tap opens
 }
 
 // A drive activity's time: from the app's saved drive times, or the push
@@ -42,6 +43,7 @@ struct TodayActivity: Decodable, Hashable {
     let text: String?
     var booking: String? = nil   // booking status emoji: 📆 💲 🗓️ 🚫 🚶🏼
     var drive: DriveInfo? = nil
+    var driving: Bool? = nil     // a drive in the itinerary, whether or not its time is known
 
     // "Darling Wines tasting 💲": the name with its booking status after it
     var name: String {
@@ -141,6 +143,7 @@ private struct TodayDay: Decodable {
     let weather: DayWeather?
     let hotel: String?
     let flights: [TodayFlight]?
+    let dayId: String?
 
     var label: String? { (description?.isEmpty == false) ? description : city }
 }
@@ -156,6 +159,7 @@ private struct TodayPayload: Decodable {
 struct TomorrowPreview: Hashable {
     let city: String?
     let activities: [TodayActivity]
+    var dayId: String? = nil
 }
 
 struct TodayEntry: TimelineEntry {
@@ -168,6 +172,7 @@ struct TodayEntry: TimelineEntry {
     var flights: [TodayFlight] = []
     var tomorrow: TomorrowPreview? = nil
     var next: NextTripInfo? = nil
+    var dayId: String? = nil
     let failed: Bool
 
     // What's still ahead at this entry's time. A timed activity drops off a
@@ -192,7 +197,26 @@ struct TodayEntry: TimelineEntry {
 
     func at(_ date: Date) -> TodayEntry {
         TodayEntry(date: date, trip: trip, city: city, activities: activities,
-                   weather: weather, hotel: hotel, flights: flights, tomorrow: tomorrow, next: next, failed: failed)
+                   weather: weather, hotel: hotel, flights: flights, tomorrow: tomorrow, next: next,
+                   dayId: dayId, failed: failed)
+    }
+
+    // What a tap opens: hardintrips://open?trip=…&day=…, the trip at that day
+    // in the app. A drive's row adds its text and time (&maps=1), and the app
+    // also offers its directions (SceneDelegate.swift, handleWidgetLink).
+    func link(day: String?, for activity: TodayActivity? = nil) -> URL? {
+        guard let tripId = trip?.id else { return nil }
+        var items = [("trip", tripId)]
+        if let day = day { items.append(("day", day)) }
+        if let a = activity, a.driving == true {
+            items += [("text", a.text ?? ""), ("time", a.time ?? ""), ("maps", "1")]
+        }
+        // Everything but unreserved ASCII encoded, so a name's "&" or "+" survives
+        let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+        let query = items.map { key, value in
+            key + "=" + (value.addingPercentEncoding(withAllowedCharacters: plain) ?? "")
+        }.joined(separator: "&")
+        return URL(string: "hardintrips://open?" + query)
     }
 
     static let sample = TodayEntry(
@@ -279,7 +303,7 @@ struct TodayProvider: TimelineProvider {
             let day = payload.today
             let tomorrow = payload.tomorrow.flatMap { t -> TomorrowPreview? in
                 let acts = t.activities ?? []
-                return acts.isEmpty ? nil : TomorrowPreview(city: t.label, activities: acts)
+                return acts.isEmpty ? nil : TomorrowPreview(city: t.label, activities: acts, dayId: t.dayId)
             }
             completion(TodayEntry(date: Date(),
                                   trip: payload.trip,
@@ -290,6 +314,7 @@ struct TodayProvider: TimelineProvider {
                                   flights: day?.flights ?? [],
                                   tomorrow: tomorrow,
                                   next: payload.next,
+                                  dayId: day?.dayId,
                                   failed: false))
         }.resume()
     }
@@ -307,6 +332,8 @@ struct TodayWidgetView: View {
             .padding(.horizontal, family == .systemLarge ? 16 : 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .containerBackground(Palette.background, for: .widget)
+            // A tap anywhere else (and on the small widget, any tap) opens today
+            .widgetURL(entry.link(day: entry.dayId))
     }
 
     @ViewBuilder private var content: some View {
@@ -349,6 +376,7 @@ struct TodayWidgetView: View {
                 ForEach(Array(remaining.prefix(limit)), id: \.self) { a in
                     ActivityRow(activity: a, size: small ? .small : .medium,
                                 isNext: !small && a == entry.nextUp, now: entry.date)
+                        .tapOpens(small ? nil : entry.link(day: entry.dayId, for: a))
                 }
             }
         }
@@ -386,10 +414,12 @@ struct TodayWidgetView: View {
                     if let ahead = remaining.firstIndex(of: a) {
                         TimelineRow(activity: a, style: a == entry.nextUp ? .next : .ahead,
                                     first: i == 0, last: i == all.count - 1, now: entry.date)
+                            .tapOpens(entry.link(day: entry.dayId, for: a))
                             .fit(rank: 1 + ahead, group: .today)
                     } else {
                         TimelineRow(activity: a, style: .done,
                                     first: i == 0, last: i == all.count - 1, now: entry.date)
+                            .tapOpens(entry.link(day: entry.dayId, for: a))
                             .fit(rank: doneRank + (done.count - 1 - (done.firstIndex(of: a) ?? 0)))
                     }
                 }
@@ -410,6 +440,7 @@ struct TodayWidgetView: View {
                     ForEach(Array(tomorrowActs.prefix(tomorrowCap).enumerated()), id: \.offset) { i, a in
                         TimelineRow(activity: a, style: remaining.isEmpty ? .ahead : .later,
                                     first: i == 0, last: i == tomorrowCap - 1)
+                            .tapOpens(entry.link(day: entry.tomorrow?.dayId, for: a))
                             .fit(rank: tomorrowRank + i, group: .tomorrow)
                     }
                     moreRows(.tomorrow, upTo: tomorrowActs.count)
@@ -683,6 +714,11 @@ private struct FitInfo {
 private struct FitKey: LayoutValueKey { static let defaultValue = FitInfo() }
 
 extension View {
+    // A tap here opens the URL (medium and large widgets only)
+    @ViewBuilder fileprivate func tapOpens(_ url: URL?) -> some View {
+        if let url = url { Link(destination: url) { self } } else { self }
+    }
+
     fileprivate func fit(rank: Int, group: FitGroup = .none) -> some View {
         layoutValue(key: FitKey.self, value: FitInfo(rank: rank, group: group))
     }

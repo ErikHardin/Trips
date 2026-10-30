@@ -2431,7 +2431,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 378 };
+window.BUILD_INFO = { prNumber: 379 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3335,6 +3335,41 @@ function handlePushRoute(route, tries) {
   else if (route.screen === 'users' && userRole === 'admin') openAdminPanel('userAccessSection');
   else if (route.screen === 'settings') openAdminPanel('notifySection');
 }
+
+// A tap on the Today widget, handed over by the iOS app (SceneDelegate.swift):
+// hardintrips://open?trip=…&day=… opens the trip at that day, and a drive's
+// row (&text=…&time=…&maps=1) also opens its "Open in…" maps choice. Like a
+// push tap, it can arrive before the app has signed in and loaded trips.
+window.handleWidgetLink = function(url, tries) {
+  tries = tries || 0;
+  let q;
+  try { q = new URL(url).searchParams; } catch(e) { return; }
+  const tripId = q.get('trip'), dayId = q.get('day');
+  if (!tripId) return;
+  if (!(currentUser && userRole && typeof allTrips !== 'undefined' && allTrips[tripId])) {
+    if (tries < 40) setTimeout(() => handleWidgetLink(url, tries + 1), 250);
+    return;
+  }
+  openTrip(tripId, 'itinerary');
+  const trip = allTrips[tripId];
+  const day = dayId && trip.days && trip.days[dayId];
+  if (!day) return;
+  // After openTrip's own scroll to today, for a tap on tomorrow's plans
+  setTimeout(() => {
+    const card = document.getElementById('dc-' + dayId);
+    if (card) { card.classList.add('open'); card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }, 300);
+  if (q.get('maps') !== '1') return;
+  const text = q.get('text') || '', time = q.get('time') || '';
+  const acts = _actList(day);
+  const idx = acts.findIndex(a => a && typeof a === 'object' && a.text === text && (a.time || '') === time);
+  if (idx < 0) return;
+  const a = acts[idx];
+  const region = (day.region || '').trim();
+  openMapsChoice(text + (region ? ', ' + region : ''), dayId, (a.key != null && a.key !== '') ? a.key : idx, idx);
+};
+// Tells the iOS app the page is up, so a widget tap that launched it isn't lost
+try { window.webkit.messageHandlers.widgetLink.postMessage('ready'); } catch (e) {}
 
 async function loadNotifySettings() {
   const key = pushEmailKey();
