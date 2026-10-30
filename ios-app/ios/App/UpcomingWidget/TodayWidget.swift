@@ -460,10 +460,9 @@ private struct ActivityRow: View {
                 .font(.system(size: large ? 14 : 11))
                 .fixedSize()
             VStack(alignment: .leading, spacing: 1) {
-                Text(activity.name)
+                PlanName(activity: activity, lines: large ? 2 : 1)
                     .font(.system(size: large ? 14 : 12, weight: .bold))
                     .foregroundStyle(Palette.ink)
-                    .lineLimit(large ? 2 : 1)
                     .minimumScaleFactor(0.85)
                     .fixedSize(horizontal: false, vertical: large)
                 if large, let drive = activity.drive, let line = driveLine(drive) {
@@ -775,10 +774,29 @@ private struct MoreRow: View {
         HStack(spacing: 8) {
             Color.clear.frame(width: 72, height: 1)
             Text("+\(count) more")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Palette.muted)
         }
         .padding(.bottom, 2)
+    }
+}
+
+// A plan's name with its booking status after it: "Ridge Vineyards 📆". On one
+// line the status stays and the name is cut short instead; when the name can
+// wrap, the status follows its last word.
+private struct PlanName: View {
+    let activity: TodayActivity
+    let lines: Int
+
+    var body: some View {
+        if lines == 1, let booking = activity.booking, !booking.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(activity.text ?? "").lineLimit(1)
+                Text(booking).fixedSize()
+            }
+        } else {
+            Text(activity.name).lineLimit(lines)
+        }
     }
 }
 
@@ -786,7 +804,8 @@ private struct MoreRow: View {
 //   11am  ●  🚗 Drive to Sayulita
 //         │  in 40 min · 🚗 38 min · leave by 10:15am
 //    1pm  ○  🌮 Lunch at Don Pedro's
-// Done plans and tomorrow's (while today is still going) are gray, one line.
+// The next plan's name can wrap; the rest are one line, cut short. Done plans
+// and tomorrow's (while today is still going) are gray.
 private struct TimelineRow: View {
     enum Style { case done, next, ahead, later }
 
@@ -801,7 +820,7 @@ private struct TimelineRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Text(activity.time ?? "")
-                .font(.system(size: 12.5, weight: .bold))
+                .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(gray ? Palette.muted : Palette.terracotta)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -810,7 +829,7 @@ private struct TimelineRow: View {
             // The dot; the line joining it to the rows above and below is drawn
             // behind the row, so it runs the row's full height
             VStack(spacing: 0) {
-                Rectangle().fill(first ? Color.clear : Palette.ink.opacity(0.15)).frame(width: 1, height: 4)
+                Rectangle().fill(first ? Color.clear : Palette.ink.opacity(0.15)).frame(width: 1, height: 3)
                 Circle()
                     .strokeBorder(style == .next ? Palette.terracotta : Palette.muted, lineWidth: 1.5)
                     .background(Circle().fill(style == .next ? Palette.terracotta : Palette.background))
@@ -822,20 +841,19 @@ private struct TimelineRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(String((activity.emoji ?? "📌").prefix(1)))
                         .fixedSize()
-                    Text(activity.name)
-                        .lineLimit(gray ? 1 : 2)
-                        .fixedSize(horizontal: false, vertical: !gray)
+                    PlanName(activity: activity, lines: style == .next ? 2 : 1)
+                        .fixedSize(horizontal: false, vertical: style == .next)
                 }
-                .font(.system(size: gray ? 12.5 : 13.5, weight: gray ? .medium : .bold))
+                .font(.system(size: gray ? 11.5 : 12, weight: gray ? .medium : .bold))
                 .foregroundStyle(gray ? Palette.muted : Palette.ink)
                 if !gray, let line = subline {
                     line
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
             }
-            .padding(.bottom, last ? 0 : 6)
+            .padding(.bottom, last ? 0 : 4)
             Spacer(minLength: 0)
         }
         .background(alignment: .topLeading) {
@@ -844,7 +862,7 @@ private struct TimelineRow: View {
                 Rectangle()
                     .fill(Palette.ink.opacity(0.15))
                     .frame(width: 1)
-                    .padding(.top, first ? 8 : 0)
+                    .padding(.top, first ? 7 : 0)
                     .offset(x: 66.5)
             }
         }
