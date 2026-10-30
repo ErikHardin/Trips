@@ -357,10 +357,17 @@ struct TodayWidgetView: View {
     // Large: the trip, a weather table (today and the next 3 days), then the
     // day as a timeline: plans already done in gray, the next one with an
     // orange dot and its countdown, then tomorrow under it, as full rows once
-    // today is done. Rows are fitted by their estimated height, so a drive's
-    // extra line or a long name that wraps doesn't squeeze the bottom row.
+    // today is done. FitRows measures the rows and shows as many as fit:
+    // today's plans still ahead first, then tomorrow's, then today's done
+    // plans, newest first, with "+2 more" under any group that doesn't fit.
     private var largeDay: some View {
-        let plan = LargePlan(entry: entry)
+        let all = entry.activities ?? []
+        let remaining = entry.remaining
+        let done = all.filter { !remaining.contains($0) }
+        let tomorrowActs = entry.tomorrow?.activities ?? []
+        let tomorrowCap = min(tomorrowActs.count, remaining.isEmpty ? 3 : 4)
+        let tomorrowRank = remaining.count + 1
+        let doneRank = tomorrowRank + tomorrowCap
         return VStack(alignment: .leading, spacing: 6) {
             if let trip = entry.trip {
                 Text((trip.emoji ?? "✈️") + "  " + (trip.name ?? "Trip"))
@@ -371,26 +378,59 @@ struct TodayWidgetView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             if let weather = entry.weather { WeatherTable(weather: weather, now: entry.date) }
-            SectionLabel(text: header, extra: plan.moreToday, color: Palette.terracotta)
+            SectionLabel(text: header, extra: 0, color: Palette.terracotta)
                 .padding(.top, 2)
             ForEach(entry.flights, id: \.self) { FlightRow(flight: $0) }
-            if plan.today.isEmpty {
-                NothingElseRow()
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(plan.today.enumerated()), id: \.offset) { i, a in
-                        TimelineRow(activity: a,
-                                    style: plan.past.contains(a) ? .done : (a == entry.nextUp ? .next : .ahead),
-                                    first: i == 0, last: i == plan.today.count - 1, now: entry.date)
+            FitRows(totals: [.today: remaining.count, .tomorrow: tomorrowActs.count]) {
+                ForEach(Array(all.enumerated()), id: \.offset) { i, a in
+                    if let ahead = remaining.firstIndex(of: a) {
+                        TimelineRow(activity: a, style: a == entry.nextUp ? .next : .ahead,
+                                    first: i == 0, last: i == all.count - 1, now: entry.date)
+                            .fit(rank: 1 + ahead, group: .today)
+                    } else {
+                        TimelineRow(activity: a, style: .done,
+                                    first: i == 0, last: i == all.count - 1, now: entry.date)
+                            .fit(rank: doneRank + (done.count - 1 - (done.firstIndex(of: a) ?? 0)))
                     }
                 }
-                if plan.upcoming.isEmpty { NothingElseRow() }
+                moreRows(.today, upTo: remaining.count)
+                if remaining.isEmpty {
+                    NothingElseRow()
+                        .padding(.top, all.isEmpty ? 0 : 6)
+                        .fit(rank: 0)
+                }
+                if tomorrowCap > 0 {
+                    // The divider and label go with tomorrow's first row
+                    Rectangle().fill(Palette.ink.opacity(0.1)).frame(height: 1)
+                        .padding(.vertical, 6)
+                        .fit(rank: tomorrowRank)
+                    SectionLabel(text: tomorrowHeader, extra: 0)
+                        .padding(.bottom, 2)
+                        .fit(rank: tomorrowRank)
+                    ForEach(Array(tomorrowActs.prefix(tomorrowCap).enumerated()), id: \.offset) { i, a in
+                        TimelineRow(activity: a, style: remaining.isEmpty ? .ahead : .later,
+                                    first: i == 0, last: i == tomorrowCap - 1)
+                            .fit(rank: tomorrowRank + i, group: .tomorrow)
+                    }
+                    moreRows(.tomorrow, upTo: tomorrowActs.count)
+                }
             }
-            if plan.tomorrowLimit > 0, let tomorrow = entry.tomorrow {
-                Rectangle().fill(Palette.ink.opacity(0.1)).frame(height: 1)
-                TomorrowSection(tomorrow: tomorrow, limit: plan.tomorrowLimit, prominent: plan.upcoming.isEmpty)
-            }
+            .clipped()
         }
+    }
+
+    // A "+N more" line for each N a group could leave out; FitRows shows the
+    // one that matches
+    @ViewBuilder private func moreRows(_ group: FitGroup, upTo total: Int) -> some View {
+        ForEach(Array(stride(from: 1, through: total, by: 1)), id: \.self) { n in
+            MoreRow(count: n).layoutValue(key: FitKey.self, value: FitInfo(group: group, more: n))
+        }
+    }
+
+    // "TOMORROW · PARIS"
+    private var tomorrowHeader: String {
+        guard let city = entry.tomorrow?.city, !city.isEmpty else { return "TOMORROW" }
+        return "TOMORROW  ·  " + city.uppercased()
     }
 
     // "TODAY · OAXACA"
@@ -626,58 +666,119 @@ private struct FlightRow: View {
     }
 }
 
-// What the large widget fits under the weather: today's plans still ahead
-// first (each by its estimated height), then tomorrow, then today's plans
-// already done, newest first, in whatever room is left. When today is done,
-// tomorrow comes before them.
-private struct LargePlan {
-    let upcoming: [TodayActivity]   // shown, still ahead
-    let past: [TodayActivity]       // shown, done
-    let today: [TodayActivity]      // past + upcoming, in the day's order
-    let moreToday: Int              // still ahead but no room
-    let tomorrowLimit: Int
+// Which of the large widget's plans fit under the weather, measured at their
+// real height. Rows are tried in rank order and shown while they fit; rows
+// that share a rank go together (tomorrow's label with its first row), and
+// rank 0 always shows. Once one of a group's rows doesn't fit, the rest of
+// that group stays off, and nothing goes after today's. A group with rows
+// left off gets its "+N more" line, room for which comes from the last rows
+// fitted. Rows are stacked in their own order, whatever their rank.
+private enum FitGroup: Hashable { case none, today, tomorrow }
 
-    init(entry: TodayEntry) {
-        let all = entry.activities ?? []
-        let remaining = entry.remaining
-        let done = all.filter { !remaining.contains($0) }
-        // Room under "TODAY · city", in points: the widget less its padding,
-        // the title, the weather table and the label; then each flight
-        var room: CGFloat = entry.weather != nil ? 176 : 270
-        room -= CGFloat(entry.flights.count) * 42
+private struct FitInfo {
+    var rank = 0
+    var group = FitGroup.none
+    var more: Int? = nil   // a "+N more" line, for when N of the group's plans are left off
+}
 
-        var ahead: [TodayActivity] = []
-        for a in remaining {
-            let h = TimelineRow.height(a, style: a == entry.nextUp ? .next : .ahead)
-            if h > room && !ahead.isEmpty { break }
-            ahead.append(a)
-            room -= h
-        }
-        if ahead.isEmpty { room -= TimelineRow.oneLine }   // "Nothing else planned today"
+private struct FitKey: LayoutValueKey { static let defaultValue = FitInfo() }
 
-        // Tomorrow: its label and divider, then rows. Full rows once today is
-        // done, otherwise one-line gray rows in what's left.
-        var tomorrow = 0
-        let tomorrowActs = entry.tomorrow?.activities ?? []
-        if !tomorrowActs.isEmpty && room >= 24 + TimelineRow.oneLine {
-            room -= 24
-            for a in tomorrowActs.prefix(ahead.isEmpty ? 3 : 4) {
-                let h = TimelineRow.height(a, style: ahead.isEmpty ? .ahead : .later)
-                if h > room { break }
-                tomorrow += 1
-                room -= h
+extension View {
+    fileprivate func fit(rank: Int, group: FitGroup = .none) -> some View {
+        layoutValue(key: FitKey.self, value: FitInfo(rank: rank, group: group))
+    }
+}
+
+private struct FitRows: Layout {
+    // Each group's plans, shown or not (tomorrow's beyond the few offered too)
+    let totals: [FitGroup: Int]
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil }
+            ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let all = heights(subviews, width: width).reduce(0, +)
+        let height = proposal.height.flatMap { $0.isFinite ? $0 : nil } ?? all
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let h = heights(subviews, width: bounds.width)
+        let shown = chosen(subviews, heights: h, room: bounds.height)
+        var y = bounds.minY
+        for i in subviews.indices {
+            if shown.contains(i) {
+                subviews[i].place(at: CGPoint(x: bounds.minX, y: y),
+                                  proposal: ProposedViewSize(width: bounds.width, height: h[i]))
+                y += h[i]
+            } else {
+                // Off the bottom, where the widget clips it
+                subviews[i].place(at: CGPoint(x: bounds.minX, y: bounds.maxY + 2000), proposal: .zero)
             }
         }
+    }
 
-        // Done plans, newest first, while one-line rows still fit
-        let keep = min(done.count, max(0, Int(room / TimelineRow.oneLine)))
-        let past = Array(done.suffix(keep))
+    private func heights(_ subviews: Subviews, width: CGFloat) -> [CGFloat] {
+        subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+    }
 
-        upcoming = ahead
-        self.past = past
-        today = all.filter { past.contains($0) || ahead.contains($0) }
-        moreToday = remaining.count - ahead.count
-        tomorrowLimit = tomorrow
+    private func chosen(_ subviews: Subviews, heights: [CGFloat], room: CGFloat) -> Set<Int> {
+        let info = subviews.map { $0[FitKey.self] }
+        let rows = info.indices.filter { info[$0].more == nil }
+        func total(_ ids: [Int]) -> CGFloat { ids.reduce(0) { $0 + heights[$1] } }
+
+        var shown = Set(rows.filter { info[$0].rank == 0 })
+        var used = total(Array(shown))
+        var picked: [[Int]] = []
+        var full: Set<FitGroup> = []
+        for rank in Set(rows.map { info[$0].rank }).filter({ $0 > 0 }).sorted() {
+            let bundle = rows.filter { info[$0].rank == rank }
+            let group = bundle.map { info[$0].group }.first { $0 != .none } ?? .none
+            if full.contains(group) { continue }
+            if used + total(bundle) > room {
+                if group == .today { break }
+                full.insert(group)
+                continue
+            }
+            shown.formUnion(bundle)
+            used += total(bundle)
+            picked.append(bundle)
+        }
+
+        // "+N more" for each group with plans left off, giving back the last
+        // rows fitted until it fits too
+        func more(_ shown: Set<Int>) -> [Int] {
+            var lines: [Int] = []
+            for (group, count) in totals {
+                let fitted = shown.filter { info[$0].group == group }.count
+                guard fitted > 0, count > fitted else { continue }
+                if let line = info.indices.first(where: { info[$0].group == group && info[$0].more == count - fitted }) {
+                    lines.append(line)
+                }
+            }
+            return lines
+        }
+        while true {
+            let extra = more(shown)
+            if picked.isEmpty || used + total(extra) <= room { return shown.union(extra) }
+            let last = picked.removeLast()
+            shown.subtract(last)
+            used -= total(last)
+        }
+    }
+}
+
+// "+2 more", under the last plan that fits, in the names' column
+private struct MoreRow: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Color.clear.frame(width: 72, height: 1)
+            Text("+\(count) more")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.muted)
+        }
+        .padding(.bottom, 2)
     }
 }
 
@@ -696,19 +797,6 @@ private struct TimelineRow: View {
     var now = Date()
 
     private var gray: Bool { style == .done || style == .later }
-
-    // One-line row: the 13.5pt name plus the gap under it
-    static let oneLine: CGFloat = 23
-
-    // Estimated height, for fitting rows: a second line when the name is long
-    // enough to wrap, and one more for the countdown or drive time
-    static func height(_ a: TodayActivity, style: Style) -> CGFloat {
-        if style == .done || style == .later { return oneLine }
-        var h = oneLine
-        if a.name.count > 30 { h += 17 }
-        if style == .next || a.drive?.mins != nil { h += 15 }
-        return h
-    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -776,32 +864,6 @@ private struct TimelineRow: View {
         }
         guard let drive = drive else { return nil }
         return Text(drive).foregroundColor(activity.drive?.leaveBy != nil ? Palette.terracotta : Palette.muted)
-    }
-}
-
-// "TOMORROW · PARIS", then its first few plans: muted and one line each under
-// today's, or, once today is done, as full rows that wrap
-private struct TomorrowSection: View {
-    let tomorrow: TomorrowPreview
-    let limit: Int
-    var prominent = false
-
-    private var label: String {
-        guard let city = tomorrow.city, !city.isEmpty else { return "TOMORROW" }
-        return "TOMORROW  ·  " + city.uppercased()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            SectionLabel(text: label, extra: max(0, tomorrow.activities.count - limit))
-            VStack(alignment: .leading, spacing: 0) {
-                let shown = Array(tomorrow.activities.prefix(limit))
-                ForEach(Array(shown.enumerated()), id: \.offset) { i, a in
-                    TimelineRow(activity: a, style: prominent ? .ahead : .later,
-                                first: i == 0, last: i == shown.count - 1)
-                }
-            }
-        }
     }
 }
 

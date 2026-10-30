@@ -13361,14 +13361,15 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
 
       const actCoords = actPinnedCoords.map((pinned, j) => pinned || actGeoCoords[j]);
 
-      // For leave-by pushes: each timed drive, and where it starts from (the
-      // previous drive stop, else last night's hotel)
+      // For leave-by pushes and the widget's drive times: each drive, and where
+      // it starts from (the previous drive stop, else last night's hotel).
+      // Untimed drives too, for the widget; the push cron skips them.
       const pushStops = [];
       let from = prevEndpoint.coord ? { name: prevEndpoint.name || '', lat: prevEndpoint.coord[0], lng: prevEndpoint.coord[1] } : null;
       actCoords.forEach((c, j) => {
         if (!c) return;
         const here = { name: actNames[j] || '', lat: c[0], lng: c[1] };
-        if (actTimes[j] && from) pushStops.push(Object.assign({ text: actRawTexts[j], time: actTimes[j], from }, here));
+        if (from) pushStops.push(Object.assign({ text: actRawTexts[j], time: actTimes[j] || '', from }, here));
         from = here;
       });
       savePushGeo(tripIdForPush, dayId, pushStops);
