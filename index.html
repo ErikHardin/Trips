@@ -2431,7 +2431,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 376 };
+window.BUILD_INFO = { prNumber: 377 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -13361,14 +13361,15 @@ async function fetchTripDriveTimes(days, allDays, tripIdForPush) {
 
       const actCoords = actPinnedCoords.map((pinned, j) => pinned || actGeoCoords[j]);
 
-      // For leave-by pushes: each timed drive, and where it starts from (the
-      // previous drive stop, else last night's hotel)
+      // For leave-by pushes and the widget's drive times: each drive, and where
+      // it starts from (the previous drive stop, else last night's hotel).
+      // Untimed drives too, for the widget; the push cron skips them.
       const pushStops = [];
       let from = prevEndpoint.coord ? { name: prevEndpoint.name || '', lat: prevEndpoint.coord[0], lng: prevEndpoint.coord[1] } : null;
       actCoords.forEach((c, j) => {
         if (!c) return;
         const here = { name: actNames[j] || '', lat: c[0], lng: c[1] };
-        if (actTimes[j] && from) pushStops.push(Object.assign({ text: actRawTexts[j], time: actTimes[j], from }, here));
+        if (from) pushStops.push(Object.assign({ text: actRawTexts[j], time: actTimes[j] || '', from }, here));
         from = here;
       });
       savePushGeo(tripIdForPush, dayId, pushStops);
