@@ -160,6 +160,7 @@ struct TomorrowPreview: Hashable {
     let city: String?
     let activities: [TodayActivity]
     var dayId: String? = nil
+    var flights: [TodayFlight] = []
 }
 
 struct TodayEntry: TimelineEntry {
@@ -302,8 +303,9 @@ struct TodayProvider: TimelineProvider {
             }
             let day = payload.today
             let tomorrow = payload.tomorrow.flatMap { t -> TomorrowPreview? in
-                let acts = t.activities ?? []
-                return acts.isEmpty ? nil : TomorrowPreview(city: t.label, activities: acts, dayId: t.dayId)
+                let acts = t.activities ?? [], flights = t.flights ?? []
+                return acts.isEmpty && flights.isEmpty ? nil
+                    : TomorrowPreview(city: t.label, activities: acts, dayId: t.dayId, flights: flights)
             }
             completion(TodayEntry(date: Date(),
                                   trip: payload.trip,
@@ -392,10 +394,11 @@ struct TodayWidgetView: View {
         let all = entry.activities ?? []
         let remaining = entry.remaining
         let done = all.filter { !remaining.contains($0) }
+        let tomorrowFlights = entry.tomorrow?.flights ?? []
         let tomorrowActs = entry.tomorrow?.activities ?? []
         let tomorrowCap = min(tomorrowActs.count, remaining.isEmpty ? 3 : 4)
         let tomorrowRank = remaining.count + 1
-        let doneRank = tomorrowRank + tomorrowCap
+        let doneRank = tomorrowRank + tomorrowFlights.count + tomorrowCap
         return VStack(alignment: .leading, spacing: 6) {
             if let trip = entry.trip {
                 Text((trip.emoji ?? "✈️") + "  " + (trip.name ?? "Trip"))
@@ -409,7 +412,7 @@ struct TodayWidgetView: View {
             SectionLabel(text: header, extra: 0, color: Palette.terracotta)
                 .padding(.top, 2)
             ForEach(entry.flights, id: \.self) { FlightRow(flight: $0) }
-            FitRows(totals: [.today: remaining.count, .tomorrow: tomorrowActs.count]) {
+            FitRows(totals: [.today: remaining.count, .tomorrow: tomorrowFlights.count + tomorrowActs.count]) {
                 ForEach(Array(all.enumerated()), id: \.offset) { i, a in
                     if let ahead = remaining.firstIndex(of: a) {
                         TimelineRow(activity: a, style: a == entry.nextUp ? .next : .ahead,
@@ -429,21 +432,28 @@ struct TodayWidgetView: View {
                         .padding(.top, all.isEmpty ? 0 : 6)
                         .fit(rank: 0)
                 }
-                if tomorrowCap > 0 {
-                    // The divider and label go with tomorrow's first row
+                if tomorrowFlights.count + tomorrowCap > 0 {
+                    // The divider and label go with tomorrow's first row: its
+                    // flights, then its plans
                     Rectangle().fill(Palette.ink.opacity(0.1)).frame(height: 1)
                         .padding(.vertical, 6)
                         .fit(rank: tomorrowRank)
                     SectionLabel(text: tomorrowHeader, extra: 0)
                         .padding(.bottom, 2)
                         .fit(rank: tomorrowRank)
+                    ForEach(Array(tomorrowFlights.enumerated()), id: \.offset) { i, flight in
+                        FlightRow(flight: flight)
+                            .padding(.bottom, 4)
+                            .tapOpens(entry.link(day: entry.tomorrow?.dayId))
+                            .fit(rank: tomorrowRank + i, group: .tomorrow)
+                    }
                     ForEach(Array(tomorrowActs.prefix(tomorrowCap).enumerated()), id: \.offset) { i, a in
                         TimelineRow(activity: a, style: remaining.isEmpty ? .ahead : .later,
                                     first: i == 0, last: i == tomorrowCap - 1)
                             .tapOpens(entry.link(day: entry.tomorrow?.dayId, for: a))
-                            .fit(rank: tomorrowRank + i, group: .tomorrow)
+                            .fit(rank: tomorrowRank + tomorrowFlights.count + i, group: .tomorrow)
                     }
-                    moreRows(.tomorrow, upTo: tomorrowActs.count)
+                    moreRows(.tomorrow, upTo: tomorrowFlights.count + tomorrowActs.count)
                 }
             }
             .clipped()
