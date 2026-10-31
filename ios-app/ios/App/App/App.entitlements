@@ -8,5 +8,10 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.erikhardin.trips</string>
+		<string>$(AppIdentifierPrefix)com.erikhardin.trips.shared</string>
+	</array>
 </dict>
 </plist>

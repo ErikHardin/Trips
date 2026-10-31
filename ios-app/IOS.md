@@ -210,6 +210,21 @@ the home screen → **+** → Hardin Trips.
   Reads `/widget-data` with the phone's date; it shows the first *active* trip
   (else the next upcoming one) for everyone.
 
+- **Wine** (`WineWidget.swift`, medium, admins): today's 🍷 stops one at a
+  time. ‹ › switch stops, − / + set each color's bottle count without opening
+  the app (iOS 17 interactive widget buttons), and the trip's total runs along
+  the bottom; tapping the stop's name opens its Wine sheet. It needs a key: in
+  the app, **Settings → Wine widget → Turn on for this iPhone**. The Worker
+  (`/wine-widget/*`) issues a random key, keeping only its hash at
+  `wineWidgetKeys/`, and the key can only read today's wine stops and set
+  bottle counts — and stops working if the person isn't an admin any more,
+  turns it off, or signs out. The app stores the key in the keychain group
+  `com.erikhardin.trips.shared`, which the app and the widget extension both
+  list under `keychain-access-groups` (`App.entitlements`,
+  `UpcomingWidget.entitlements`); `AppIdentifierPrefix` in both Info.plists
+  gives the code the group's full name. Taps are kept on the phone and sent
+  as absolute counts, so they survive no signal and a retry can't double up.
+
 A new widget file must be added to the **UpcomingWidget** target (Xcode does
 this when you create it there; the project file isn't folder-synced).
 
