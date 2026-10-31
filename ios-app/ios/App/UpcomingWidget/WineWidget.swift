@@ -47,7 +47,8 @@ struct WinePayload: Codable {
     var trip: WineTripRef?
     var stops: [WineStop]
     var totals: [String: Int]
-    var date: String?          // the phone's date it was fetched for
+    var capacity: Int? = nil   // the trip's bottle target in Hardin Cellar, if set
+    var date: String? = nil    // the phone's date it was fetched for
 }
 
 private struct WineSetResponse: Decodable {
@@ -238,7 +239,8 @@ struct WineEntry: TimelineEntry {
                          counts: ["red": 2, "white": 1]),
                 WineStop(dayId: "d", key: "c", text: "Scribe Winery", time: "4pm", timeSort: "16:00", counts: [:]),
             ],
-            totals: ["red": 7, "white": 2, "rose": 2, "sparkling": 0]),
+            totals: ["red": 7, "white": 2, "rose": 2, "sparkling": 0],
+            capacity: 24),
         pickedIndex: 1)
 
     var stops: [WineStop] { payload?.stops ?? [] }
@@ -569,8 +571,10 @@ struct WineWidgetView: View {
 
     private func totals(_ payload: WinePayload) -> some View {
         let total = WineColor.allCases.reduce(0) { $0 + (payload.totals[$1.rawValue] ?? 0) }
+        // "6/12 bottles" against the trip's target in Hardin Cellar, else "6 bottles"
+        let count = payload.capacity.map { "\(total)/\($0) bottles" } ?? "\(total) bottle\(total == 1 ? "" : "s")"
         return HStack(spacing: 10) {
-            (Text("Trip total ") + Text("\(total) bottle\(total == 1 ? "" : "s")").foregroundColor(Palette.ink).bold())
+            (Text("Trip total ") + Text(count).foregroundColor(Palette.ink).bold())
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Palette.muted)
                 .lineLimit(1)

@@ -1632,7 +1632,7 @@ function wineTripTotals(trip) {
   return totals;
 }
 
-// POST /wine-widget/data { key, date } → { trip, stops, totals }. The trip is
+// POST /wine-widget/data { key, date } → { trip, stops, totals, capacity }. The trip is
 // the one the Today widget shows; stops are its 🍷 activities across every day,
 // by date then time, each with its date, a "Fri Oct 30" label and its counts.
 // A 🍷 activity without a key gets one here, so the widget can point at it.
@@ -1680,7 +1680,27 @@ async function handleWineWidgetData(env, body) {
   found.sort((x, y) => (x.iso || '9999').localeCompare(y.iso || '9999')
     || (x.m == null ? 1e9 : x.m) - (y.m == null ? 1e9 : y.m));
   const stops = found.map(x => x.stop);
-  return jsonResponse({ trip: { id: tripId, name: trip.name || 'Trip' }, stops, totals: wineTripTotals(trip) });
+  return jsonResponse({ trip: { id: tripId, name: trip.name || 'Trip' }, stops, totals: wineTripTotals(trip),
+    capacity: await wineAppCapacity(tripId) });
+}
+
+// The bottle target set on this trip's linked trip in Hardin Cellar (the wine
+// app, its own Firebase project, whose trips/ is publicly readable): the trip
+// its Trips sync created (t_trips_<id>, or any trip linked by tripsTripId).
+// null when there isn't one, it has no target, or the wine app can't be reached.
+const WINE_APP_DB = 'https://wine-5ab2d-default-rtdb.firebaseio.com';
+async function wineAppCapacity(tripId) {
+  try {
+    const r = await fetch(WINE_APP_DB + '/trips.json');
+    if (!r.ok) return null;
+    const wineTrips = (await r.json()) || {};
+    const linked = wineTrips['t_trips_' + tripId]
+      || Object.values(wineTrips).find(t => t && t.tripsTripId === tripId);
+    const capacity = parseInt(linked && linked.capacity, 10);
+    return capacity > 0 ? capacity : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 // POST /wine-widget/set { key, tripId, dayId, actKey, color, count } → { counts, totals }.
