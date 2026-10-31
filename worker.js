@@ -281,6 +281,9 @@ async function handleWidgetData(env, request) {
     tomorrowData = widgetDay(tomorrowRow.d).day;
     tomorrowData.dayId = tomorrowRow.id;
     tomorrowData.activities = tomorrowData.activities.slice(0, 8);
+    // Tomorrow's flights too, for the large widget's preview (the day's status
+    // and gate from the flight-alert cron once it has looked them up)
+    tomorrowData.flights = await widgetFlights(env, chosen, tomorrowISO).catch(() => []);
   }
 
   // Not a trip day: the large widget shows the trip ahead instead
@@ -620,7 +623,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-30.1';
+const WORKER_VERSION = '2026-10-31.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
