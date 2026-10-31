@@ -8,5 +8,6 @@ struct HardinTripsWidgets: WidgetBundle {
     var body: some Widget {
         UpcomingWidget()
         TodayWidget()
+        WineWidget()
     }
 }

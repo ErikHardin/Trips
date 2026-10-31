@@ -1845,6 +1845,23 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
 
+    <!-- WINE WIDGET (iOS app; admins) -->
+    <div class="admin-section admin-only-section">
+      <div class="admin-panel">
+        <div class="admin-panel-header" id="wineWidgetSectionHeader" onclick="toggleAdminSection('wineWidgetSection')">
+          <div class="admin-section-title">Wine widget</div>
+          <span class="admin-panel-toggle" id="wineWidgetSectionToggle">+</span>
+        </div>
+        <div class="admin-panel-body" id="wineWidgetSectionBody" style="display:none;">
+          <div class="inbox-howto" id="wineWidgetStatus"></div>
+          <div style="display:flex;gap:8px;margin:10px 0 4px;">
+            <button class="form-btn" id="wineWidgetOnBtn" style="display:none;" onclick="enableWineWidget()">🍷 Turn on for this iPhone</button>
+            <button class="form-btn secondary" id="wineWidgetOffBtn" style="display:none;" onclick="disableWineWidget()">Turn off</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- UTILITIES GROUP -->
     <div class="admin-group-header admin-only-section">Utilities</div>
 
@@ -2443,7 +2460,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 383 };
+window.BUILD_INFO = { prNumber: 384 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3465,6 +3482,74 @@ window.saveNotifyPref = async function(key, value) {
   }
 };
 
+// ── Wine widget (iOS, admins) ──
+// The Worker issues this phone a key that can only read today's 🍷 stops and set
+// bottle counts. The key goes to the iOS app ("wineWidget" message handler),
+// which keeps it in the keychain the widget shares; a copy stays here so this
+// phone can turn it off again (and does on sign-out).
+const WINE_WIDGET_KEY = 'wineWidgetKey';
+function _wineWidgetKey() { try { return localStorage.getItem(WINE_WIDGET_KEY) || ''; } catch (e) { return ''; } }
+function _postWineWidget(msg) { try { window.webkit.messageHandlers.wineWidget.postMessage(msg); return true; } catch (e) { return false; } }
+
+function renderWineWidgetSettings() {
+  const status = document.getElementById('wineWidgetStatus');
+  const on = document.getElementById('wineWidgetOnBtn'), off = document.getElementById('wineWidgetOffBtn');
+  if (!status) return;
+  if (!isNativeApp()) {
+    status.textContent = 'The wine widget is in the Hardin Trips iPhone app. Open Settings there to turn it on.';
+    on.style.display = off.style.display = 'none';
+    return;
+  }
+  const enabled = !!_wineWidgetKey();
+  status.textContent = enabled
+    ? 'On for this iPhone. Add it from the home screen: long-press → + → Hardin Trips → Wine. It shows today’s 🍷 stops with − / + for each color.'
+    : 'Log bottles at today’s 🍷 stops from the home screen without opening the app. Turning it on gives this iPhone’s widget a key that can only change bottle counts.';
+  on.style.display = enabled ? 'none' : '';
+  off.style.display = enabled ? '' : 'none';
+}
+
+window.enableWineWidget = async function() {
+  const btn = document.getElementById('wineWidgetOnBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(PUSH_WORKER_URL + '/wine-widget/enable', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await window._auth.currentUser.getIdToken(), device: 'iPhone' }),
+    });
+    const r = await res.json();
+    if (!r.key) { showToast('Couldn’t turn it on: ' + (r.error || 'unknown error')); return; }
+    if (!_postWineWidget({ action: 'set', key: r.key })) {
+      showToast('Update the Hardin Trips app to use the wine widget');
+      fetch(PUSH_WORKER_URL + '/wine-widget/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: r.key }) }).catch(() => {});
+      return;
+    }
+    try { localStorage.setItem(WINE_WIDGET_KEY, r.key); } catch (e) {}
+    showToast('🍷 Wine widget is on');
+  } catch (e) {
+    showToast('Couldn’t reach the server — try again');
+  } finally {
+    btn.disabled = false;
+    renderWineWidgetSettings();
+  }
+};
+
+// Turns the widget off on this phone: retires the key and clears it from the keychain
+async function _turnOffWineWidget() {
+  const key = _wineWidgetKey();
+  _postWineWidget({ action: 'clear' });
+  try { localStorage.removeItem(WINE_WIDGET_KEY); } catch (e) {}
+  if (key) {
+    await fetch(PUSH_WORKER_URL + '/wine-widget/disable', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }),
+    }).catch(() => {});
+  }
+}
+window.disableWineWidget = async function() {
+  await _turnOffWineWidget();
+  showToast('Wine widget is off');
+  renderWineWidgetSettings();
+};
+
 window.sendTestPush = async function() {
   const btn = document.getElementById('notifyTestBtn');
   btn.disabled = true;
@@ -3516,6 +3601,7 @@ window.goHome = function() { showScreen('screen-home'); currentTripId = null; };
 
 window.lockApp = async function(toastMsg) {
   await forgetPushDevice();
+  await _turnOffWineWidget();
   _activityMutes = {};
   currentUser = null; userRole = null; guestTripIds = []; adminUser = '';
   userPerms = null; rolePolicies = {};
@@ -12228,6 +12314,9 @@ window.toggleAdminSection = function(sectionId) {
   }
   if (sectionId === 'notifySection' && opening) {
     loadNotifySettings();
+  }
+  if (sectionId === 'wineWidgetSection' && opening) {
+    renderWineWidgetSettings();
   }
   if (sectionId === 'userPoliciesSection' && opening) {
     renderUserPolicies();

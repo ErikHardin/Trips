@@ -157,6 +157,14 @@ export default {
     if (url.pathname === '/push/access-approved') {
       return handlePushAccessApproved(env, body);
     }
+    // Wine widget (iOS): an admin turns it on for a phone, which gets a key the
+    // widget then uses to read today's wine stops and set bottle counts
+    const wineWidgetRoutes = { '/wine-widget/enable': handleWineWidgetEnable, '/wine-widget/disable': handleWineWidgetDisable,
+      '/wine-widget/data': handleWineWidgetData, '/wine-widget/set': handleWineWidgetSet };
+    if (wineWidgetRoutes[url.pathname]) {
+      try { return await wineWidgetRoutes[url.pathname](env, body); }
+      catch (e) { return jsonResponse({ error: 'Wine widget: ' + e.message }, 500); }
+    }
     // Trip owners invite guests to their own trips (they can't write access/)
     const tripGuestRoutes = { '/trip-guests/list': handleTripGuestsList, '/trip-guests/add': handleTripGuestsAdd, '/trip-guests/remove': handleTripGuestsRemove };
     if (tripGuestRoutes[url.pathname]) {
@@ -657,6 +665,10 @@ const WORKER_ROUTES = [
   '/trip-guests/list',
   '/trip-guests/add',
   '/trip-guests/remove',
+  '/wine-widget/enable',
+  '/wine-widget/disable',
+  '/wine-widget/data',
+  '/wine-widget/set',
 ];
 
 async function handleVersion(env) {
@@ -1550,6 +1562,166 @@ async function handlePushAccessApproved(env, body) {
     route: { screen: 'home' },
   });
   return jsonResponse({ sent: r.sent });
+}
+
+// ── Wine widget ─────────────────────────────────────────────────────────────
+// The iOS wine widget logs bottles bought at today's 🍷 stops without opening
+// the app. An admin turns it on for a phone in Settings: /wine-widget/enable
+// checks their ID token and returns a random key, and only its SHA-256 is kept
+// (wineWidgetKeys/{hash} — no client rule, so only this Worker reads it). The
+// key can only read today's wine stops and set bottle counts, and stops
+// working if the person is no longer an admin or turns the widget off.
+// Counts are stored like the app's Wine sheet: activity.wine and wineFeed.
+const WINE_COLORS = ['red', 'white', 'rose', 'sparkling'];
+const WINE_DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// { email, emailKey, hash } for a live key held by a current admin; null otherwise
+async function wineWidgetCaller(env, key) {
+  if (typeof key !== 'string' || key.length < 32) return null;
+  const hash = await sha256Hex(key);
+  const rec = await fbGet(env, 'wineWidgetKeys/' + hash);
+  if (!rec || !rec.emailKey) return null;
+  const access = await fbGet(env, 'access/' + rec.emailKey);
+  if (!access || access.role !== 'admin') return null;
+  return { email: rec.email, emailKey: rec.emailKey, hash };
+}
+
+// POST /wine-widget/enable { idToken, device } → { key }
+async function handleWineWidgetEnable(env, body) {
+  let who;
+  try { who = await verifyFirebaseIdToken(env, body.idToken); }
+  catch (e) { return jsonResponse({ error: 'Not signed in: ' + e.message }, 401); }
+  const caller = await fbGet(env, 'access/' + who.emailKey);
+  if (!caller || caller.role !== 'admin') return jsonResponse({ error: 'Admins only' }, 403);
+  const key = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  await fbWrite(env, 'PUT', 'wineWidgetKeys/' + (await sha256Hex(key)), {
+    email: who.email, emailKey: who.emailKey,
+    device: String(body.device || 'iPhone').slice(0, 60), createdAt: Date.now(),
+  });
+  return jsonResponse({ key });
+}
+
+// POST /wine-widget/disable { key } — holding the key is enough to retire it
+async function handleWineWidgetDisable(env, body) {
+  if (typeof body.key !== 'string' || body.key.length < 32) return jsonResponse({ error: 'Bad key' }, 400);
+  await fbWrite(env, 'DELETE', 'wineWidgetKeys/' + (await sha256Hex(body.key)));
+  return jsonResponse({ ok: true });
+}
+
+function wineCounts(w) {
+  const out = {};
+  WINE_COLORS.forEach(c => { out[c] = Math.max(0, parseInt(w && w[c], 10) || 0); });
+  return out;
+}
+const wineTotal = counts => WINE_COLORS.reduce((n, c) => n + (counts[c] || 0), 0);
+const wineActs = d => d && d.activities ? (Array.isArray(d.activities) ? d.activities : Object.values(d.activities)) : [];
+
+// Bottles by color across every day of the trip
+function wineTripTotals(trip) {
+  const totals = wineCounts(null);
+  Object.values((trip && trip.days) || {}).forEach(d => wineActs(d).forEach(a => {
+    if (!a || typeof a !== 'object' || !a.wine) return;
+    const c = wineCounts(a.wine);
+    WINE_COLORS.forEach(k => { totals[k] += c[k]; });
+  }));
+  return totals;
+}
+
+// POST /wine-widget/data { key, date } → { trip, stops, totals }. The trip is
+// the one the Today widget shows; stops are that day's 🍷 activities in time
+// order, each with its counts. A 🍷 activity without a key gets one here, so
+// the widget can point at it.
+async function handleWineWidgetData(env, body) {
+  if (!(await wineWidgetCaller(env, body.key))) return jsonResponse({ error: 'Widget is off' }, 401);
+  const trips = (await fbGet(env, 'trips')) || {};
+  const todayISO = /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : new Date().toISOString().slice(0, 10);
+  const ids = Object.keys(trips).filter(id => trips[id]);
+  let tripId = ids.find(id => trips[id].status === 'active');
+  if (!tripId) {
+    tripId = ids.filter(id => trips[id].status === 'upcoming' && trips[id].startDateISO)
+      .sort((a, b) => trips[a].startDateISO.localeCompare(trips[b].startDateISO))[0];
+  }
+  if (!tripId) return jsonResponse({ trip: null, stops: [], totals: wineCounts(null) });
+  const trip = trips[tripId];
+  const dayEntry = Object.entries(trip.days || {})
+    .find(([, d]) => d && (d.dateISO || dayDateISO(d, trip.year)) === todayISO);
+  const stops = [];
+  if (dayEntry) {
+    const [dayId, day] = dayEntry;
+    const raw = day.activities || {};
+    const keys = Array.isArray(raw) ? raw.map((_, i) => String(i)) : Object.keys(raw);
+    const found = [];
+    for (const k of keys) {
+      const a = raw[k];
+      if (!a || typeof a !== 'object' || !String(a.emoji || '').startsWith('🍷')) continue;
+      let actKey = a.key;
+      if (!actKey) {
+        actKey = Math.random().toString(36).slice(2, 8);
+        await fbWrite(env, 'PUT', 'trips/' + tripId + '/days/' + dayId + '/activities/' + k + '/key', actKey);
+      }
+      const m = wActStartMinutes(a.time || '');
+      found.push({ m, stop: {
+        dayId, key: actKey, text: a.text || '', time: a.time || '',
+        timeSort: m == null ? '' : String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'),
+        counts: wineCounts(a.wine),
+      } });
+    }
+    found.sort((x, y) => (x.m == null ? 1e9 : x.m) - (y.m == null ? 1e9 : y.m)).forEach(x => stops.push(x.stop));
+  }
+  return jsonResponse({ trip: { id: tripId, name: trip.name || 'Trip' }, stops, totals: wineTripTotals(trip) });
+}
+
+// POST /wine-widget/set { key, tripId, dayId, actKey, color, count } → { counts, totals }.
+// Sets one color's count (an absolute number, so a retried tap can't double up).
+async function handleWineWidgetSet(env, body) {
+  if (!(await wineWidgetCaller(env, body.key))) return jsonResponse({ error: 'Widget is off' }, 401);
+  const { tripId, dayId, actKey, color } = body;
+  const count = parseInt(body.count, 10);
+  if (![tripId, dayId, actKey].every(v => typeof v === 'string' && FB_KEY_RE.test(v))) return jsonResponse({ error: 'Bad activity' }, 400);
+  if (!WINE_COLORS.includes(color) || !(count >= 0 && count <= 99)) return jsonResponse({ error: 'Bad count' }, 400);
+  const trip = await fbGet(env, 'trips/' + tripId);
+  const day = trip && trip.days && trip.days[dayId];
+  if (!day) return jsonResponse({ error: 'No such day' }, 404);
+  const raw = day.activities || {};
+  const keys = Array.isArray(raw) ? raw.map((_, i) => String(i)) : Object.keys(raw);
+  const k = keys.find(x => raw[x] && typeof raw[x] === 'object' && raw[x].key === actKey);
+  if (k == null) return jsonResponse({ error: 'No such activity' }, 404);
+  const a = raw[k];
+  const counts = wineCounts(a.wine);
+  counts[color] = count;
+  const total = wineTotal(counts);
+  const wine = total ? { ...counts, note: (a.wine && a.wine.note) || null } : null;
+  await fbWrite(env, 'PUT', 'trips/' + tripId + '/days/' + dayId + '/activities/' + k + '/wine', wine);
+  a.wine = wine;
+
+  // The same feed entry the app's admin clients build (_buildWineFeed in index.html)
+  const entryPath = 'wineFeed/' + tripId + '/entries/' + actKey;
+  if (total) {
+    const iso = day.dateISO || dayDateISO(day, trip.year) || '';
+    const entry = { dayId, text: a.text || '' };
+    WINE_COLORS.forEach(c => { if (counts[c]) entry[c] = counts[c]; });
+    if (iso) {
+      const dt = new Date(iso + 'T00:00:00Z');
+      entry.date = iso;
+      entry.dateLabel = WINE_DOW[dt.getUTCDay()] + ', ' + W_MON[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
+    }
+    if (wine.note) entry.note = String(wine.note);
+    const year = String(trip.year || (trip.startDateISO || '').slice(0, 4) || iso.slice(0, 4) || '');
+    const base = trip.name || 'Trip';
+    await fbWrite(env, 'PATCH', 'wineFeed/' + tripId, {
+      name: year && !base.includes(year) ? base + ' - ' + year : base,
+      currency: trip.currency || '',
+    });
+    await fbWrite(env, 'PUT', entryPath, entry);
+  } else {
+    await fbWrite(env, 'DELETE', entryPath);
+  }
+  return jsonResponse({ counts, totals: wineTripTotals(trip) });
 }
 
 // ── Trip guests ─────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import WebKit
 import WidgetKit
+import Security
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -52,12 +53,24 @@ class ThemedBridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
         webView?.scrollView.backgroundColor = appBackground
         webView?.configuration.userContentController.add(WeakMessageHandler(self), name: "theme")
         webView?.configuration.userContentController.add(WeakMessageHandler(self), name: "widgetLink")
+        webView?.configuration.userContentController.add(WeakMessageHandler(self), name: "wineWidget")
         WidgetLinks.shared.webView = webView
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "widgetLink" {
             WidgetLinks.shared.pageReady()
+            return
+        }
+        if message.name == "wineWidget" {
+            // { action: "set", key } from Settings → Wine widget, or { action: "clear" }
+            let body = message.body as? [String: Any]
+            if body?["action"] as? String == "set", let key = body?["key"] as? String {
+                WineWidgetKey.save(key)
+            } else if body?["action"] as? String == "clear" {
+                WineWidgetKey.clear()
+            }
+            WidgetCenter.shared.reloadTimelines(ofKind: "WineWidget")
             return
         }
         let style: UIUserInterfaceStyle
@@ -97,6 +110,36 @@ final class WidgetLinks {
               let arg = String(data: data, encoding: .utf8) else { return }
         pending = nil
         webView.evaluateJavaScript("window.handleWidgetLink && handleWidgetLink(\(arg))")
+    }
+}
+
+// The Wine widget's key, from the Worker via the web app's Settings → Wine widget.
+// Kept in the keychain group the app shares with the widget extension
+// (keychain-access-groups in both entitlements; WineWidget.swift reads it).
+enum WineWidgetKey {
+    private static var query: [String: Any] {
+        var q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.erikhardin.trips.winewidget",
+            kSecAttrAccount as String: "key",
+        ]
+        if let prefix = Bundle.main.object(forInfoDictionaryKey: "AppIdentifierPrefix") as? String {
+            q[kSecAttrAccessGroup as String] = prefix + "com.erikhardin.trips.shared"
+        }
+        return q
+    }
+
+    static func save(_ key: String) {
+        clear()
+        var q = query
+        q[kSecValueData as String] = Data(key.utf8)
+        // The widget refreshes while the phone is locked
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(q as CFDictionary, nil)
+    }
+
+    static func clear() {
+        SecItemDelete(query as CFDictionary)
     }
 }
 
