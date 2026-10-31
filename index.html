@@ -4339,7 +4339,12 @@ function _buildWineFeed(trips) {
         entries[a.key] = e;
       });
     });
-    if (Object.keys(entries).length) feed[tripId] = { name: trip.name || 'Trip', currency: trip.currency || '', entries };
+    if (!Object.keys(entries).length) return;
+    // Hardin Cellar names the trip "<name> - <year>", e.g. "Sonoma - 2026"
+    const year = String(trip.year || (trip.startDateISO || '').slice(0, 4) || (Object.values(entries).find(e => e.date) || {}).date?.slice(0, 4) || '');
+    const base = trip.name || 'Trip';
+    const name = year && !base.includes(year) ? `${base} - ${year}` : base;
+    feed[tripId] = { name, currency: trip.currency || '', entries };
   });
   return feed;
 }
