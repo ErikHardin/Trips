@@ -210,10 +210,12 @@ the home screen → **+** → Hardin Trips.
   Reads `/widget-data` with the phone's date; it shows the first *active* trip
   (else the next upcoming one) for everyone.
 
-- **Wine** (`WineWidget.swift`, medium, admins): today's 🍷 stops one at a
-  time. ‹ › switch stops, − / + set each color's bottle count without opening
+- **Wine** (`WineWidget.swift`, medium, admins): the trip's 🍷 stops one at a
+  time, opening on today's stop now or next. ‹ › go through every 🍷 stop on
+  the trip (earlier days show "Fri Oct 30 · 11am"), − / + set each color's bottle count without opening
   the app (iOS 17 interactive widget buttons), and the trip's total runs along
-  the bottom; tapping the stop's name opens its Wine sheet. It needs a key: in
+  the bottom ("6/12 bottles" when its linked Hardin Cellar trip has a bottle
+  target, which the Worker reads from the wine app's public `trips/`); tapping the stop's name opens its Wine sheet. It needs a key: in
   the app, **Settings → Wine widget → Turn on for this iPhone**. The Worker
   (`/wine-widget/*`) issues a random key, keeping only its hash at
   `wineWidgetKeys/`, and the key can only read today's wine stops and set
