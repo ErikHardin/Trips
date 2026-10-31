@@ -1633,13 +1633,12 @@ function wineTripTotals(trip) {
 }
 
 // POST /wine-widget/data { key, date } → { trip, stops, totals }. The trip is
-// the one the Today widget shows; stops are that day's 🍷 activities in time
-// order, each with its counts. A 🍷 activity without a key gets one here, so
-// the widget can point at it.
+// the one the Today widget shows; stops are its 🍷 activities across every day,
+// by date then time, each with its date, a "Fri Oct 30" label and its counts.
+// A 🍷 activity without a key gets one here, so the widget can point at it.
 async function handleWineWidgetData(env, body) {
   if (!(await wineWidgetCaller(env, body.key))) return jsonResponse({ error: 'Widget is off' }, 401);
   const trips = (await fbGet(env, 'trips')) || {};
-  const todayISO = /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : new Date().toISOString().slice(0, 10);
   const ids = Object.keys(trips).filter(id => trips[id]);
   let tripId = ids.find(id => trips[id].status === 'active');
   if (!tripId) {
@@ -1648,14 +1647,12 @@ async function handleWineWidgetData(env, body) {
   }
   if (!tripId) return jsonResponse({ trip: null, stops: [], totals: wineCounts(null) });
   const trip = trips[tripId];
-  const dayEntry = Object.entries(trip.days || {})
-    .find(([, d]) => d && (d.dateISO || dayDateISO(d, trip.year)) === todayISO);
-  const stops = [];
-  if (dayEntry) {
-    const [dayId, day] = dayEntry;
+  const found = [];
+  for (const [dayId, day] of Object.entries(trip.days || {})) {
+    if (!day) continue;
+    const iso = day.dateISO || dayDateISO(day, trip.year) || '';
     const raw = day.activities || {};
     const keys = Array.isArray(raw) ? raw.map((_, i) => String(i)) : Object.keys(raw);
-    const found = [];
     for (const k of keys) {
       const a = raw[k];
       if (!a || typeof a !== 'object' || !String(a.emoji || '').startsWith('🍷')) continue;
@@ -1665,14 +1662,24 @@ async function handleWineWidgetData(env, body) {
         await fbWrite(env, 'PUT', 'trips/' + tripId + '/days/' + dayId + '/activities/' + k + '/key', actKey);
       }
       const m = wActStartMinutes(a.time || '');
-      found.push({ m, stop: {
+      let dayLabel = '';
+      if (iso) {
+        const dt = new Date(iso + 'T00:00:00Z');
+        dayLabel = WINE_DOW[dt.getUTCDay()] + ' ' + W_MON[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
+      }
+      found.push({ iso, m, stop: {
         dayId, key: actKey, text: a.text || '', time: a.time || '',
         timeSort: m == null ? '' : String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'),
+        date: iso, dayLabel,
         counts: wineCounts(a.wine),
       } });
     }
-    found.sort((x, y) => (x.m == null ? 1e9 : x.m) - (y.m == null ? 1e9 : y.m)).forEach(x => stops.push(x.stop));
   }
+  // Every 🍷 stop on the trip, by day then time (untimed last in their day;
+  // undated days last). The widget opens on today's stop now or next.
+  found.sort((x, y) => (x.iso || '9999').localeCompare(y.iso || '9999')
+    || (x.m == null ? 1e9 : x.m) - (y.m == null ? 1e9 : y.m));
+  const stops = found.map(x => x.stop);
   return jsonResponse({ trip: { id: tripId, name: trip.name || 'Trip' }, stops, totals: wineTripTotals(trip) });
 }
 

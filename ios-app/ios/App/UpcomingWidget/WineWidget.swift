@@ -1,5 +1,6 @@
-// The Wine widget (medium, iOS 17): today's 🍷 stops one at a time. ‹ › switch
-// stops, − / + set each color's bottle count without opening the app, and the
+// The Wine widget (medium, iOS 17): the trip's 🍷 stops one at a time, opening
+// on today's stop now or next. ‹ › go through every stop on the trip, earlier
+// days too, − / + set each color's bottle count without opening the app, and the
 // trip's total runs along the bottom. Tapping the stop's name opens its Wine
 // sheet in the app.
 //
@@ -28,6 +29,8 @@ struct WineStop: Codable, Hashable {
     let time: String
     let timeSort: String       // "HH:MM", '' when untimed
     var counts: [String: Int]
+    var date: String? = nil    // "YYYY-MM-DD"
+    var dayLabel: String? = nil // "Fri Oct 30"
 
     var startMinutes: Int? {
         let parts = timeSort.split(separator: ":").compactMap { Int($0) }
@@ -229,8 +232,8 @@ struct WineEntry: TimelineEntry {
         payload: WinePayload(
             trip: WineTripRef(id: "sample", name: "Sonoma"),
             stops: [
-                WineStop(dayId: "d", key: "a", text: "Gundlach Bundschu", time: "11am", timeSort: "11:00",
-                         counts: ["red": 2, "rose": 1]),
+                WineStop(dayId: "c", key: "a", text: "Gundlach Bundschu", time: "11am", timeSort: "11:00",
+                         counts: ["red": 2, "rose": 1], date: "2000-01-01", dayLabel: "Fri Oct 30"),
                 WineStop(dayId: "d", key: "b", text: "Kivelstadt Cellars", time: "1:30pm", timeSort: "13:30",
                          counts: ["red": 2, "white": 1]),
                 WineStop(dayId: "d", key: "c", text: "Scribe Winery", time: "4pm", timeSort: "16:00", counts: [:]),
@@ -240,25 +243,40 @@ struct WineEntry: TimelineEntry {
 
     var stops: [WineStop] { payload?.stops ?? [] }
 
+    private var today: String { wineToday(date) }
+
+    // A stop on today's date (one without a date counts as today)
+    func isToday(_ stop: WineStop) -> Bool { (stop.date ?? today) == today }
+
     var index: Int {
         guard !stops.isEmpty else { return 0 }
         if let picked = pickedIndex { return min(max(0, picked), stops.count - 1) }
-        // The last stop starting within 15 minutes, else the first
-        let now = minutes(of: date)
-        var index = 0
-        for (i, stop) in stops.enumerated() {
-            if let start = stop.startMinutes, start <= now + 15 { index = i }
+        let todays = stops.indices.filter { isToday(stops[$0]) }
+        if let first = todays.first {
+            // Today's last stop starting within 15 minutes, else today's first
+            let now = minutes(of: date)
+            var index = first
+            for i in todays {
+                if let start = stops[i].startMinutes, start <= now + 15 { index = i }
+            }
+            return index
         }
-        return index
+        // No stop today: the latest one before today, else the trip's first
+        return stops.lastIndex { ($0.date ?? "") < today } ?? 0
     }
 
-    // "Now · 1:30pm" while a stop is under way (until the next starts, at most 3 hours)
+    // Today: "Now · 1:30pm" while a stop is under way (until the next starts, at
+    // most 3 hours), else its time. Another day: "Fri Oct 30 · 11am".
     func whenLabel(_ i: Int) -> String {
         let stop = stops[i]
+        if !isToday(stop) {
+            let day = stop.dayLabel ?? ""
+            return stop.time.isEmpty ? (day.isEmpty ? "Wine stop" : day) : (day.isEmpty ? stop.time : day + " · " + stop.time)
+        }
         let time = stop.time.isEmpty ? "Today" : stop.time
         guard let start = stop.startMinutes else { return time }
         let now = minutes(of: date)
-        let nextStart = i + 1 < stops.count ? stops[i + 1].startMinutes : nil
+        let nextStart = i + 1 < stops.count && isToday(stops[i + 1]) ? stops[i + 1].startMinutes : nil
         if start <= now && now - start < 180 && (nextStart.map { now < $0 } ?? true) { return "Now · " + time }
         return time
     }
@@ -312,7 +330,7 @@ struct WineProvider: TimelineProvider {
             let entry = await WineLoader.load()
             let now = Date()
             // A fresh entry as each stop starts, so "Now" and the stop shown move on
-            let starts = entry.stops.compactMap { $0.startMinutes }.compactMap { m -> Date? in
+            let starts = entry.stops.filter { entry.isToday($0) }.compactMap { $0.startMinutes }.compactMap { m -> Date? in
                 Calendar.current.date(bySettingHour: m / 60, minute: m % 60, second: 0, of: now)
             }.filter { $0 > now }
             let entries = [entry] + starts.sorted().map {
@@ -420,7 +438,7 @@ struct WineWidgetView: View {
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(Palette.ink)
                             .lineLimit(1)
-                        Text("No wine stops today. Give an activity the 🍷 emoji to log bottles here.")
+                        Text("No wine stops on this trip yet. Give an activity the 🍷 emoji to log bottles here.")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Palette.muted)
                         Spacer(minLength: 0)
