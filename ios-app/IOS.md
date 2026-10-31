@@ -212,7 +212,8 @@ the home screen → **+** → Hardin Trips.
 
 - **Wine** (`WineWidget.swift`, medium, admins): the trip's 🍷 stops one at a
   time, opening on today's stop now or next. ‹ › go through every 🍷 stop on
-  the trip (earlier days show "Fri Oct 30 · 11am"), − / + set each color's bottle count without opening
+  the trip, labelled Now / Next / Today for today's and "Fri Oct 30 · 11am"
+  for other days'; after switching, a **Now** pill jumps back), − / + set each color's bottle count without opening
   the app (iOS 17 interactive widget buttons), and the trip's total runs along
   the bottom ("6/12 bottles" when its linked Hardin Cellar trip has a bottle
   target, which the Worker reads from the wine app's public `trips/`); tapping the stop's name opens its Wine sheet. It needs a key: in

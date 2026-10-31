@@ -142,6 +142,12 @@ enum WineStore {
         defaults.set(date, forKey: "wine.stopIndexDate")
     }
 
+    // Back to the stop the widget picks itself (the "Now" button)
+    static func clearStopIndex() {
+        defaults.removeObject(forKey: "wine.stopIndex")
+        defaults.removeObject(forKey: "wine.stopIndexDate")
+    }
+
     // Set by a tap, so the refresh it causes doesn't wait on a full reload
     static var lastTapAt: Date? {
         get { defaults.object(forKey: "wine.lastTapAt") as? Date }
@@ -250,9 +256,22 @@ struct WineEntry: TimelineEntry {
     // A stop on today's date (one without a date counts as today)
     func isToday(_ stop: WineStop) -> Bool { (stop.date ?? today) == today }
 
+    // The stop shown: the one picked with ‹ › today, else autoIndex
     var index: Int {
         guard !stops.isEmpty else { return 0 }
         if let picked = pickedIndex { return min(max(0, picked), stops.count - 1) }
+        return autoIndex
+    }
+
+    // Whether ‹ › have moved off the stop the widget would pick itself
+    var movedAway: Bool { !stops.isEmpty && index != autoIndex }
+
+    // Whether the stop the widget picks itself is one of today's
+    var autoIsToday: Bool { !stops.isEmpty && isToday(stops[autoIndex]) }
+
+    // The stop the widget picks itself
+    var autoIndex: Int {
+        guard !stops.isEmpty else { return 0 }
         let todays = stops.indices.filter { isToday(stops[$0]) }
         if let first = todays.first {
             // Today's last stop starting within 15 minutes, else today's first
@@ -267,20 +286,24 @@ struct WineEntry: TimelineEntry {
         return stops.lastIndex { ($0.date ?? "") < today } ?? 0
     }
 
-    // Today: "Now · 1:30pm" while a stop is under way (until the next starts, at
-    // most 3 hours), else its time. Another day: "Fri Oct 30 · 11am".
+    // Today's stops: "Now · 1:30pm" while one is under way (until the next
+    // starts, at most 3 hours), "Next · 4pm" for the first still to start, and
+    // "Today · 11am" for the rest. Another day's: "Fri Oct 30 · 11am".
     func whenLabel(_ i: Int) -> String {
         let stop = stops[i]
         if !isToday(stop) {
             let day = stop.dayLabel ?? ""
             return stop.time.isEmpty ? (day.isEmpty ? "Wine stop" : day) : (day.isEmpty ? stop.time : day + " · " + stop.time)
         }
-        let time = stop.time.isEmpty ? "Today" : stop.time
-        guard let start = stop.startMinutes else { return time }
+        let at = stop.time.isEmpty ? "" : " · " + stop.time
+        guard let start = stop.startMinutes else { return "Today" + at }
         let now = minutes(of: date)
         let nextStart = i + 1 < stops.count && isToday(stops[i + 1]) ? stops[i + 1].startMinutes : nil
-        if start <= now && now - start < 180 && (nextStart.map { now < $0 } ?? true) { return "Now · " + time }
-        return time
+        if start <= now && now - start < 180 && (nextStart.map { now < $0 } ?? true) { return "Now" + at }
+        let firstAhead = stops.indices.first { j in
+            isToday(stops[j]) && (stops[j].startMinutes.map { $0 > now } ?? false)
+        }
+        return (firstAhead == i ? "Next" : "Today") + at
     }
 
     private func minutes(of date: Date) -> Int {
@@ -380,6 +403,19 @@ struct WineSetIntent: AppIntent {
         WineStore.pending = pending
         WineStore.lastTapAt = Date()
         // WidgetKit refreshes the widget when this returns; the refresh sends it
+        return .result()
+    }
+}
+
+struct WineNowIntent: AppIntent {
+    static var title: LocalizedStringResource = "Show the current wine stop"
+    static var isDiscoverable: Bool = false
+
+    init() {}
+
+    func perform() async throws -> some IntentResult {
+        WineStore.clearStopIndex()
+        WineStore.lastTapAt = Date()
         return .result()
     }
 }
@@ -484,6 +520,9 @@ struct WineWidgetView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                if entry.movedAway {
+                    nowButton
+                }
                 navButton("›", to: i + 1, enabled: i < entry.stops.count - 1, label: "Next stop")
             }
             HStack(spacing: 6) {
@@ -508,6 +547,21 @@ struct WineWidgetView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
+    }
+
+    // Shown after ‹ › move off the stop the widget picks itself: back to today's
+    // stop now or next ("Now"), or on a day without one, the latest ("Latest")
+    private var nowButton: some View {
+        Button(intent: WineNowIntent()) {
+            Text(entry.autoIsToday ? "Now" : "Latest")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Palette.terracotta)
+                .padding(.horizontal, 7)
+                .frame(height: 22)
+                .background(Capsule().fill(Palette.sand))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(entry.autoIsToday ? "Show the current wine stop" : "Show the latest wine stop")
     }
 
     @ViewBuilder private func navButton(_ symbol: String, to index: Int, enabled: Bool, label: String) -> some View {
