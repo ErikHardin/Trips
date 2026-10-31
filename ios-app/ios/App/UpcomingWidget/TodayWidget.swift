@@ -212,6 +212,17 @@ struct TodayEntry: TimelineEntry {
         if let a = activity, a.driving == true {
             items += [("text", a.text ?? ""), ("time", a.time ?? ""), ("maps", "1")]
         }
+        return Self.openURL(items)
+    }
+
+    // A tap on a 🍷 row's emoji: the trip at that day with the activity's Wine
+    // sheet open (&wine=1). The app opens the sheet for admins only.
+    func wineLink(day: String?, for a: TodayActivity) -> URL? {
+        guard let tripId = trip?.id, let day = day, (a.emoji ?? "").hasPrefix("🍷") else { return nil }
+        return Self.openURL([("trip", tripId), ("day", day), ("text", a.text ?? ""), ("time", a.time ?? ""), ("wine", "1")])
+    }
+
+    private static func openURL(_ items: [(String, String)]) -> URL? {
         // Everything but unreserved ASCII encoded, so a name's "&" or "+" survives
         let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
         let query = items.map { key, value in
@@ -377,7 +388,8 @@ struct TodayWidgetView: View {
             } else {
                 ForEach(Array(remaining.prefix(limit)), id: \.self) { a in
                     ActivityRow(activity: a, size: small ? .small : .medium,
-                                isNext: !small && a == entry.nextUp, now: entry.date)
+                                isNext: !small && a == entry.nextUp, now: entry.date,
+                                wineURL: small ? nil : entry.wineLink(day: entry.dayId, for: a))
                         .tapOpens(small ? nil : entry.link(day: entry.dayId, for: a))
                 }
             }
@@ -416,12 +428,14 @@ struct TodayWidgetView: View {
                 ForEach(Array(all.enumerated()), id: \.offset) { i, a in
                     if let ahead = remaining.firstIndex(of: a) {
                         TimelineRow(activity: a, style: a == entry.nextUp ? .next : .ahead,
-                                    first: i == 0, last: i == all.count - 1, now: entry.date)
+                                    first: i == 0, last: i == all.count - 1, now: entry.date,
+                                    wineURL: entry.wineLink(day: entry.dayId, for: a))
                             .tapOpens(entry.link(day: entry.dayId, for: a))
                             .fit(rank: 1 + ahead, group: .today)
                     } else {
                         TimelineRow(activity: a, style: .done,
-                                    first: i == 0, last: i == all.count - 1, now: entry.date)
+                                    first: i == 0, last: i == all.count - 1, now: entry.date,
+                                    wineURL: entry.wineLink(day: entry.dayId, for: a))
                             .tapOpens(entry.link(day: entry.dayId, for: a))
                             .fit(rank: doneRank + (done.count - 1 - (done.firstIndex(of: a) ?? 0)))
                     }
@@ -449,7 +463,8 @@ struct TodayWidgetView: View {
                     }
                     ForEach(Array(tomorrowActs.prefix(tomorrowCap).enumerated()), id: \.offset) { i, a in
                         TimelineRow(activity: a, style: remaining.isEmpty ? .ahead : .later,
-                                    first: i == 0, last: i == tomorrowCap - 1)
+                                    first: i == 0, last: i == tomorrowCap - 1,
+                                    wineURL: entry.wineLink(day: entry.tomorrow?.dayId, for: a))
                             .tapOpens(entry.link(day: entry.tomorrow?.dayId, for: a))
                             .fit(rank: tomorrowRank + tomorrowFlights.count + i, group: .tomorrow)
                     }
@@ -491,6 +506,7 @@ private struct ActivityRow: View {
     let size: RowSize
     var isNext = false
     var now = Date()
+    var wineURL: URL? = nil   // the emoji's own tap target, on 🍷 rows
 
     private var large: Bool { size == .large }
 
@@ -500,6 +516,7 @@ private struct ActivityRow: View {
             Text(String((activity.emoji ?? "📌").prefix(1)))
                 .font(.system(size: large ? 14 : 11))
                 .fixedSize()
+                .tapOpens(wineURL)
             VStack(alignment: .leading, spacing: 1) {
                 PlanName(activity: activity, lines: large ? 2 : 1)
                     .font(.system(size: large ? 14 : 12, weight: .bold))
@@ -860,6 +877,7 @@ private struct TimelineRow: View {
     var first = false
     var last = false
     var now = Date()
+    var wineURL: URL? = nil   // the emoji's own tap target, on 🍷 rows
 
     private var gray: Bool { style == .done || style == .later }
 
@@ -887,6 +905,7 @@ private struct TimelineRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(String((activity.emoji ?? "📌").prefix(1)))
                         .fixedSize()
+                        .tapOpens(wineURL)
                     PlanName(activity: activity, lines: style == .next ? 2 : 1)
                         .fixedSize(horizontal: false, vertical: style == .next)
                 }

@@ -3351,7 +3351,8 @@ function handlePushRoute(route, tries) {
 
 // A tap on the Today widget, handed over by the iOS app (SceneDelegate.swift):
 // hardintrips://open?trip=…&day=… opens the trip at that day, and a drive's
-// row (&text=…&time=…&maps=1) also opens its "Open in…" maps choice. Like a
+// row (&text=…&time=…&maps=1) also opens its "Open in…" maps choice, and a 🍷
+// row's emoji (&text=…&time=…&wine=1) opens its Wine sheet for admins. Like a
 // push tap, it can arrive before the app has signed in and loaded trips.
 window.handleWidgetLink = function(url, tries) {
   tries = tries || 0;
@@ -3372,11 +3373,13 @@ window.handleWidgetLink = function(url, tries) {
     const card = document.getElementById('dc-' + dayId);
     if (card) { card.classList.add('open'); card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }, 300);
-  if (q.get('maps') !== '1') return;
+  const wine = q.get('wine') === '1' && _canLogWine();
+  if (q.get('maps') !== '1' && !wine) return;
   const text = q.get('text') || '', time = q.get('time') || '';
   const acts = _actList(day);
-  const idx = acts.findIndex(a => a && typeof a === 'object' && a.text === text && (a.time || '') === time);
+  const idx = acts.findIndex(a => a && (typeof a === 'object' ? a.text === text && (a.time || '') === time : String(a) === text && !time));
   if (idx < 0) return;
+  if (wine) { openWineSheet(dayId, idx); return; }
   const a = acts[idx];
   const region = (day.region || '').trim();
   openMapsChoice(text + (region ? ', ' + region : ''), dayId, (a.key != null && a.key !== '') ? a.key : idx, idx);
