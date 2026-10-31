@@ -98,6 +98,10 @@
         ".write": "auth != null && auth.token.email_verified == true && auth.token.email.replace('.', ',') == $emailKey"
       }
     },
+    "wineFeed": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+    },
     "pushGeo": {
       "$tripId": {
         "$dayId": {

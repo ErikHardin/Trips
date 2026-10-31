@@ -62,6 +62,7 @@ if ('serviceWorker' in navigator) {
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root {
+  --wine-ink: #a8384a;
   --cream: #faf8f4;
   --warm-white: #fffdf9;
   --sand: #ede5d8;
@@ -99,6 +100,7 @@ if ('serviceWorker' in navigator) {
 /* Dark mode: follows the device unless the user picked Light/Dark in settings */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --wine-ink: #e8909c;
     --cream: #2c2c2e;
     --warm-white: #3a3a3c;
     --sand: #48484b;
@@ -133,6 +135,7 @@ if ('serviceWorker' in navigator) {
   }
 }
 :root[data-theme="dark"] {
+  --wine-ink: #e8909c;
   --cream: #2c2c2e;
   --warm-white: #3a3a3c;
   --sand: #48484b;
@@ -445,6 +448,15 @@ body {
 .act-meta .act-mem { color: var(--terracotta); }
 .act-chip { font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; background: var(--blue-light); color: var(--blue); }
 .act-chip.hotel { background: var(--sage-light); color: var(--sage); }
+.act-chip.wine { background: color-mix(in srgb, var(--wine-ink) 16%, transparent); color: var(--wine-ink); }
+.wine-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.wine-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.wine-name { flex: 1; font-size: 15px; color: var(--ink); }
+.wine-step { font-family: inherit; width: 44px; height: 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--sand); font-size: 18px; color: var(--ink); cursor: pointer; }
+.wine-qty { width: 26px; text-align: center; font-size: 17px; font-weight: 700; color: var(--ink); }
+.wine-qty.zero { color: var(--muted); font-weight: 400; }
+.wine-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.wine-field input { font-family: inherit; height: 42px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; background: var(--cream); font-size: 14px; color: var(--ink); padding: 0 10px; text-transform: none; letter-spacing: 0; width: 100%; }
 .conf-pill { font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--sand); color: var(--ink); white-space: nowrap; }
 .act-search-btn { font-family: inherit; background: none; border: none; font-size: 14px; padding: 4px; opacity: 0.45; flex-shrink: 0; cursor: pointer; line-height: 1; }
 .act-search-btn:hover { opacity: 0.9; }
@@ -459,7 +471,7 @@ body {
 .det-row-value { text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .det-row-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .det-copy { font-family: inherit; background: none; border: none; color: var(--terracotta); font-size: 13px; cursor: pointer; padding: 0 0 0 6px; }
-.det-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; margin: 14px 0 4px; }
+.det-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 6px; margin: 14px 0 4px; }
 .det-act { font-family: inherit; background: var(--sand); border: 1px solid var(--border); border-radius: 14px; padding: 10px 2px; text-align: center; font-size: 11.5px; color: var(--ink); cursor: pointer; text-decoration: none; }
 .det-act b { display: block; font-size: 20px; font-weight: 400; margin-bottom: 3px; }
 .det-act.on { color: var(--terracotta); }
@@ -2431,7 +2443,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 380 };
+window.BUILD_INFO = { prNumber: 381 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -3112,6 +3124,7 @@ async function initApp() {
   window._onValue(window._ref(window._db, 'trips'), snap => {
     allTrips = snap.val() || {};
     OfflineStore.save(allTrips).catch(() => {});
+    syncWineFeed();
     renderHome();
     checkShareLink();
     autoOpenActiveTrip();
@@ -4177,6 +4190,7 @@ window.openActivityDetail = function(dayId, idx) {
   const status = BOOKING_STATUSES.find(s => s.key === a.bookingStatus);
   const noteKey = (a.key != null && a.key !== '') ? a.key : idx;
   const memCount = Object.keys((day.notes && day.notes[noteKey]) || {}).length;
+  const wineN = _wineTotal(a.wine);
   const canEdit = canEditCurrentTrip() && can('editItinerary');
   const showBell = currentUser && !isShareView && a.time && (trip.status === 'active' || trip.status === 'upcoming');
   const muted = showBell && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
@@ -4195,6 +4209,7 @@ window.openActivityDetail = function(dayId, idx) {
       <button type="button" class="det-act" data-act="search"><b>🔎</b>Search</button>
       <button type="button" class="det-act" data-act="maps"><b>🗺️</b>Maps</button>
       <button type="button" class="det-act${memCount ? ' on' : ''}" data-act="notes"><b>📝</b>Memories${memCount ? ' · ' + memCount : ''}</button>
+      ${_canLogWine() ? `<button type="button" class="det-act${wineN ? ' on' : ''}" data-act="wine"><b>🍷</b>Wine${wineN ? ' · ' + wineN : ''}</button>` : ''}
       ${showBell ? `<button type="button" class="det-act${muted ? '' : ' on'}" data-act="bell"><b>${muted ? '🔕' : '🔔'}</b>Reminder ${muted ? 'off' : 'on'}</button>` : ''}
     </div>
     ${canEdit ? '<button type="button" class="det-btn plain" data-act="edit">✏️ Edit activity</button><button type="button" class="det-btn danger" data-act="delete">Delete activity</button>' : ''}`);
@@ -4205,11 +4220,147 @@ window.openActivityDetail = function(dayId, idx) {
     if (act === 'search') window.open(activitySearchUrl(text, day), '_blank');
     else if (act === 'maps') { m.remove(); openMapsChoice(text + (region ? ', ' + region : ''), dayId, noteKey, idx); }
     else if (act === 'notes') { m.remove(); openNotes(dayId, noteKey, text); }
+    else if (act === 'wine') { m.remove(); openWineSheet(dayId, idx); }
     else if (act === 'bell') toggleActivityReminder(dayId, idx, b);
     else if (act === 'edit') { m.remove(); openActivityEditor(dayId, idx); }
     else if (act === 'delete') _deleteActivityFromSheet(dayId, idx, a, m);
   });
 };
+
+// ── Wine bought at an activity (admins only) ──
+// Stored on the activity as `wine: { red, white, rose, sparkling, note }`.
+// Admin clients mirror every trip's bottles into `wineFeed`, which the Hardin Cellar
+// app reads on open and turns into placeholder wines.
+const WINE_COLORS = [
+  { key: 'red', label: 'Red', dot: '#9b3040' },
+  { key: 'white', label: 'White', dot: '#c8a830' },
+  { key: 'rose', label: 'Rosé', dot: '#c06070' },
+  { key: 'sparkling', label: 'Sparkling', dot: '#5090b0' },
+];
+function _canLogWine() { return userRole === 'admin' && !isShareView; }
+function _wineTotal(w) {
+  if (!w || typeof w !== 'object') return 0;
+  return WINE_COLORS.reduce((n, c) => n + (parseInt(w[c.key]) || 0), 0);
+}
+
+window.openWineSheet = function(dayId, idx) {
+  if (!_canLogWine()) return;
+  const tripId = currentTripId;
+  const trip = allTrips[tripId];
+  const day = trip && trip.days && trip.days[dayId];
+  const raw = day ? _actList(day)[idx] : null;
+  if (raw == null) return;
+  const a = typeof raw === 'object' ? raw : { text: String(raw) };
+  const w = a.wine || {};
+  const counts = {};
+  WINE_COLORS.forEach(c => { counts[c.key] = parseInt(w[c.key]) || 0; });
+  const m = _bottomSheet(`
+    <div class="modal-title" style="margin-bottom:2px;">🍷 Wine purchased</div>
+    <div class="det-meta">${escHtml([a.text || '', _detailDateLabel(trip, day)].filter(Boolean).join(' · '))}</div>
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:6px;">
+      ${WINE_COLORS.map(c => `
+        <div class="wine-row">
+          <span class="wine-dot" style="background:${c.dot}"></span>
+          <span class="wine-name">${c.label}</span>
+          <button type="button" class="wine-step" data-step="-1" data-color="${c.key}" aria-label="Fewer ${c.label}">−</button>
+          <span class="wine-qty" data-qty="${c.key}"></span>
+          <button type="button" class="wine-step" data-step="1" data-color="${c.key}" aria-label="More ${c.label}">+</button>
+        </div>`).join('')}
+    </div>
+    <label class="wine-field" style="margin-top:12px;">Note
+      <input class="wine-note" type="text" value="${escAttr(w.note || '')}" placeholder="e.g. Pinot Noir 2023 ×2">
+    </label>
+    <div class="det-meta wine-summary" style="margin-top:12px;line-height:1.4;"></div>
+    <button type="button" class="det-btn primary wine-save">Save</button>`);
+  const paint = () => {
+    WINE_COLORS.forEach(c => {
+      const el = m.querySelector(`[data-qty="${c.key}"]`);
+      el.textContent = counts[c.key];
+      el.classList.toggle('zero', !counts[c.key]);
+    });
+    const total = _wineTotal(counts);
+    m.querySelector('.wine-summary').textContent = total
+      ? `${total} bottle${total === 1 ? '' : 's'} → placeholders in Hardin Cellar under “${trip.name || 'this trip'}”.`
+      : 'No bottles logged for this activity.';
+  };
+  paint();
+  m.addEventListener('click', e => {
+    const b = e.target.closest('.wine-step');
+    if (!b) return;
+    const k = b.dataset.color;
+    counts[k] = Math.max(0, Math.min(99, counts[k] + Number(b.dataset.step)));
+    paint();
+  });
+  m.querySelector('.wine-save').addEventListener('click', async () => {
+    const cur = _actList(allTrips[tripId].days[dayId])[idx];
+    const info = _locActivity(dayId, idx);
+    if (!info || !_sameAct(cur, a)) { showToast('This day just changed — reopen and try again'); return; }
+    const total = _wineTotal(counts);
+    const wine = total ? {
+      ...counts,
+      note: m.querySelector('.wine-note').value.trim() || null,
+    } : null;
+    const actPath = info.path.replace(/\/coords$/, '');
+    try {
+      if (typeof cur === 'object') {
+        const upd = { wine };
+        if (!cur.key) upd.key = Math.random().toString(36).slice(2, 8);
+        await window._update(window._ref(window._db, actPath), upd);
+      } else {
+        // A legacy plain-string activity becomes an object with a stable key
+        await window._set(window._ref(window._db, actPath), { text: String(cur), key: Math.random().toString(36).slice(2, 8), wine });
+      }
+    } catch (e) {
+      showToast('Save failed — check connection');
+      return;
+    }
+    m.remove();
+    showToast(total ? `🍷 ${total} bottle${total === 1 ? '' : 's'} saved` : 'Wine cleared');
+  });
+};
+
+// Every trip's logged bottles, keyed by trip then activity key — what Hardin Cellar reads
+function _buildWineFeed(trips) {
+  const feed = {};
+  Object.entries(trips || {}).forEach(([tripId, trip]) => {
+    if (!trip || !trip.days) return;
+    const entries = {};
+    Object.entries(trip.days).forEach(([dayId, day]) => {
+      _actList(day).forEach(a => {
+        if (!a || typeof a !== 'object' || !a.key || !_wineTotal(a.wine)) return;
+        const w = a.wine;
+        const e = { dayId, text: a.text || '' };
+        WINE_COLORS.forEach(c => { const n = parseInt(w[c.key]) || 0; if (n) e[c.key] = n; });
+        const iso = dayISO(day, trip.year);
+        if (iso) e.date = iso;
+        const label = _detailDateLabel(trip, day);
+        if (label) e.dateLabel = label;
+        if (w.note) e.note = String(w.note);
+        entries[a.key] = e;
+      });
+    });
+    if (Object.keys(entries).length) feed[tripId] = { name: trip.name || 'Trip', currency: trip.currency || '', entries };
+  });
+  return feed;
+}
+
+let _lastWineFeedJson = null;
+let _wineFeedTimer = null;
+function syncWineFeed() {
+  if (userRole !== 'admin' || isShareView || !window._db) return;
+  clearTimeout(_wineFeedTimer);
+  _wineFeedTimer = setTimeout(async () => {
+    const feed = _buildWineFeed(allTrips);
+    const json = JSON.stringify(feed);
+    if (json === _lastWineFeedJson) return;
+    try {
+      await window._set(window._ref(window._db, 'wineFeed'), Object.keys(feed).length ? feed : null);
+      _lastWineFeedJson = json;
+    } catch (e) {
+      console.warn('wineFeed sync failed', e);
+    }
+  }, 1500);
+}
 
 async function _deleteActivityFromSheet(dayId, idx, a, sheet) {
   const tripId = currentTripId;
@@ -4812,6 +4963,8 @@ function renderTripItinerary(trip) {
         if (conf) meta.push(`<span class="conf-pill">#${escHtml(conf)}</span>`);
       }
       if (actNoteCount > 0) meta.push(`<span class="act-mem">📝 ${actNoteCount}</span>`);
+      const wineN = _canLogWine() ? _wineTotal(a && a.wine) : 0;
+      if (wineN) meta.push(`<span class="act-chip wine">🍷 ${wineN} bottle${wineN === 1 ? '' : 's'}</span>`);
       if (drive) meta.push('<span>🚗 driving</span>');
       if (muted) meta.push('<span title="Reminder off">🔕</span>');
       return `
