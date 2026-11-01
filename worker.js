@@ -643,7 +643,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-01.2';
+const WORKER_VERSION = '2026-11-01.3';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2776,8 +2776,8 @@ function cfKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// The nearest airport with scheduled flights, plus a second one when the city
-// has two close together (Bangkok's BKK and DMK)
+// The nearest airport with scheduled flights, plus a second one only when it
+// serves the same city (Bangkok's BKK and DMK) — not a neighbouring city's
 async function cfNearAirports(env, pt) {
   const d = await cfAdb(env, `/airports/search/location?lat=${pt.lat}&lon=${pt.lng}&radiusKm=${CF_AIRPORT_RADIUS_KM}&limit=10&withFlightInfoOnly=true`);
   const items = ((d && d.items) || [])
@@ -2786,7 +2786,9 @@ async function cfNearAirports(env, pt) {
                  km: Math.round(cfKm(pt, { lat: a.location.lat, lng: a.location.lon })) }))
     .sort((a, b) => a.km - b.km);
   if (!items.length) return [];
-  return items.filter((a, i) => i === 0 || a.km <= items[0].km + 45).slice(0, 2);
+  const norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const same = c => { const n = norm(c); return n && (n === norm(items[0].city) || n === norm(pt.name)); };
+  return items.filter((a, i) => i === 0 || (same(a.city) && a.km <= items[0].km + 60)).slice(0, 2);
 }
 
 const cfHHMM = t => { const m = String(t || '').match(/[ T](\d{2}):(\d{2})/); return m ? m[1] + ':' + m[2] : ''; };
