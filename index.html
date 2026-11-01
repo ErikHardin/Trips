@@ -5033,12 +5033,14 @@ function _bookingsSectionHTML(trip, tripId) {
 
 // ── Logistics: collapsible sections ──
 // Open/closed is remembered per trip on this device; every section starts closed.
+// (logiSections2: states saved while "Getting between cities" defaulted to open
+// are left behind, so it starts closed like the rest.)
 const LOGI_SECTION_DEFAULTS = { bookings: false, spend: false, checklist: false, cities: false, packing: false };
 function _logiOpenState(tripId) {
-  try { return JSON.parse(localStorage.getItem('logiSections:' + tripId) || '{}') || {}; } catch (e) { return {}; }
+  try { return JSON.parse(localStorage.getItem('logiSections2:' + tripId) || '{}') || {}; } catch (e) { return {}; }
 }
 function _logiSaveState(tripId, st) {
-  try { localStorage.setItem('logiSections:' + tripId, JSON.stringify(st)); } catch (e) {}
+  try { localStorage.setItem('logiSections2:' + tripId, JSON.stringify(st)); } catch (e) {}
 }
 function _logiIsOpen(tripId, key) {
   const st = _logiOpenState(tripId);
