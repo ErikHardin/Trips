@@ -5226,19 +5226,35 @@ function _cfRowHTML(leg, f, kind, i, r, cabin) {
   </button>`;
 }
 
+const _cfMi = km => Math.round(km * 0.621371);
+// Keep the nearest airport plus any other airport in the same city (Bangkok's
+// BKK and DMK), not a neighbouring city's (Shenzhen for Hong Kong). Flights
+// from dropped airports go too. Applied on display, so older saved searches
+// are tidied without searching again.
+function _cfTrim(r, leg) {
+  const keep = (list, place) => {
+    if (!list || !list.length) return [];
+    const same = c => { const n = _cfNorm(c); return n && (n === _cfNorm(list[0].city) || n === _cfNorm(place)); };
+    return list.filter((a, i) => i === 0 || same(a.city));
+  };
+  const fromAirports = keep(r.fromAirports, leg.from), toAirports = keep(r.toAirports, leg.to);
+  const ok = new Set([...fromAirports, ...toAirports].map(a => a.iata));
+  const fits = f => ok.has(f.from) && ok.has(f.to);
+  return Object.assign({}, r, { fromAirports, toAirports, nonstop: (r.nonstop || []).filter(fits), oneStop: (r.oneStop || []).filter(fits) });
+}
 function _cfAirportsHTML(r, leg) {
-  const line = (a, place) => `<span><b>${escHtml(a.iata)}</b> ${escHtml(a.name)} · ${a.km} km from ${escHtml(place)}</span>`;
+  const line = (a, place) => `<span><b>${escHtml(a.iata)}</b> ${escHtml(a.name)} · ${_cfMi(a.km)} mi from ${escHtml(place)}</span>`;
   return '<div class="cf-airports">' + (r.fromAirports || []).map(a => line(a, leg.from)).join('') +
     (r.toAirports || []).map(a => line(a, leg.to)).join('') + '</div>';
 }
 
 function _cfResultsHTML(leg, saved, cabin, canSearch) {
-  const r = saved.result;
+  const r = _cfTrim(saved.result, leg);
   const nonstop = r.nonstop || [], oneStop = r.oneStop || [];
   const fromCodes = (r.fromAirports || []).map(a => a.iata), toCodes = (r.toAirports || []).map(a => a.iata);
   let h = '<div class="cf-card">' + _cfHead(CF_PLANE, leg, _cfWhy(leg));
   if (!fromCodes.length || !toCodes.length) {
-    h += `<div class="cf-note">No airport with scheduled flights within 150 km of ${escHtml(!fromCodes.length ? leg.from : leg.to)}.</div>`;
+    h += `<div class="cf-note">No airport with scheduled flights within about 90 miles of ${escHtml(!fromCodes.length ? leg.from : leg.to)}.</div>`;
   } else {
     h += _cfAirportsHTML(r, leg);
     if (r.dateUsed && r.dateUsed !== r.date) {
@@ -5300,7 +5316,7 @@ async function renderCityFlights(tripId, legs, saved) {
     const drive = km != null ? _cfRoad(km) : null;
     if (drive && drive.mins <= CF_ROAD_MAX_HOURS * 60 && !leg.forceSearch) {
       road++;
-      return `<div class="cf-card road">${_cfHead(CF_CAR, leg, 'about ' + _cfDur(drive.mins) + ' by car (~' + drive.roadKm + ' km)',
+      return `<div class="cf-card road">${_cfHead(CF_CAR, leg, 'about ' + _cfDur(drive.mins) + ' by car (~' + _cfMi(drive.roadKm) + ' mi)',
         '<div class="cf-ok">No flight needed — the drive is quicker door to door.</div>' +
         (canSearch ? `<button type="button" class="cf-link" onclick="findCityFlights('${leg.key}',true)">Search flights anyway</button>` : ''))}</div>`;
     }
@@ -5362,7 +5378,7 @@ window.openCityFlightSheet = function(key, kind, i) {
   const s = (_cfSaved[currentTripId] || {})[key];
   const leg = (_cfLegs[currentTripId] || []).find(l => l.key === key);
   if (!s || !leg) return;
-  const r = s.result;
+  const r = _cfTrim(s.result, leg);
   const f = (kind === 'n' ? r.nonstop : r.oneStop || [])[i];
   if (!f) return;
   const ap = code => [...(r.fromAirports || []), ...(r.toAirports || [])].find(a => a.iata === code);
@@ -5386,8 +5402,8 @@ window.openCityFlightSheet = function(key, kind, i) {
     ${row('Airline', f.airline)}
     ${kind === 'c' ? row('Connection', (f.viaName || f.via) + (f.layover ? ' · ' + _cfDur(f.layover) + ' layover' : '')) : ''}
     ${row('Aircraft', f.aircraft)}
-    ${ap(f.from) ? row('From ' + leg.from, ap(f.from).km + ' km to ' + f.from) : ''}
-    ${ap(f.to) ? row('To ' + leg.to, ap(f.to).km + ' km from ' + f.to) : ''}
+    ${ap(f.from) ? row('From ' + leg.from, _cfMi(ap(f.from).km) + ' mi to ' + f.from) : ''}
+    ${ap(f.to) ? row('To ' + leg.to, _cfMi(ap(f.to).km) + ' mi from ' + f.to) : ''}
     ${r.dateUsed && r.dateUsed !== r.date ? row('Schedule', 'Typical — from ' + _cfDate(r.dateUsed)) : ''}
     ${p ? `<div class="cf-sub" style="margin-top:16px;">Average one-way price</div>
       <div class="cf-prices">${box('Economy', eco, 'no recent fares')}${box('Business', biz, noBiz ? 'no business cabin' : 'no recent fares')}</div>
