@@ -2235,8 +2235,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ UPCOMING TRIP PACKING LIST MODAL ══ -->
 <div class="modal-overlay" id="upcomingTripModal" onclick="dismissUpcomingModal(event)">
   <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-title">Add to upcoming trips?</div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div class="modal-title">Add to upcoming trips?</div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="dismissUpcomingModal()">✕</button>
+      </div>
+    </div>
     <div id="upcomingTripModalBody" style="font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.6;"></div>
     <button class="form-btn" onclick="confirmUpcomingAdd()">Yes, add to upcoming trips</button>
     <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissUpcomingModal()">No, just save to settings</button>
@@ -2246,8 +2251,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ SHIFT DAYS MODAL ══ -->
 <div class="modal-overlay" id="shiftDaysModal" onclick="closeShiftDaysModal(event)">
   <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-title">Shift Days</div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div class="modal-title">Shift Days</div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="closeShiftDaysModal()">✕</button>
+      </div>
+    </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5;">
       Shift all days from a point onward to earlier dates. The day(s) before the start get deleted, and the last day(s) of the trip become completely empty.
     </p>
@@ -2268,8 +2278,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ EDIT DAY MODAL ══ -->
 <div class="modal-overlay" id="editDayModal" onclick="closeEditDayModal(event)">
   <div class="modal-sheet" style="max-height:90vh;overflow-y:auto;">
-    <div class="modal-handle"></div>
-    <div class="modal-title" id="editDayModalTitle">Edit Day</div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div class="modal-title" id="editDayModalTitle">Edit Day</div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="requestCloseEditDay()">✕</button>
+      </div>
+    </div>
 
     <!-- Date: editable, with a live preview of the derived weekday -->
     <div style="display:flex;align-items:center;gap:10px;background:var(--cream);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
@@ -2317,8 +2332,13 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ QUICK ACTIVITY EDITOR MODAL ══ -->
 <div class="modal-overlay" id="quickActivityModal" onclick="closeQuickActivityModal(event)">
   <div class="modal-sheet" style="max-height:88vh;overflow-y:auto;">
-    <div class="modal-handle"></div>
-    <div class="modal-title" id="quickActivityModalTitle">Edit Activities</div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div class="modal-title" id="quickActivityModalTitle">Edit Activities</div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="requestCloseQuickActivity()">✕</button>
+      </div>
+    </div>
     <label class="form-label">Title</label>
     <input class="form-input" id="quickDayDescription" placeholder="e.g. 🛬 Arrive Lyon">
     <div style="display:flex;gap:8px;">
@@ -2376,9 +2396,16 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ OUTSTANDING BOOKINGS MODAL ══ -->
 <div class="modal-overlay" id="outstandingBookingsModal" onclick="dismissOutstandingBookingsModal(event)">
   <div class="modal-sheet" style="max-height:80vh;overflow-y:auto;">
-    <div class="modal-handle"></div>
-    <div class="modal-title">Outstanding Travel Bookings</div>
-    <div style="font-size:12px;color:var(--muted);margin:-10px 0 14px;">Trips in the next 6 months still missing flights, hotel, or car.</div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div>
+          <div class="modal-title">Outstanding Travel Bookings</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">Trips in the next 6 months still missing flights, hotel, or car.</div>
+        </div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="dismissOutstandingBookingsModal()">✕</button>
+      </div>
+    </div>
     <div id="outstandingBookingsModalBody"></div>
     <button class="form-btn" onclick="reviewOutstandingInTracker()">Review in Travel for Trips</button>
     <button class="form-btn secondary" style="margin-top:8px;" onclick="dismissOutstandingBookingsModal()">Dismiss</button>
@@ -10327,15 +10354,26 @@ window.closeTranslationModal = function(e) {
   document.getElementById('translationModal').classList.remove('open');
 };
 
-// Info sheets (weather, phrases): drag the pinned header down to dismiss, Escape to close
+// Bottom sheets: drag the pinned header down to dismiss, Escape to close.
+// Edit sheets go through their requestClose* guards so unsaved changes prompt first.
 (function() {
-  const SHEETS = { wxModal: () => closeWxModal(), translationModal: () => closeTranslationModal() };
+  const SHEETS = {
+    wxModal:                  () => closeWxModal(),
+    translationModal:         () => closeTranslationModal(),
+    upcomingTripModal:        () => dismissUpcomingModal(),
+    shiftDaysModal:           () => closeShiftDaysModal(),
+    editDayModal:             () => requestCloseEditDay(),
+    quickActivityModal:       () => requestCloseQuickActivity(),
+    outstandingBookingsModal: () => dismissOutstandingBookingsModal(),
+  };
+  const isOpen = el => getComputedStyle(el).display !== 'none';
   Object.entries(SHEETS).forEach(([id, close]) => {
     const overlay = document.getElementById(id);
     if (!overlay) return;
     const sheet = overlay.querySelector('.modal-sheet');
     const head  = overlay.querySelector('.modal-sticky-head');
     let startY = null, dy = 0;
+    if (!sheet || !head) return;
     const reset = () => { sheet.style.transform = ''; };
     head.addEventListener('pointerdown', e => {
       if (e.target.closest('.modal-close')) return;
@@ -10354,17 +10392,21 @@ window.closeTranslationModal = function(e) {
       sheet.classList.add('sheet-snap');
       if (dy > 80) {
         sheet.style.transform = 'translateY(100%)';
-        setTimeout(() => { close(); sheet.classList.remove('sheet-snap'); reset(); }, 200);
+        // Edit sheets may stay open behind an unsaved-changes prompt; reset() slides them back
+        setTimeout(() => { close(); reset(); }, 200);
       } else reset();
     };
     head.addEventListener('pointerup', end);
     head.addEventListener('pointercancel', end);
   });
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    Object.entries(SHEETS).forEach(([id, close]) => {
-      if (document.getElementById(id).classList.contains('open')) close();
-    });
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // Leave Escape to any dialog layered above the sheets (e.g. unsaved-changes prompt)
+    if (document.querySelector('body > div[style*="z-index:9999"]')) return;
+    for (const [id, close] of Object.entries(SHEETS)) {
+      const el = document.getElementById(id);
+      if (el && isOpen(el)) { close(); break; }
+    }
   });
 })();
 
