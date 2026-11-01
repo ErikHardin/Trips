@@ -114,7 +114,7 @@ export default {
         const out = await handleCityFlights(env, body);
         return new Response(JSON.stringify(out), { status: out.error ? 400 : 200, headers: CORS_JSON });
       } catch (e) {
-        return new Response(JSON.stringify({ error: 'Flight search failed: ' + e.message }), { status: 502, headers: CORS_JSON });
+        return new Response(JSON.stringify({ error: e.message }), { status: e.status === 429 ? 429 : 502, headers: CORS_JSON });
       }
     }
 
@@ -643,7 +643,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-01.1';
+const WORKER_VERSION = '2026-11-01.2';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2728,19 +2728,45 @@ async function runEditDigest(env, tripId, trip, recipients, access, prefsOf, cur
 
 const CF_ADB_HOST = 'aerodatabox.p.rapidapi.com';
 const CF_AIRPORT_RADIUS_KM = 150;
+const CF_ADB_SPACING_MS = 1100;
 // Connection hubs worth trying first for a 1-stop, roughly by size
 const CF_HUBS = ['SIN', 'BKK', 'KUL', 'HKG', 'DMK', 'SGN', 'HAN', 'CGK', 'MNL', 'TPE', 'ICN', 'CAN', 'PVG', 'DPS', 'NRT', 'HND', 'DOH', 'DXB', 'DEL', 'BOM', 'SYD'];
 // Carriers with no business cabin, so a Business & First price doesn't apply
 const CF_NO_BUSINESS = new Set(['FD', 'AK', 'D7', 'Z2', 'QZ', 'XJ', 'XT', 'DJ', 'DD', 'TR', '3K', 'JQ', 'GK', '5J', 'DG', 'JT', 'IW', 'QG', 'ID', 'BL', '6E', 'IX', 'SG', 'G8', 'HC', 'FY', 'OD']);
 
+// AeroDataBox's RapidAPI plans allow about one request a second, so a
+// search's calls go out one at a time, spaced, and a per-second 429 is
+// retried. A monthly-quota 429 can't be retried — that's reported as such.
+const cfSleep = ms => new Promise(r => setTimeout(r, ms));
 async function cfAdb(env, path) {
-  const r = await fetch('https://' + CF_ADB_HOST + path, {
-    headers: { 'X-RapidAPI-Key': env.AERODATABOX_KEY, 'X-RapidAPI-Host': CF_ADB_HOST }
-  });
-  if (r.status === 204) return null;
-  if (!r.ok) { const e = new Error('AeroDataBox ' + r.status); e.status = r.status; throw e; }
-  const t = await r.text();
-  return t ? JSON.parse(t) : null;
+  const lim = env._adbLim || (env._adbLim = { chain: Promise.resolve(), last: 0 });
+  const run = async () => {
+    for (let attempt = 0; ; attempt++) {
+      const wait = lim.last + CF_ADB_SPACING_MS - Date.now();
+      if (wait > 0) await cfSleep(wait);
+      lim.last = Date.now();
+      const r = await fetch('https://' + CF_ADB_HOST + path, {
+        headers: { 'X-RapidAPI-Key': env.AERODATABOX_KEY, 'X-RapidAPI-Host': CF_ADB_HOST }
+      });
+      if (r.status === 204) return null;
+      if (r.status === 429) {
+        const msg = await r.text().catch(() => '');
+        if (/month|quota/i.test(msg) || r.headers.get('x-ratelimit-requests-remaining') === '0') {
+          const e = new Error('The AeroDataBox plan\'s monthly request limit is used up');
+          e.status = 429; e.quota = true; throw e;
+        }
+        if (attempt < 3) { await cfSleep(1500 * (attempt + 1)); continue; }
+        const e = new Error('AeroDataBox is rate-limiting requests — try again in a minute');
+        e.status = 429; throw e;
+      }
+      if (!r.ok) { const e = new Error('AeroDataBox ' + r.status); e.status = r.status; throw e; }
+      const t = await r.text();
+      return t ? JSON.parse(t) : null;
+    }
+  };
+  const p = lim.chain.then(run, run);
+  lim.chain = p.catch(() => {});
+  return p;
 }
 
 function cfKm(a, b) {
@@ -2856,7 +2882,8 @@ async function cfPrices(env, origins, dests, date) {
   return { eco: cfStats(eco), biz: cfStats(biz), first: cfStats(first), byAirline };
 }
 
-async function handleCityFlights(env, body) {
+async function handleCityFlights(baseEnv, body) {
+  const env = Object.create(baseEnv); // per-request rate limiter lives on this
   if (!env.AERODATABOX_KEY) return { error: 'Flight data is not configured (AERODATABOX_KEY)' };
   const pt = p => p && typeof p.lat === 'number' && typeof p.lng === 'number' && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
   const { from, to } = body;
@@ -2873,7 +2900,7 @@ async function handleCityFlights(env, body) {
 
   // The trip's date, else the reference weekday when it has no schedule yet
   const loadDay = async day => (await Promise.all(origins.map(o => cfDepartures(env, o, day).catch(e => {
-    if (e.status && e.status < 500) return null;
+    if (e.status && e.status < 500 && e.status !== 429) return null;
     throw e;
   }))));
   let days = await loadDay(date);
