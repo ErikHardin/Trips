@@ -1104,6 +1104,23 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .modal-handle { width: 40px; height: 4px; background: var(--sand-dark); border-radius: 2px; margin: 0 auto 20px; }
 .modal-title { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 600; margin-bottom: 16px; }
+/* Pinned header with close (✕) button for scrolling info sheets */
+.modal-sticky-head {
+  position: sticky; top: -20px; z-index: 2;
+  margin: -20px -16px 12px; padding: 10px 16px 0;
+  background: var(--cream); border-bottom: 1px solid var(--border);
+  touch-action: none; cursor: grab;
+}
+.modal-sticky-head .modal-handle { margin-bottom: 8px; }
+.modal-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; }
+.modal-head-row .modal-title { margin-bottom: 0; }
+.modal-close {
+  flex: none; width: 36px; height: 36px; border-radius: 50%; border: none;
+  background: var(--sand); color: var(--ink); font-size: 17px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.modal-close:hover { background: var(--sand-dark); }
+.modal-sheet.sheet-snap { transition: transform 0.2s ease; }
 
 /* ── TOAST ── */
 .toast {
@@ -2328,19 +2345,31 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 <!-- ══ WEATHER FORECAST MODAL ══ -->
 <div class="modal-overlay" id="wxModal" onclick="closeWxModal(event)">
   <div class="modal-sheet" style="max-height:85vh;overflow-y:auto;">
-    <div class="modal-handle"></div>
-    <div class="modal-title" id="wxModalCity"></div>
-    <div id="wxModalContent" style="padding-top:4px;"></div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div class="modal-title" id="wxModalCity"></div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="closeWxModal()">✕</button>
+      </div>
+    </div>
+    <div id="wxModalContent"></div>
   </div>
 </div>
 
 <!-- ══ TRANSLATION MODAL ══ -->
 <div class="modal-overlay" id="translationModal" onclick="closeTranslationModal(event)">
   <div class="modal-sheet" style="max-height:85vh;overflow-y:auto;">
-    <div class="modal-handle"></div>
-    <div class="modal-title" id="translationModalTitle"></div>
-    <div id="translationModalSubtitle" style="font-size:12px;color:var(--muted);margin-top:-10px;margin-bottom:16px;"></div>
-    <div id="translationModalContent" style="padding-top:4px;"></div>
+    <div class="modal-sticky-head">
+      <div class="modal-handle"></div>
+      <div class="modal-head-row">
+        <div>
+          <div class="modal-title" id="translationModalTitle"></div>
+          <div id="translationModalSubtitle" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
+        </div>
+        <button type="button" class="modal-close" aria-label="Close" onclick="closeTranslationModal()">✕</button>
+      </div>
+    </div>
+    <div id="translationModalContent"></div>
   </div>
 </div>
 
@@ -10297,6 +10326,47 @@ window.closeTranslationModal = function(e) {
   if (e && e.target !== document.getElementById('translationModal')) return;
   document.getElementById('translationModal').classList.remove('open');
 };
+
+// Info sheets (weather, phrases): drag the pinned header down to dismiss, Escape to close
+(function() {
+  const SHEETS = { wxModal: () => closeWxModal(), translationModal: () => closeTranslationModal() };
+  Object.entries(SHEETS).forEach(([id, close]) => {
+    const overlay = document.getElementById(id);
+    if (!overlay) return;
+    const sheet = overlay.querySelector('.modal-sheet');
+    const head  = overlay.querySelector('.modal-sticky-head');
+    let startY = null, dy = 0;
+    const reset = () => { sheet.style.transform = ''; };
+    head.addEventListener('pointerdown', e => {
+      if (e.target.closest('.modal-close')) return;
+      startY = e.clientY; dy = 0;
+      sheet.classList.remove('sheet-snap');
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener('pointermove', e => {
+      if (startY === null) return;
+      dy = Math.max(0, e.clientY - startY);
+      sheet.style.transform = 'translateY(' + dy + 'px)';
+    });
+    const end = () => {
+      if (startY === null) return;
+      startY = null;
+      sheet.classList.add('sheet-snap');
+      if (dy > 80) {
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(() => { close(); sheet.classList.remove('sheet-snap'); reset(); }, 200);
+      } else reset();
+    };
+    head.addEventListener('pointerup', end);
+    head.addEventListener('pointercancel', end);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    Object.entries(SHEETS).forEach(([id, close]) => {
+      if (document.getElementById(id).classList.contains('open')) close();
+    });
+  });
+})();
 
 window.speakPhrase = function(text, bcp47) {
   if (!window.speechSynthesis) return;
