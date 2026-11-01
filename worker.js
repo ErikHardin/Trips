@@ -106,6 +106,18 @@ export default {
       });
     }
 
+    // Flights between two itinerary cities — Logistics → "Getting between cities".
+    // Nearest airports, the day's nonstops (1-stop when there are few), and
+    // recent average fares. Needs AERODATABOX_KEY; fares need TRAVELPAYOUTS_TOKEN.
+    if (url.pathname === '/city-flights') {
+      try {
+        const out = await handleCityFlights(env, body);
+        return new Response(JSON.stringify(out), { status: out.error ? 400 : 200, headers: CORS_JSON });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'Flight search failed: ' + e.message }), { status: 502, headers: CORS_JSON });
+      }
+    }
+
     // Parse pasted booking text — the same parser the email handler uses. It
     // only parses: the app is signed in and writes the result to bookingInbox
     // itself, so this route can't be used to put anything in the database.
@@ -631,7 +643,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-10-31.1';
+const WORKER_VERSION = '2026-11-01.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -640,6 +652,7 @@ const WORKER_ENV_KEYS = [
   'FIREBASE_URL',
   'FIREBASE_SECRET',
   'AERODATABOX_KEY',
+  'TRAVELPAYOUTS_TOKEN',
   'ADMIN_PIN',
   'ADMIN_PIN_2',
   'APNS_KEY_P8',
@@ -655,6 +668,7 @@ const WORKER_ROUTES = [
   '/widget-upcoming',
   '/verify-pin',
   '/flight-lookup',
+  '/city-flights',
   '/booking-parse',
   '/geocode',
   '/resolve-map-link',
@@ -2699,4 +2713,213 @@ async function runEditDigest(env, tripId, trip, recipients, access, prefsOf, cur
       threadId: tripId,
     });
   }
+}
+
+// ── City-to-city flights (Logistics → Getting between cities) ───────────────
+// One search per itinerary move: the airports nearest each city, that day's
+// nonstops between them (plus 1-stop connections through a hub when there are
+// two or fewer nonstops), and recent average one-way fares in USD.
+//
+// Schedules: AeroDataBox FIDS (AERODATABOX_KEY, same key as /flight-lookup).
+// Airlines don't publish schedules far ahead, so when the trip date has no
+// data yet the same weekday a week or two out is used and flagged `dateUsed`.
+// Fares: Travelpayouts / Aviasales data API (TRAVELPAYOUTS_TOKEN, free). These
+// are prices other travellers found recently — averages, not live fares.
+
+const CF_ADB_HOST = 'aerodatabox.p.rapidapi.com';
+const CF_AIRPORT_RADIUS_KM = 150;
+// Connection hubs worth trying first for a 1-stop, roughly by size
+const CF_HUBS = ['SIN', 'BKK', 'KUL', 'HKG', 'DMK', 'SGN', 'HAN', 'CGK', 'MNL', 'TPE', 'ICN', 'CAN', 'PVG', 'DPS', 'NRT', 'HND', 'DOH', 'DXB', 'DEL', 'BOM', 'SYD'];
+// Carriers with no business cabin, so a Business & First price doesn't apply
+const CF_NO_BUSINESS = new Set(['FD', 'AK', 'D7', 'Z2', 'QZ', 'XJ', 'XT', 'DJ', 'DD', 'TR', '3K', 'JQ', 'GK', '5J', 'DG', 'JT', 'IW', 'QG', 'ID', 'BL', '6E', 'IX', 'SG', 'G8', 'HC', 'FY', 'OD']);
+
+async function cfAdb(env, path) {
+  const r = await fetch('https://' + CF_ADB_HOST + path, {
+    headers: { 'X-RapidAPI-Key': env.AERODATABOX_KEY, 'X-RapidAPI-Host': CF_ADB_HOST }
+  });
+  if (r.status === 204) return null;
+  if (!r.ok) { const e = new Error('AeroDataBox ' + r.status); e.status = r.status; throw e; }
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+
+function cfKm(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// The nearest airport with scheduled flights, plus a second one when the city
+// has two close together (Bangkok's BKK and DMK)
+async function cfNearAirports(env, pt) {
+  const d = await cfAdb(env, `/airports/search/location?lat=${pt.lat}&lon=${pt.lng}&radiusKm=${CF_AIRPORT_RADIUS_KM}&limit=10&withFlightInfoOnly=true`);
+  const items = ((d && d.items) || [])
+    .filter(a => a && a.iata && a.location)
+    .map(a => ({ iata: a.iata, name: a.shortName || a.name || a.iata, city: a.municipalityName || '',
+                 km: Math.round(cfKm(pt, { lat: a.location.lat, lng: a.location.lon })) }))
+    .sort((a, b) => a.km - b.km);
+  if (!items.length) return [];
+  return items.filter((a, i) => i === 0 || a.km <= items[0].km + 45).slice(0, 2);
+}
+
+const cfHHMM = t => { const m = String(t || '').match(/[ T](\d{2}):(\d{2})/); return m ? m[1] + ':' + m[2] : ''; };
+const cfUtcMs = t => { const v = Date.parse(String(t || '').replace(' ', 'T')); return isNaN(v) ? null : v; };
+const cfLocalDate = t => String(t || '').slice(0, 10);
+
+// A day's departures from one airport: two 12-hour windows (the plan's limit)
+async function cfDepartures(env, iata, date) {
+  const q = '?direction=Departure&withLeg=true&withCancelled=false&withCodeshared=false&withCargo=false&withPrivate=false';
+  const halves = await Promise.all([
+    cfAdb(env, `/flights/airports/iata/${iata}/${date}T00:00/${date}T11:59${q}`),
+    cfAdb(env, `/flights/airports/iata/${iata}/${date}T12:00/${date}T23:59${q}`),
+  ]);
+  const seen = new Set();
+  const out = [];
+  halves.forEach(h => ((h && h.departures) || []).forEach(f => {
+    const dep = f.departure || {}, arr = f.arrival || {};
+    const to = arr.airport && arr.airport.iata;
+    const num = String(f.number || '').replace(/\s+/g, ' ').trim();
+    if (!to || !num || f.isCargo || seen.has(num)) return;
+    seen.add(num);
+    const st = x => (x && x.scheduledTime) || {};
+    out.push({
+      num, airline: (f.airline && f.airline.name) || '', airlineIata: (f.airline && f.airline.iata) || num.slice(0, 2),
+      from: iata, to, toName: (arr.airport && (arr.airport.shortName || arr.airport.name)) || to,
+      dep: cfHHMM(st(dep).local), arr: cfHHMM(st(arr).local),
+      depDate: cfLocalDate(st(dep).local), arrDate: cfLocalDate(st(arr).local),
+      depUtc: cfUtcMs(st(dep).utc), arrUtc: cfUtcMs(st(arr).utc),
+      aircraft: (f.aircraft && f.aircraft.model) || '',
+    });
+  }));
+  return out;
+}
+
+function cfAddDays(iso, n) {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// The same weekday as `iso`, one to two weeks from today — schedules are
+// reliably loaded that close in
+function cfReferenceDate(iso) {
+  const today = new Date(); today.setUTCHours(12, 0, 0, 0);
+  const want = new Date(iso + 'T12:00:00Z').getUTCDay();
+  const ahead = (want - today.getUTCDay() + 7) % 7 + 7;
+  return cfAddDays(today.toISOString().slice(0, 10), ahead);
+}
+
+const cfMins = (a, b) => (a != null && b != null) ? Math.round((b - a) / 60000) : null;
+const cfPlus = (depDate, arrDate) => {
+  if (!depDate || !arrDate || depDate === arrDate) return 0;
+  return Math.round((Date.parse(arrDate) - Date.parse(depDate)) / 86400000);
+};
+
+function cfStats(vals) {
+  const v = vals.filter(x => typeof x === 'number' && x > 0).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const q = p => v[Math.min(v.length - 1, Math.max(0, Math.round((v.length - 1) * p)))];
+  const few = v.length < 4;
+  return { avg: Math.round(q(0.5)), lo: Math.round(few ? v[0] : q(0.25)), hi: Math.round(few ? v[v.length - 1] : q(0.75)), n: v.length };
+}
+
+async function cfTp(env, url) {
+  const r = await fetch(url, { headers: { 'X-Access-Token': env.TRAVELPAYOUTS_TOKEN, 'Accept-Encoding': 'gzip' } });
+  if (!r.ok) return [];
+  const d = await r.json().catch(() => null);
+  return (d && Array.isArray(d.data)) ? d.data : [];
+}
+
+// Recent fares for every origin × destination airport pair
+async function cfPrices(env, origins, dests, date) {
+  if (!env.TRAVELPAYOUTS_TOKEN) return null;
+  const month = date.slice(0, 7);
+  const base = 'https://api.travelpayouts.com';
+  const eco = [], ecoNonstopByAirline = {}, biz = [], first = [];
+  await Promise.all(origins.flatMap(o => dests.map(async d => {
+    const common = `origin=${o}&destination=${d}&currency=usd&one_way=true`;
+    let rows = await cfTp(env, `${base}/aviasales/v3/prices_for_dates?${common}&departure_at=${month}&direct=false&sorting=price&limit=100`);
+    if (!rows.length) rows = await cfTp(env, `${base}/aviasales/v3/prices_for_dates?${common}&direct=false&sorting=price&limit=100`);
+    rows.forEach(r => {
+      if (typeof r.price !== 'number') return;
+      eco.push(r.price);
+      if (!r.transfers && r.airline) (ecoNonstopByAirline[r.airline] = ecoNonstopByAirline[r.airline] || []).push(r.price);
+    });
+    const [b, f] = await Promise.all([1, 2].map(tc =>
+      cfTp(env, `${base}/v2/prices/latest?${common}&period_type=year&trip_class=${tc}&limit=100&show_to_affiliates=true`)));
+    b.forEach(r => { if (typeof r.value === 'number' && (r.trip_class == null || r.trip_class === 1)) biz.push(r.value); });
+    f.forEach(r => { if (typeof r.value === 'number' && (r.trip_class == null || r.trip_class === 2)) first.push(r.value); });
+  })));
+  const byAirline = {};
+  Object.entries(ecoNonstopByAirline).forEach(([k, v]) => { const s = cfStats(v); if (s) byAirline[k] = s.avg; });
+  return { eco: cfStats(eco), biz: cfStats(biz), first: cfStats(first), byAirline };
+}
+
+async function handleCityFlights(env, body) {
+  if (!env.AERODATABOX_KEY) return { error: 'Flight data is not configured (AERODATABOX_KEY)' };
+  const pt = p => p && typeof p.lat === 'number' && typeof p.lng === 'number' && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
+  const { from, to } = body;
+  const date = String(body.date || '');
+  if (!pt(from) || !pt(to) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Missing from, to or date' };
+
+  const [fromAirports, toAirports] = await Promise.all([cfNearAirports(env, from), cfNearAirports(env, to)]);
+  const result = { fromAirports, toAirports, date, dateUsed: date, nonstop: [], oneStop: [], prices: null, searchedAt: Date.now() };
+  if (!fromAirports.length || !toAirports.length) return result;
+  const origins = fromAirports.map(a => a.iata), dests = toAirports.map(a => a.iata);
+  if (origins.some(o => dests.includes(o))) return result; // same airport — nothing to fly
+
+  const pricesJob = cfPrices(env, origins, dests, date).catch(() => null);
+
+  // The trip's date, else the reference weekday when it has no schedule yet
+  const loadDay = async day => (await Promise.all(origins.map(o => cfDepartures(env, o, day).catch(e => {
+    if (e.status && e.status < 500) return null;
+    throw e;
+  }))));
+  let days = await loadDay(date);
+  if (days.every(d => !d || !d.length)) {
+    const ref = cfReferenceDate(date);
+    if (ref !== date) { days = await loadDay(ref); result.dateUsed = ref; }
+  }
+  const deps = days.flatMap(d => d || []);
+
+  const destSet = new Set(dests);
+  result.nonstop = deps.filter(f => destSet.has(f.to))
+    .sort((a, b) => (a.depUtc || 0) - (b.depUtc || 0))
+    .map(f => ({ num: f.num, airline: f.airline, airlineIata: f.airlineIata, from: f.from, to: f.to,
+                 dep: f.dep, arr: f.arr, plus: cfPlus(f.depDate, f.arrDate), mins: cfMins(f.depUtc, f.arrUtc), aircraft: f.aircraft }));
+
+  // 1-stop through up to two hubs the origin flies to that day
+  if (result.nonstop.length <= 2) {
+    const counts = {};
+    deps.forEach(f => { if (!destSet.has(f.to) && !origins.includes(f.to)) counts[f.to] = (counts[f.to] || 0) + 1; });
+    const hubRank = h => { const i = CF_HUBS.indexOf(h); return i === -1 ? 100 : i; };
+    const hubs = Object.keys(counts).filter(h => counts[h] >= 1 && hubRank(h) < 100)
+      .sort((a, b) => hubRank(a) - hubRank(b) || counts[b] - counts[a]).slice(0, 2);
+    const conns = [];
+    await Promise.all(hubs.map(async h => {
+      const second = (await cfDepartures(env, h, result.dateUsed).catch(() => [])).filter(f => destSet.has(f.to));
+      deps.filter(f => f.to === h && f.arrUtc).forEach(f1 => {
+        const f2 = second.filter(s => s.depUtc && s.depUtc - f1.arrUtc >= 45 * 60000 && s.depUtc - f1.arrUtc <= 6 * 3600000)
+          .sort((a, b) => a.depUtc - b.depUtc)[0];
+        if (!f2) return;
+        conns.push({
+          via: h, viaName: f1.toName, legs: [f1.num, f2.num],
+          airline: f1.airline === f2.airline ? f1.airline : [f1.airline, f2.airline].filter(Boolean).join(' + '),
+          airlineIata: f1.airlineIata === f2.airlineIata ? f1.airlineIata : '',
+          from: f1.from, to: f2.to, dep: f1.dep, arr: f2.arr, plus: cfPlus(f1.depDate, f2.arrDate),
+          mins: cfMins(f1.depUtc, f2.arrUtc), layover: cfMins(f1.arrUtc, f2.depUtc), depUtc: f1.depUtc,
+        });
+      });
+    }));
+    const seenDep = new Set();
+    result.oneStop = conns.sort((a, b) => a.mins - b.mins)
+      .filter(c => { const k = c.dep + c.via; if (seenDep.has(k)) return false; seenDep.add(k); return true; })
+      .slice(0, 5).sort((a, b) => a.depUtc - b.depUtc)
+      .map(({ depUtc, ...c }) => c);
+  }
+
+  result.prices = await pricesJob;
+  result.budgetCarriers = [...new Set([...result.nonstop, ...result.oneStop].map(f => f.airlineIata).filter(c => CF_NO_BUSINESS.has(c)))];
+  return result;
 }

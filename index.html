@@ -494,6 +494,65 @@ body {
 .bk-nights { display: flex; gap: 3px; margin-top: 8px; }
 .bk-nights i { flex: 1; height: 5px; border-radius: 3px; background: var(--sand); }
 .bk-nights i.on { background: var(--sage); }
+
+/* Logistics: collapsible sections */
+.logi-toolbar { display: flex; justify-content: flex-end; padding: 0 16px; }
+.logi-toolbar button { font-family: inherit; background: none; border: none; color: var(--terracotta); font-size: 12px; padding: 6px 2px; cursor: pointer; }
+.logi-sec { position: relative; }
+.logi-sec::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 1px; background: var(--border); }
+.logi-sec-head { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); margin: 0 16px; min-height: 58px; padding: 8px 0; border: none; background: none; font-family: inherit; text-align: left; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.logi-sec-text { flex: 1; min-width: 0; }
+.logi-sec-title { display: flex; align-items: center; gap: 8px; font-family: 'Cormorant Garamond', serif; font-size: 21px; font-style: italic; }
+.logi-sec-sum { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 1px; }
+.logi-sec-sum .mini-bar { width: 80px; height: 5px; border-radius: 3px; background: rgba(109,155,114,0.2); overflow: hidden; display: block; }
+.logi-sec-sum .mini-bar i { display: block; height: 100%; background: var(--sage); }
+.logi-sec-chev { flex-shrink: 0; color: var(--muted); transition: transform .2s; }
+.logi-sec.open .logi-sec-chev { transform: rotate(180deg); }
+.logi-sec-body { display: none; padding-bottom: 14px; }
+.logi-sec.open .logi-sec-body { display: block; }
+.logi-new { font-family: 'DM Sans', sans-serif; font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--gold); background: var(--gold-light); border: 1px solid var(--gold-border); border-radius: 20px; padding: 1px 7px; }
+
+/* Logistics → Getting between cities */
+.cf-wrap { padding: 0 16px; }
+.cf-intro { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.cf-cabin { display: flex; background: var(--sand); border-radius: 10px; padding: 3px; margin: 12px 0; }
+.cf-cabin button { flex: 1; min-height: 36px; border: none; border-radius: 8px; background: transparent; font-family: inherit; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
+.cf-cabin button.on { background: var(--warm-white); color: var(--ink); box-shadow: var(--shadow-sm); }
+.cf-card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px 12px; margin-bottom: 10px; }
+.cf-card.road { border-style: dashed; }
+.cf-card.booked { border-color: color-mix(in srgb, var(--sage) 45%, var(--border)); }
+.cf-head { display: flex; align-items: flex-start; gap: 10px; }
+.cf-head svg { flex-shrink: 0; margin-top: 2px; }
+.cf-route { font-size: 15px; font-weight: 600; color: var(--ink); }
+.cf-when { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cf-ok { font-size: 12px; color: var(--sage-dark); margin-top: 6px; }
+.cf-airports { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; padding: 8px 10px; background: var(--gold-light); border-radius: 10px; font-size: 12px; color: var(--ink); }
+.cf-airports b { font-weight: 600; letter-spacing: .5px; }
+.cf-note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+.cf-sub { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 12px 0 2px; }
+.cf-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-top: 1px solid var(--border); background: none; font-family: inherit; text-align: left; color: var(--ink); cursor: pointer; }
+.cf-row-main { flex: 1; min-width: 0; }
+.cf-times { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.cf-times sup { font-size: 10px; color: var(--terracotta); margin-left: 2px; }
+.cf-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cf-price { text-align: right; flex-shrink: 0; }
+.cf-price b { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cf-price b.dim { color: var(--muted); font-weight: 500; }
+.cf-price span { font-size: 11px; color: var(--muted); }
+.cf-more { width: 100%; min-height: 40px; margin-top: 2px; border: 1px solid var(--border); border-radius: 10px; background: var(--cream); font-family: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+.cf-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 11px; color: var(--muted); }
+.cf-foot a, .cf-link { color: var(--terracotta); font-size: 12px; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.cf-link { display: inline-block; background: none; border: none; font-family: inherit; padding: 6px 0 0; cursor: pointer; }
+.cf-refresh { background: none; border: none; font-family: inherit; font-size: 11px; color: var(--muted); text-decoration: underline; padding: 0; cursor: pointer; }
+.cf-find { width: 100%; min-height: 44px; margin-top: 10px; border: none; border-radius: 10px; background: var(--terracotta); color: #fff; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.cf-find:disabled { opacity: .6; cursor: default; }
+.cf-sheet-times { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; }
+.cf-sheet-times .t { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.cf-sheet-times .mid { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.cf-sheet-times .mid i { width: 64px; height: 1px; background: var(--sand-dark); }
+.cf-prices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cf-prices div { background: var(--cream); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-size: 12px; color: var(--muted); }
+.cf-prices b { display: block; font-size: 20px; color: var(--ink); margin: 2px 0; }
 .daily-memories-row { display:flex;align-items:center;gap:10px;padding:9px 12px 9px 10px;border-bottom:1px solid var(--divider);cursor:pointer;background:rgba(192,106,61,0.04); }
 .daily-memories-label { font-size:13px;font-weight:500;color:var(--ink); }
 .daily-memories-chevron { opacity:0.35;font-size:18px;flex-shrink:0; }
@@ -2460,7 +2519,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 386 };
+window.BUILD_INFO = { prNumber: 387 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4957,14 +5016,390 @@ function _bookingsSectionHTML(trip, tripId) {
     });
   });
 
-  if (!flightsHTML && !staysHTML && !carsHTML) return '';
-  return '<div class="logistics-section" style="padding-top:0;padding-bottom:8px;">' +
-      '<div class="logistics-section-title" style="padding:0 0 4px;">Bookings</div>' +
-      (flightsHTML ? '<div class="bk-sub">✈️ Flights</div>' + flightsHTML : '') +
-      (staysHTML ? '<div class="bk-sub">🏨 Where you’re sleeping</div>' + staysHTML : '') +
+  if (!flightsHTML && !staysHTML && !carsHTML) return null;
+  // Collapsed-header summary: "3 flights · 6 hotels · 21 nights · 1 car"
+  const many = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+  const nights = stays.reduce((n, st) => n + st.dayIds.length, 0);
+  const summary = [flights.length && many(flights.length, 'flight'), stays.length && many(stays.length, 'hotel'),
+    nights && many(nights, 'night'), seen.size && many(seen.size, 'car')].filter(Boolean).join(' · ');
+  return {
+    summary,
+    body: '<div class="logistics-section" style="padding-top:0;padding-bottom:0;">' +
+      (flightsHTML ? '<div class="bk-sub" style="margin-top:0;">✈️ Flights</div>' + flightsHTML : '') +
+      (staysHTML ? '<div class="bk-sub"' + (flightsHTML ? '' : ' style="margin-top:0;"') + '>🏨 Where you’re sleeping</div>' + staysHTML : '') +
       (carsHTML ? '<div class="bk-sub">🚗 Cars</div>' + carsHTML : '') +
-    '</div>';
+    '</div>'
+  };
 }
+
+// ── Logistics: collapsible sections ──
+// Open/closed is remembered per trip on this device. Until you change one,
+// only "Getting between cities" starts open.
+const LOGI_SECTION_DEFAULTS = { bookings: false, spend: false, checklist: false, cities: true, packing: false };
+function _logiOpenState(tripId) {
+  try { return JSON.parse(localStorage.getItem('logiSections:' + tripId) || '{}') || {}; } catch (e) { return {}; }
+}
+function _logiSaveState(tripId, st) {
+  try { localStorage.setItem('logiSections:' + tripId, JSON.stringify(st)); } catch (e) {}
+}
+function _logiIsOpen(tripId, key) {
+  const st = _logiOpenState(tripId);
+  return key in st ? !!st[key] : !!LOGI_SECTION_DEFAULTS[key];
+}
+function _logiSection(tripId, key, titleHTML, summaryHTML, bodyHTML) {
+  const open = _logiIsOpen(tripId, key);
+  return `<div class="logi-sec${open ? ' open' : ''}" data-logi-sec="${key}">
+    <button type="button" class="logi-sec-head" aria-expanded="${open}" onclick="toggleLogiSection('${key}')">
+      <span class="logi-sec-text"><span class="logi-sec-title">${titleHTML}</span><span class="logi-sec-sum" id="logisum-${key}">${summaryHTML}</span></span>
+      <svg class="logi-sec-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+    <div class="logi-sec-body">${bodyHTML}</div>
+  </div>`;
+}
+function _setLogiOpen(el, open) {
+  el.classList.toggle('open', open);
+  const h = el.querySelector('.logi-sec-head');
+  if (h) h.setAttribute('aria-expanded', String(open));
+}
+function _syncLogiAllBtn() {
+  const btn = document.getElementById('logiAllBtn');
+  if (!btn) return;
+  const anyOpen = !!document.querySelector('#tripLogisticsPanel .logi-sec.open');
+  btn.textContent = anyOpen ? 'Collapse all' : 'Expand all';
+}
+window.toggleLogiSection = function(key) {
+  const el = document.querySelector('#tripLogisticsPanel .logi-sec[data-logi-sec="' + key + '"]');
+  if (!el || !currentTripId) return;
+  const open = !el.classList.contains('open');
+  _setLogiOpen(el, open);
+  const st = _logiOpenState(currentTripId);
+  st[key] = open;
+  _logiSaveState(currentTripId, st);
+  _syncLogiAllBtn();
+};
+window.toggleAllLogiSections = function() {
+  if (!currentTripId) return;
+  const secs = [...document.querySelectorAll('#tripLogisticsPanel .logi-sec')];
+  const open = !secs.some(el => el.classList.contains('open'));
+  const st = _logiOpenState(currentTripId);
+  secs.forEach(el => { _setLogiOpen(el, open); st[el.dataset.logiSec] = open; });
+  _logiSaveState(currentTripId, st);
+  _syncLogiAllBtn();
+};
+
+// ── Logistics → Getting between cities ──
+// Every move on the itinerary — a change of city, within a region or across
+// regions — gets a card. A move short enough to drive (about 4 hours or
+// less) says so instead of searching; one with a flight already on that day
+// shows as booked; the rest get a "Find flights" button. Results are saved
+// under the trip's logistics/cityFlights so everyone managing the trip sees
+// the same search, and re-searching is only needed for fresher data.
+const CF_ROAD_MAX_HOURS = 4;
+const _cfExpanded = new Set();   // legs showing every nonstop
+const _cfSearching = new Set();  // legs with a search in flight
+let _cfSaved = {};               // tripId → logistics.cityFlights
+let _cfLegs = {};                // tripId → legs from the last render
+let _cfRenderSeq = 0;
+
+function _cfPlace(day) {
+  let c = String(day.city || '').replace(/[🛬🚗✈️🏠]/g, '').trim();
+  const parts = c.split(/\s*(?:→|->|➝)\s*/).filter(Boolean);
+  c = parts.length ? parts[parts.length - 1] : '';
+  const l = c.toLowerCase();
+  if (!c || l.startsWith('home') || l.startsWith('in flight') || l.startsWith('fly out') || l.startsWith('travel day')) return '';
+  return c;
+}
+const _cfNorm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+
+function _cityLegs(trip) {
+  const legs = [];
+  let prev = null;
+  _tripDayEntries(trip).forEach(([dayId, day, iso]) => {
+    const place = _cfPlace(day);
+    if (!place) return;
+    const region = String(day.region || '').trim();
+    const hotel = _cfNorm(day.hotel);
+    // A day trip keeps the same hotel — that isn't a move
+    const sameHotel = prev && hotel && prev.hotel && hotel === prev.hotel;
+    if (prev && _cfNorm(place) !== _cfNorm(prev.place) && !sameHotel && iso) {
+      legs.push({ key: prev.dayId + '_' + dayId, from: prev.place, fromRegion: prev.region, to: place, toRegion: region,
+                  toDayId: dayId, date: iso, crossRegion: !!(region && prev.region && region !== prev.region) });
+    }
+    if (!sameHotel) prev = { place, region, dayId, hotel };
+  });
+  return legs;
+}
+
+// Flights already on the itinerary for the day of a move
+function _cfBookedLines(trip, leg) {
+  const lines = [];
+  _tripDayEntries(trip).forEach(([dayId, day, iso]) => {
+    if (dayId !== leg.toDayId && iso !== leg.date) return;
+    const infos = Array.isArray(day.flightInfo) ? day.flightInfo : (day.flightInfo ? [day.flightInfo] : []);
+    infos.forEach(fi => { if (fi && fi.formatted && !lines.includes(fi.formatted)) lines.push(fi.formatted); });
+  });
+  return lines;
+}
+
+// A saved search still matches the move (the itinerary may have changed since)
+function _cfSavedFor(saved, leg) {
+  const s = saved && saved[leg.key];
+  return s && s.result && s.from === leg.from && s.to === leg.to && s.date === leg.date ? s : null;
+}
+
+async function _cfCoords(name, region) {
+  let c = await getCityCoords(name).catch(() => null);
+  if (!c && region) c = await getCityCoords(name + ', ' + region).catch(() => null);
+  return c ? { lat: c[0], lng: c[1] } : null;
+}
+function _cfKm(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+// Rough drive: roads run ~30% longer than the straight line, at ~60 km/h
+function _cfRoad(km) {
+  const roadKm = Math.round(km * 1.3 / 5) * 5;
+  const mins = Math.max(15, Math.round(roadKm / 60 * 60 / 15) * 15);
+  return { roadKm, mins };
+}
+const _cfDur = m => m == null ? '' : (Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : '') + (m % 60 ? (m % 60) + 'm' : (Math.floor(m / 60) ? '' : '0m'));
+const _cfDate = iso => { const d = new Date(iso + 'T12:00:00'); return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
+function _cfAgo(ts) {
+  const m = Math.round((Date.now() - (ts || 0)) / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return m + ' min ago';
+  const h = Math.round(m / 60);
+  if (h < 36) return h + (h === 1 ? ' hour' : ' hours') + ' ago';
+  const d = Math.round(h / 24);
+  return d + (d === 1 ? ' day' : ' days') + ' ago';
+}
+function _cfCabin() { try { return localStorage.getItem('cfCabin') === 'biz' ? 'biz' : 'eco'; } catch (e) { return 'eco'; } }
+window.setCityFlightsCabin = function(c) {
+  try { localStorage.setItem('cfCabin', c); } catch (e) {}
+  if (currentTripId && _cfLegs[currentTripId]) renderCityFlights(currentTripId, _cfLegs[currentTripId], _cfSaved[currentTripId]);
+};
+function _cfGoogleUrl(from, to, date, cabin) {
+  return 'https://www.google.com/travel/flights?q=' + encodeURIComponent('Flights from ' + from + ' to ' + to + ' on ' + date + ' one way' + (cabin === 'biz' ? ' business class' : ''));
+}
+
+function _cfSummary(trip, legs, saved) {
+  const booked = legs.filter(l => _cfBookedLines(trip, l).length).length;
+  const searched = legs.filter(l => !_cfBookedLines(trip, l).length && _cfSavedFor(saved, l)).length;
+  const many = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+  return [many(legs.length, 'move'), booked && booked + ' booked', searched && searched + ' searched'].filter(Boolean).join(' · ');
+}
+
+// Price for one row in the chosen cabin: that airline's average when known, else the route's
+function _cfRowPrice(f, r, cabin) {
+  const p = r.prices;
+  if (!p) return null;
+  if (cabin === 'biz') {
+    if (f.airlineIata && (r.budgetCarriers || []).includes(f.airlineIata)) return { main: '—', sub: 'no business', dim: true };
+    const s = p.biz || p.first;
+    return s ? { main: '$' + s.avg, sub: 'route avg' } : { main: '—', sub: 'no data', dim: true };
+  }
+  const a = f.airlineIata && p.byAirline && p.byAirline[f.airlineIata];
+  if (a) return { main: '$' + a, sub: 'avg' };
+  return p.eco ? { main: '$' + p.eco.avg, sub: 'route avg' } : null;
+}
+
+const CF_PLANE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>';
+const CF_CAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--sage-dark)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14M6 17v2M18 17v2M4 13l2-6h12l2 6v4H4z"></path></svg>';
+const CF_CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--sage-dark)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>';
+
+function _cfHead(icon, leg, extra, innerHTML) {
+  return `<div class="cf-head">${icon}<div style="flex:1;min-width:0;">
+    <div class="cf-route">${escHtml(leg.from)} → ${escHtml(leg.to)}</div>
+    <div class="cf-when">${escHtml([_cfDate(leg.date), extra].filter(Boolean).join(' · '))}</div>${innerHTML || ''}</div></div>`;
+}
+const _cfWhy = leg => leg.crossRegion ? leg.fromRegion + ' → ' + leg.toRegion : (leg.toRegion ? 'city change in ' + leg.toRegion : 'city change');
+
+function _cfRowHTML(leg, f, kind, i, r, cabin) {
+  const pr = _cfRowPrice(f, r, cabin);
+  const meta = kind === 'n'
+    ? [f.airline ? f.airline + ' ' + f.num : f.num, (r.fromAirports || []).length > 1 ? 'from ' + f.from : '', _cfDur(f.mins)]
+    : [f.airline, 'via ' + f.via, _cfDur(f.mins)];
+  return `<button type="button" class="cf-row" onclick="openCityFlightSheet('${leg.key}','${kind}',${i})">
+    <span class="cf-row-main"><span class="cf-times" style="display:block;">${escHtml(f.dep)} → ${escHtml(f.arr)}${f.plus ? '<sup>+' + f.plus + '</sup>' : ''}</span>
+    <span class="cf-meta" style="display:block;">${escHtml(meta.filter(Boolean).join(' · '))}</span></span>
+    ${pr ? `<span class="cf-price"><b class="${pr.dim ? 'dim' : ''}">${escHtml(pr.main)}</b><span>${escHtml(pr.sub)}</span></span>` : ''}
+  </button>`;
+}
+
+function _cfAirportsHTML(r, leg) {
+  const line = (a, place) => `<span><b>${escHtml(a.iata)}</b> ${escHtml(a.name)} · ${a.km} km from ${escHtml(place)}</span>`;
+  return '<div class="cf-airports">' + (r.fromAirports || []).map(a => line(a, leg.from)).join('') +
+    (r.toAirports || []).map(a => line(a, leg.to)).join('') + '</div>';
+}
+
+function _cfResultsHTML(leg, saved, cabin, canSearch) {
+  const r = saved.result;
+  const nonstop = r.nonstop || [], oneStop = r.oneStop || [];
+  const fromCodes = (r.fromAirports || []).map(a => a.iata), toCodes = (r.toAirports || []).map(a => a.iata);
+  let h = '<div class="cf-card">' + _cfHead(CF_PLANE, leg, _cfWhy(leg));
+  if (!fromCodes.length || !toCodes.length) {
+    h += `<div class="cf-note">No airport with scheduled flights within 150 km of ${escHtml(!fromCodes.length ? leg.from : leg.to)}.</div>`;
+  } else {
+    h += _cfAirportsHTML(r, leg);
+    if (r.dateUsed && r.dateUsed !== r.date) {
+      h += `<div class="cf-note">Typical schedule: times are from ${escHtml(_cfDate(r.dateUsed))}, the same weekday. Airlines haven't published ${escHtml(_cfDate(r.date).split(', ').pop())} schedules yet.</div>`;
+    }
+    if (nonstop.length) {
+      const all = _cfExpanded.has(leg.key);
+      h += `<div class="cf-sub">Nonstop · ${nonstop.length} flight${nonstop.length === 1 ? '' : 's'}</div>` +
+        (all ? nonstop : nonstop.slice(0, 4)).map((f, i) => _cfRowHTML(leg, f, 'n', i, r, cabin)).join('');
+      if (nonstop.length > 4) {
+        h += `<button type="button" class="cf-more" onclick="toggleCityFlightsMore('${leg.key}')">${all ? 'Show fewer' : 'Show ' + (nonstop.length - 4) + ' more nonstop' + (nonstop.length - 4 === 1 ? '' : 's')}</button>`;
+      }
+    }
+    if (oneStop.length) {
+      h += `<div class="cf-sub">1 stop${nonstop.length ? ' · few nonstops on this route' : ''}</div>` +
+        oneStop.map((f, i) => _cfRowHTML(leg, f, 'c', i, r, cabin)).join('');
+    }
+    if (!nonstop.length && !oneStop.length) {
+      h += `<div class="cf-note">No nonstop or 1-stop flights found between ${escHtml(fromCodes.join('/'))} and ${escHtml(toCodes.join('/'))} that day.</div>`;
+    }
+    const p = r.prices;
+    const s = p && (cabin === 'biz' ? (p.biz || p.first) : p.eco);
+    const label = cabin === 'biz' ? 'Business' : 'Economy';
+    const range = s ? `${label} usually $${s.lo}–$${s.hi} one-way` : (p ? `No recent ${label.toLowerCase()} fares found` : '');
+    if (range) h += `<div class="cf-note">${escHtml(range)} · recent averages, not live fares</div>`;
+  }
+  h += `<div class="cf-foot"><span>Searched ${escHtml(_cfAgo(r.searchedAt))}${canSearch ? ` · <button type="button" class="cf-refresh" onclick="findCityFlights('${leg.key}')">${_cfSearching.has(leg.key) ? 'Refreshing…' : 'Refresh'}</button>` : ''}</span>` +
+    (fromCodes.length && toCodes.length ? `<a href="${escAttr(_cfGoogleUrl(fromCodes[0], toCodes[0], leg.date, cabin))}" target="_blank" rel="noopener">Google Flights ↗</a>` : '') + '</div>';
+  return h + '</div>';
+}
+
+async function renderCityFlights(tripId, legs, saved) {
+  const seq = ++_cfRenderSeq;
+  _cfLegs[tripId] = legs;
+  _cfSaved[tripId] = saved || {};
+  const trip = allTrips[tripId] || {};
+  const cabin = _cfCabin();
+  const canSearch = canEditCurrentTrip();
+  // Coordinates are cached by getCityCoords (the weather already looked most up)
+  const coords = await Promise.all(legs.map(async l => {
+    const [a, b] = await Promise.all([_cfCoords(l.from, l.fromRegion), _cfCoords(l.to, l.toRegion)]);
+    return { a, b };
+  }));
+  if (seq !== _cfRenderSeq) return;
+  const body = document.getElementById('cfBody');
+  if (!body) return;
+  let road = 0, toPlan = 0, booked = 0;
+  const cards = legs.map((leg, i) => {
+    leg.coords = coords[i];
+    const lines = _cfBookedLines(trip, leg);
+    if (lines.length) {
+      booked++;
+      return `<div class="cf-card booked">${_cfHead(CF_CHECK, leg, _cfWhy(leg), `<div class="cf-ok">Booked · ${escHtml(lines.join(' / '))}</div>`)}</div>`;
+    }
+    const s = _cfSavedFor(_cfSaved[tripId], leg);
+    if (s) { toPlan++; return _cfResultsHTML(leg, s, cabin, canSearch); }
+    const { a, b } = coords[i];
+    const km = a && b ? _cfKm(a, b) : null;
+    const drive = km != null ? _cfRoad(km) : null;
+    if (drive && drive.mins <= CF_ROAD_MAX_HOURS * 60 && !leg.forceSearch) {
+      road++;
+      return `<div class="cf-card road">${_cfHead(CF_CAR, leg, 'about ' + _cfDur(drive.mins) + ' by car (~' + drive.roadKm + ' km)',
+        '<div class="cf-ok">No flight needed — the drive is quicker door to door.</div>' +
+        (canSearch ? `<button type="button" class="cf-link" onclick="findCityFlights('${leg.key}',true)">Search flights anyway</button>` : ''))}</div>`;
+    }
+    toPlan++;
+    const busy = _cfSearching.has(leg.key);
+    return `<div class="cf-card">${_cfHead(CF_PLANE, leg, _cfWhy(leg))}
+      ${!a || !b ? `<div class="cf-note">Couldn't place ${escHtml(!a ? leg.from : leg.to)} on the map.</div>` : ''}
+      ${canSearch && a && b ? `<button type="button" class="cf-find" ${busy ? 'disabled' : ''} onclick="findCityFlights('${leg.key}')">${busy ? 'Searching…' : 'Find flights'}</button>` : ''}
+    </div>`;
+  });
+  body.innerHTML = `<div class="cf-intro">Nearest airports for each move · prices are recent averages in USD</div>
+    <div class="cf-cabin" role="group" aria-label="Cabin">
+      <button type="button" class="${cabin === 'eco' ? 'on' : ''}" aria-pressed="${cabin === 'eco'}" onclick="setCityFlightsCabin('eco')">Economy</button>
+      <button type="button" class="${cabin === 'biz' ? 'on' : ''}" aria-pressed="${cabin === 'biz'}" onclick="setCityFlightsCabin('biz')">Business &amp; First</button>
+    </div>` + cards.join('');
+  const sum = document.getElementById('logisum-cities');
+  const many = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+  if (sum) sum.textContent = [many(legs.length, 'move'), booked && booked + ' booked', road && road + ' by road', toPlan && toPlan + ' to plan'].filter(Boolean).join(' · ');
+}
+
+window.toggleCityFlightsMore = function(key) {
+  _cfExpanded.has(key) ? _cfExpanded.delete(key) : _cfExpanded.add(key);
+  if (currentTripId && _cfLegs[currentTripId]) renderCityFlights(currentTripId, _cfLegs[currentTripId], _cfSaved[currentTripId]);
+};
+
+window.findCityFlights = async function(key, force) {
+  const tripId = currentTripId;
+  const leg = (_cfLegs[tripId] || []).find(l => l.key === key);
+  if (!leg || _cfSearching.has(key)) return;
+  if (force) leg.forceSearch = true;
+  const rerender = () => { if (currentTripId === tripId) renderCityFlights(tripId, _cfLegs[tripId], _cfSaved[tripId]); };
+  let { a, b } = leg.coords || {};
+  if (!a || !b) { a = await _cfCoords(leg.from, leg.fromRegion); b = await _cfCoords(leg.to, leg.toRegion); }
+  if (!a || !b) { showToast('Couldn’t find ' + (!a ? leg.from : leg.to) + ' on the map'); return; }
+  _cfSearching.add(key);
+  rerender();
+  try {
+    const res = await fetch(GEO_WORKER + '/city-flights', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: { lat: a.lat, lng: a.lng, name: leg.from }, to: { lat: b.lat, lng: b.lng, name: leg.to }, date: leg.date })
+    });
+    const result = await res.json().catch(() => ({ error: 'Bad response' }));
+    if (!res.ok || result.error) throw new Error(result.error || ('HTTP ' + res.status));
+    const rec = { from: leg.from, to: leg.to, date: leg.date, result, by: adminUser || '' };
+    // JSON round-trip drops anything Firebase can't store
+    await window._set(window._ref(window._db, `trips/${tripId}/logistics/cityFlights/${key}`), JSON.parse(JSON.stringify(rec)));
+    _cfSaved[tripId] = Object.assign({}, _cfSaved[tripId], { [key]: rec });
+  } catch (e) {
+    console.warn('City flights search failed', e);
+    showToast('Flight search failed — ' + (e.message || 'try again'));
+  } finally {
+    _cfSearching.delete(key);
+    rerender();
+  }
+};
+
+// Tap a flight: times, length, aircraft, average prices and a Google Flights link
+window.openCityFlightSheet = function(key, kind, i) {
+  const s = (_cfSaved[currentTripId] || {})[key];
+  const leg = (_cfLegs[currentTripId] || []).find(l => l.key === key);
+  if (!s || !leg) return;
+  const r = s.result;
+  const f = (kind === 'n' ? r.nonstop : r.oneStop || [])[i];
+  if (!f) return;
+  const ap = code => [...(r.fromAirports || []), ...(r.toAirports || [])].find(a => a.iata === code);
+  const apName = code => { const a = ap(code); return a ? a.name : ''; };
+  const title = kind === 'n' ? [f.airline, f.num].filter(Boolean).join(' ') : (f.legs || []).join(' + ');
+  const p = r.prices || null;
+  const box = (label, st, none) => `<div>${label}<b>${st ? '$' + st.avg : '—'}</b>${st ? 'usually $' + st.lo + '–$' + st.hi : none}</div>`;
+  const eco = p && ((f.airlineIata && p.byAirline && p.byAirline[f.airlineIata]) ? Object.assign({}, p.eco || {}, { avg: p.byAirline[f.airlineIata] }) : p.eco);
+  const noBiz = f.airlineIata && (r.budgetCarriers || []).includes(f.airlineIata);
+  const biz = p && !noBiz ? (p.biz || p.first) : null;
+  const row = (l, v) => v ? `<div class="det-row"><span class="det-row-label">${l}</span><span class="det-row-value">${escHtml(v)}</span></div>` : '';
+  const cabin = _cfCabin();
+  const m = _bottomSheet(`
+    <div class="det-meta" style="margin-bottom:2px;">${escHtml(_cfDate(leg.date))} · ${escHtml(leg.from)} → ${escHtml(leg.to)}</div>
+    <div class="modal-title" style="margin-bottom:0;">✈️ ${escHtml(title)}</div>
+    <div class="cf-sheet-times">
+      <div style="flex:1;"><div class="t">${escHtml(f.dep)}</div><div class="cf-meta">${escHtml(f.from)}${apName(f.from) ? ' · ' + escHtml(apName(f.from)) : ''}</div></div>
+      <div class="mid"><span>${escHtml(_cfDur(f.mins))}</span><i></i><span>${kind === 'n' ? 'nonstop' : 'via ' + escHtml(f.via)}</span></div>
+      <div style="flex:1;text-align:right;"><div class="t">${escHtml(f.arr)}${f.plus ? '<sup style="font-size:11px;color:var(--terracotta);">+' + f.plus + '</sup>' : ''}</div><div class="cf-meta">${escHtml(f.to)}${apName(f.to) ? ' · ' + escHtml(apName(f.to)) : ''}</div></div>
+    </div>
+    ${row('Airline', f.airline)}
+    ${kind === 'c' ? row('Connection', (f.viaName || f.via) + (f.layover ? ' · ' + _cfDur(f.layover) + ' layover' : '')) : ''}
+    ${row('Aircraft', f.aircraft)}
+    ${ap(f.from) ? row('From ' + leg.from, ap(f.from).km + ' km to ' + f.from) : ''}
+    ${ap(f.to) ? row('To ' + leg.to, ap(f.to).km + ' km from ' + f.to) : ''}
+    ${r.dateUsed && r.dateUsed !== r.date ? row('Schedule', 'Typical — from ' + _cfDate(r.dateUsed)) : ''}
+    ${p ? `<div class="cf-sub" style="margin-top:16px;">Average one-way price</div>
+      <div class="cf-prices">${box('Economy', eco, 'no recent fares')}${box('Business', biz, noBiz ? 'no business cabin' : 'no recent fares')}</div>
+      <div class="cf-note">Averages from recent searches, not live fares. Check the airline or Google Flights for today’s price.</div>` : ''}
+    <a href="${escAttr(_cfGoogleUrl(f.from, f.to, leg.date, cabin))}" target="_blank" rel="noopener" class="det-btn primary" style="margin-top:16px;">Open in Google Flights ↗</a>
+    <button type="button" class="det-btn plain" data-act="copy" style="margin-top:8px;">Copy flight number</button>`);
+  m.addEventListener('click', e => {
+    if (e.target.closest('[data-act="copy"]')) _copyText(kind === 'n' ? f.num : (f.legs || []).join(', '));
+  });
+};
 
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
@@ -10737,17 +11172,17 @@ async function _renderLogisticsInner(tripId, panel) {
   }
   const _isErik = currentUser?.email === 'erikchardin@gmail.com';
   var spendSummaryHTML = _isErik && hasSpend
-    ? '<div class="logistics-section" style="padding-top:0;padding-bottom:0;">' +
-        '<div class="logistics-section-title" style="padding:0 0 10px;">Trip Spend</div>' +
-        '<div class="logistics-card" style="padding:14px 16px;">' +
+    ? _logiSection(tripId, 'spend', 'Trip Spend',
+        escHtml(tripCurrency) + totalSpend.toLocaleString() + (usdTotal != null ? ' · ≈ $' + Math.round(usdTotal).toLocaleString() + ' USD' : ''),
+      '<div class="logistics-section" style="padding-top:0;padding-bottom:0;">' +
+        '<div class="logistics-card" style="padding:14px 16px;margin-bottom:0;">' +
           '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
             '<span style="font-size:22px;font-weight:700;color:var(--terracotta);">' + escHtml(tripCurrency) + totalSpend.toLocaleString() + '</span>' +
             (usdTotal != null ? '<span style="font-size:13px;color:var(--muted);">≈ $' + Math.round(usdTotal).toLocaleString() + ' USD</span>' : '') +
           '</div>' +
           '<div style="font-size:11px;color:var(--muted);margin-top:4px;">' + trackedDays.length + ' of ' + tripDays.length + ' days tracked</div>' +
         '</div>' +
-      '</div>' +
-      '<div class="packing-divider"></div>'
+      '</div>')
     : '';
 
   // Booking checklist — sections with optional individual sub-items (flights/hotels/cars)
@@ -10807,36 +11242,36 @@ async function _renderLogisticsInner(tripId, panel) {
         ? '<button class="packing-generate-btn" id="packingGenerateBtn" data-gen-trip="' + tripId + '">Copy from Master Packing List</button>'
         : '<button class="packing-generate-btn" id="packingStartBtn" data-start-trip="' + tripId + '">Start a Packing List</button>');
 
-  panel.innerHTML =
-    '<div style="height:16px;"></div>' +
+  const _trip = allTrips[tripId] || {};
+  const bookings = _bookingsSectionHTML(_trip, tripId);
+  const legs = _cityLegs(_trip);
+  const packAll = (packingList || []).flatMap(p => (p.sections || []).flatMap(sec => (sec.items || []).filter(Boolean)));
+  const packSummary = packAll.length ? packAll.filter(i => i.checked).length + ' of ' + packAll.length + ' packed' : 'Not started';
 
-    _bookingsSectionHTML(allTrips[tripId] || {}, tripId) +
+  panel.innerHTML =
+    '<div class="logi-toolbar"><button type="button" id="logiAllBtn" onclick="toggleAllLogiSections()"></button></div>' +
+
+    (bookings ? _logiSection(tripId, 'bookings', 'Bookings', escHtml(bookings.summary), bookings.body) : '') +
 
     spendSummaryHTML +
 
-    '<div class="logistics-section" style="padding-top:0;">' +
-      '<div class="logistics-section-title" style="padding:0 0 10px;">Booking Checklist</div>' +
-    '</div>' +
-    '<div class="logistics-progress" style="margin-top:0;">' +
-      '<span>' + checkedCount + '/' + BOOKING_ITEMS.length + ' booked</span>' +
-      '<div class="logistics-progress-bar"><div class="logistics-progress-fill" style="width:' + pct + '%"></div></div>' +
-      '<span>' + pct + '%</span>' +
-    '</div>' +
-    '<div class="logistics-section" style="padding-top:0;">' +
-      '<div class="logistics-card">' + bookingHTML + '</div>' +
-    '</div>' +
+    _logiSection(tripId, 'checklist', 'Booking Checklist',
+      '<span>' + checkedCount + '/' + BOOKING_ITEMS.length + ' booked</span><span class="mini-bar"><i style="width:' + pct + '%"></i></span><span>' + pct + '%</span>',
+      '<div class="logistics-section" style="padding-top:0;">' +
+        '<div class="logistics-card" style="margin-bottom:0;">' + bookingHTML + '</div>' +
+      '</div>') +
 
-    '<div class="packing-divider"></div>' +
+    (legs.length ? _logiSection(tripId, 'cities', 'Getting between cities<span class="logi-new">New</span>',
+      escHtml(_cfSummary(_trip, legs, logistics.cityFlights)),
+      '<div class="cf-wrap" id="cfBody"></div>') : '') +
 
-    '<div class="logistics-section" style="padding-top:0; padding-bottom:12px;">' +
-      '<div class="logistics-section-title" style="padding:0 0 12px;">Packing List</div>' +
-    '</div>' +
-
-    generateBtnHTML +
-
-    '<div id="packingListContainer">' + packingHTML + '</div>' +
+    _logiSection(tripId, 'packing', 'Packing List', escHtml(packSummary),
+      '<div style="height:4px;"></div>' + generateBtnHTML +
+      '<div id="packingListContainer">' + packingHTML + '</div>') +
 
     '<div style="height:32px;"></div>';
+  _syncLogiAllBtn();
+  if (legs.length) renderCityFlights(tripId, legs, logistics.cityFlights);
 }
 
 // ── Build packing list HTML from stored data ──
