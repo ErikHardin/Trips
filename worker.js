@@ -282,11 +282,23 @@ async function handleWidgetData(env, request) {
     todayData.dayId = todayRow.id;
     // Extras for the native Today widget (widget.js ignores them). Each one is
     // best-effort: a failed lookup just leaves its line off the widget.
+    const todayPlace = (wTripPlaces(days, todayISO, todayISO)[0] || {}).city;
     const [weather, flights] = await Promise.all([
-      wDayWeather(env, todayRow.d, todayISO).catch(() => null),
+      wDayWeather(env, todayRow.d, todayISO, todayPlace).catch(() => null),
       widgetFlights(env, chosen, todayISO).catch(() => []),
       widgetDrives(env, chosenId, todayRow, todayData.activities, raws).catch(() => {}),
     ]);
+    // The look-ahead days at each day's own city, ending with the trip
+    if (weather) {
+      weather.city = todayPlace || null;
+      const lastISO = days.map(x => x.iso).filter(Boolean).sort().pop() || todayISO;
+      const aheadTo = wAddDays(todayISO, 3) < lastISO ? wAddDays(todayISO, 3) : lastISO;
+      if (aheadTo <= todayISO) weather.forecast = [];
+      else {
+        const fc = await wPlacesForecast(env, wTripPlaces(days, wAddDays(todayISO, 1), aheadTo)).catch(() => []);
+        if (fc.length) weather.forecast = fc.map(wForecastTile);
+      }
+    }
     todayData.weather = weather;
     todayData.hotel = todayRow.d.hotel || null;
     todayData.flights = flights;
@@ -334,25 +346,23 @@ async function widgetNextTrip(env, trip, days, todayISO) {
     weather: [], forecastFrom: null, hotel: null, checkIn: null, flights: [],
   };
 
-  const first = sorted.find(x => x.iso >= startISO) || sorted[0];
   const hotelRow = sorted.find(x => x.iso >= startISO && x.d.hotel);
   if (hotelRow) { out.hotel = hotelRow.d.hotel; out.checkIn = 'Check-in ' + wShortDate(hotelRow.iso); }
 
-  // Open-Meteo forecasts today plus 15 days
+  // Open-Meteo forecasts today plus 15 days. Each day is forecast at its own
+  // city. A trip of up to 5 days, or one that stays in one place, gets a tile
+  // per day (grouped by city in the widget); a longer multi-city trip gets a
+  // tile per stop as `cities`, with `weather` still holding its first 5 days
+  // for app builds that predate the city tiles.
   const lastForecast = wAddDays(todayISO, 15);
-  const from = startISO > todayISO ? startISO : todayISO;
-  const to = wAddDays(startISO, 4) < lastForecast ? wAddDays(startISO, 4) : lastForecast;
+  const places = wTripPlaces(sorted, startISO, endISO && endISO > startISO ? endISO : startISO);
+  const byCity = places.length > 5 && new Set(places.map(p => p.city)).size > 1;
   const weatherJob = (async () => {
-    if (from > to) { out.forecastFrom = wShortDate(wAddDays(startISO, -15)); return; }
-    const day = first && first.d;
-    const place = day && (wCleanCity(day.city) || wCleanCity(day.region));
-    const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
-    if (!c) return;
-    const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
-      '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' + from + '&end_date=' + to);
-    const d = w && w.daily;
-    if (!d || !d.time) return;
-    out.weather = wForecastDays(d, 0);
+    if (startISO > lastForecast) { out.forecastFrom = wShortDate(wAddDays(startISO, -15)); return; }
+    const inRange = places.filter(p => p.iso >= todayISO && p.iso <= lastForecast);
+    const fc = await wPlacesForecast(env, byCity ? inRange : inRange.slice(0, 5));
+    out.weather = fc.slice(0, 5).map(wForecastTile);
+    if (byCity) out.cities = wCityStops(places, fc, todayISO);
   })().catch(() => {});
 
   // Outbound: the legs on the first flight date at or before the trip's first day
@@ -630,7 +640,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-01.4';
+const WORKER_VERSION = '2026-11-01.5';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2335,8 +2345,8 @@ function addHHMM(hhmm, mins) {
 // The widget also gets what's left of the day in words ("Showers this morning,
 // storms this afternoon"), the chance of rain, sunrise and sunset, and the
 // next 3 days.
-async function wDayWeather(env, day, dateISO) {
-  const place = wCleanCity(day.city) || wCleanCity(day.region);
+async function wDayWeather(env, day, dateISO, placeOverride) {
+  const place = placeOverride || wCleanCity(day.city) || wCleanCity(day.region);
   const c = place && !wIsNonPlace(place) ? await wCityCoords(place, env) : null;
   if (!c) return null;
   const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
@@ -2362,6 +2372,119 @@ function wSunTimes(d, offsetSec) {
   const ev = (iso, rise) => iso ? { at: Date.parse(iso + ':00Z') - offsetSec * 1000, label: wClock(iso.slice(11, 16)), rise } : null;
   return [ev(d.sunrise && d.sunrise[0], true), ev(d.sunset && d.sunset[0], false), ev(d.sunrise && d.sunrise[1], true)]
     .filter(e => e && !isNaN(e.at));
+}
+
+// Where a trip day is, for its weather: the day's city, else its region. A
+// travel day ("Amsterdam → Madrid", "Arrive Madrid") is where it arrives.
+function wDayPlace(d) {
+  for (const field of [d && d.city, d && d.region]) {
+    const parts = String(field || '').split(/→|->/);
+    const city = wCleanCity(parts[parts.length - 1]).replace(/^(arrive|arriving|arrival)( in| at)?\s+/i, '');
+    if (city && !wIsNonPlace(city)) return city;
+  }
+  return '';
+}
+
+// [{ iso, city }] for every date from fromISO to toISO. A date that names no
+// place (a flight, a gap in the itinerary) is wherever the trip last was, and
+// dates before the first named place are at that place.
+function wTripPlaces(rows, fromISO, toISO) {
+  const known = rows.filter(x => x && x.iso).map(x => ({ iso: x.iso, city: wDayPlace(x.d) }))
+    .filter(x => x.city).sort((a, b) => a.iso.localeCompare(b.iso));
+  if (!known.length || !fromISO || !toISO) return [];
+  const out = [];
+  for (let iso = fromISO; iso <= toISO && out.length < 60; iso = wAddDays(iso, 1)) {
+    let at = known[0];
+    for (const k of known) { if (k.iso <= iso) at = k; else break; }
+    out.push({ iso, city: at.city });
+  }
+  return out;
+}
+
+// Daily forecasts for [{ iso, city }]: one Open-Meteo request per city over its
+// dates. → [{ iso, city, code, hi, lo }], skipping dates it has no forecast for.
+async function wPlacesForecast(env, places) {
+  const spans = {};
+  places.forEach(p => {
+    const r = spans[p.city] || (spans[p.city] = { from: p.iso, to: p.iso });
+    if (p.iso < r.from) r.from = p.iso;
+    if (p.iso > r.to) r.to = p.iso;
+  });
+  const got = {};
+  await Promise.all(Object.entries(spans).map(async ([city, r]) => {
+    const c = await wCityCoords(city, env).catch(() => null);
+    if (!c) return;
+    const w = await wFetchJson('https://api.open-meteo.com/v1/forecast?latitude=' + c.lat + '&longitude=' + c.lon +
+      '&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&start_date=' +
+      r.from + '&end_date=' + r.to).catch(() => null);
+    const d = w && w.daily;
+    if (!d || !d.time) return;
+    d.time.forEach((iso, i) => {
+      const hi = d.temperature_2m_max[i], lo = d.temperature_2m_min[i];
+      if (hi == null || lo == null) return;
+      got[city + '|' + iso] = { code: d.weathercode[i], hi: Math.round(hi), lo: Math.round(lo) };
+    });
+  }));
+  return places.map(p => got[p.city + '|' + p.iso] && Object.assign({ iso: p.iso, city: p.city }, got[p.city + '|' + p.iso]))
+    .filter(Boolean);
+}
+
+// A forecast day as a widget tile: { label: 'THU 8', icon, hi, lo, city }
+function wForecastTile(f) {
+  return { label: W_DOW[wIsoDate(f.iso).getUTCDay()] + ' ' + wIsoDate(f.iso).getUTCDate(),
+    icon: wWeatherText(f.code).split(' ')[0], hi: f.hi, lo: f.lo, city: f.city };
+}
+
+// "Nov 6", "Nov 6–8", "Nov 30–Dec 2"
+function wDateSpan(a, b) {
+  if (a === b) return wShortDate(a);
+  const sameMonth = wIsoDate(a).getUTCMonth() === wIsoDate(b).getUTCMonth();
+  return wShortDate(a) + '–' + (sameMonth ? wIsoDate(b).getUTCDate() : wShortDate(b));
+}
+
+// The weather word for a day worth flagging, or '' for a dry one
+function wWetKind(code) {
+  if (code >= 95) return 'storms';
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+  if (code >= 51) return 'rain';
+  return '';
+}
+
+// A longer trip's stops, one tile each (the first 5): [{ city, dates: 'Nov 6–8',
+// icon, hi, lo, note: 'rain Sun' }]. hi is the warmest high and lo the coolest
+// low over the days forecast so far; a stop not yet in range has neither, and
+// forecastFrom says when it will be. A city visited twice is two stops.
+function wCityStops(places, fc, todayISO) {
+  const stops = [];
+  places.forEach(p => {
+    const last = stops[stops.length - 1];
+    if (last && last.city === p.city) last.to = p.iso;
+    else stops.push({ city: p.city, from: p.iso, to: p.iso });
+  });
+  const byIso = {};
+  fc.forEach(f => { byIso[f.iso] = f; });
+  return stops.slice(0, 5).map(s => {
+    const out = { city: s.city, dates: wDateSpan(s.from, s.to) };
+    const ds = [];
+    for (let iso = s.from; iso <= s.to; iso = wAddDays(iso, 1)) if (byIso[iso]) ds.push(byIso[iso]);
+    if (!ds.length) {
+      if (s.to >= todayISO) out.forecastFrom = wShortDate(wAddDays(s.from > todayISO ? s.from : todayISO, -15));
+      return out;
+    }
+    out.hi = Math.max(...ds.map(f => f.hi));
+    out.lo = Math.min(...ds.map(f => f.lo));
+    // The most common sky, earliest first on a tie
+    const counts = {};
+    ds.forEach(f => { const i = wWeatherText(f.code).split(' ')[0]; counts[i] = (counts[i] || 0) + 1; });
+    out.icon = Object.keys(counts).reduce((a, b) => counts[b] > counts[a] ? b : a);
+    const wet = ds.filter(f => wWetKind(f.code));
+    if (wet.length) {
+      out.note = wWetKind(wet[0].code) + ' ' + (wet.length === 1
+        ? W_DOW[wIsoDate(wet[0].iso).getUTCDay()].charAt(0) + W_DOW[wIsoDate(wet[0].iso).getUTCDay()].slice(1).toLowerCase()
+        : wet.length + ' days');
+    }
+    return out;
+  });
 }
 
 // Open-Meteo daily → [{ label: 'THU 8', icon: '⛈️', hi, lo }], from day `from` on
