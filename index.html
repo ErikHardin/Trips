@@ -510,7 +510,6 @@ body {
 .logi-sec.open .logi-sec-chev { transform: rotate(180deg); }
 .logi-sec-body { display: none; padding-bottom: 14px; }
 .logi-sec.open .logi-sec-body { display: block; }
-.logi-new { font-family: 'DM Sans', sans-serif; font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--gold); background: var(--gold-light); border: 1px solid var(--gold-border); border-radius: 20px; padding: 1px 7px; }
 
 /* Logistics → Getting between cities */
 .cf-wrap { padding: 0 16px; }
@@ -5033,9 +5032,8 @@ function _bookingsSectionHTML(trip, tripId) {
 }
 
 // ── Logistics: collapsible sections ──
-// Open/closed is remembered per trip on this device. Until you change one,
-// only "Getting between cities" starts open.
-const LOGI_SECTION_DEFAULTS = { bookings: false, spend: false, checklist: false, cities: true, packing: false };
+// Open/closed is remembered per trip on this device; every section starts closed.
+const LOGI_SECTION_DEFAULTS = { bookings: false, spend: false, checklist: false, cities: false, packing: false };
 function _logiOpenState(tripId) {
   try { return JSON.parse(localStorage.getItem('logiSections:' + tripId) || '{}') || {}; } catch (e) { return {}; }
 }
@@ -11261,7 +11259,7 @@ async function _renderLogisticsInner(tripId, panel) {
         '<div class="logistics-card" style="margin-bottom:0;">' + bookingHTML + '</div>' +
       '</div>') +
 
-    (legs.length ? _logiSection(tripId, 'cities', 'Getting between cities<span class="logi-new">New</span>',
+    (legs.length ? _logiSection(tripId, 'cities', 'Getting between cities',
       escHtml(_cfSummary(_trip, legs, logistics.cityFlights)),
       '<div class="cf-wrap" id="cfBody"></div>') : '') +
 
