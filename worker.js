@@ -223,12 +223,13 @@ async function handleWidgetData(env, request) {
     return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
   }
 
-  const fbUrl = env.FIREBASE_URL + '/trips.json' + (env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '');
-  let trips;
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  let trips, access;
   try {
-    const resp = await fetch(fbUrl);
-    if (!resp.ok) throw new Error('status ' + resp.status);
-    trips = await resp.json();
+    [trips, access] = await Promise.all([
+      wFetchJson(env.FIREBASE_URL + '/trips.json'  + auth),
+      wFetchJson(env.FIREBASE_URL + '/access.json' + auth),
+    ]);
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
   }
@@ -241,14 +242,8 @@ async function handleWidgetData(env, request) {
     ? dateParam
     : new Date().toISOString().slice(0, 10);
 
-  // Active trip takes priority; otherwise pick the soonest upcoming trip
-  const ids = Object.keys(trips).filter(id => trips[id]);
-  let chosenId = ids.find(id => trips[id].status === 'active');
-  if (!chosenId) {
-    chosenId = ids
-      .filter(id => trips[id].status === 'upcoming' && trips[id].startDateISO)
-      .sort((a, b) => trips[a].startDateISO.localeCompare(trips[b].startDateISO))[0];
-  }
+  // A shared trip under way takes priority; otherwise the soonest upcoming one
+  const chosenId = wPickWidgetTripId(trips, access, todayISO);
   const chosen = chosenId ? trips[chosenId] : null;
 
   if (!chosen) {
@@ -564,18 +559,10 @@ async function handleWidgetUpcoming(env, request) {
     : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayISO = new Date(todayMs).toISOString().slice(0, 10);
 
-  // Trips owned by a role:'user' account belong to that person, not the family
-  // pool. Mirrors groupTripsByUserOwner() in the app: no ownerId, or an admin
-  // owner, means the trip is shared and belongs on the widget.
-  const userOwnerEmails = new Set();
-  Object.values(access || {}).forEach(u => {
-    if (u && u.role === 'user' && u.email) userOwnerEmails.add(u.email);
-  });
-
-  // Trips still ahead of (or currently under way) — soonest first
+  // Shared trips still ahead of (or currently under way) — soonest first
+  const isShared = wSharedTripTest(access);
   const upcoming = Object.values(trips || {})
-    .filter(t => t && (t.status === 'upcoming' || t.status === 'active'))
-    .filter(t => !(t.ownerId && userOwnerEmails.has(t.ownerId)))
+    .filter(t => isShared(t) && (t.status === 'upcoming' || t.status === 'active'))
     .map(t => ({ t, startISO: wTripStartISO(t), endISO: wTripEndISO(t) }))
     .filter(x => x.startISO)
     // A trip whose last day has passed is over whatever its status still says.
@@ -643,7 +630,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-01.3';
+const WORKER_VERSION = '2026-11-01.4';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -751,6 +738,32 @@ function wTripEndISO(t) {
     if (dates.length) return dates[dates.length - 1];
   }
   return wTripStartISO(t);
+}
+
+// Widgets are anonymous, so they show only the shared family trips. A trip
+// owned by a role:'user' account belongs to that person, not the family pool.
+// Mirrors groupTripsByUserOwner() in the app: no ownerId, or an admin owner,
+// means the trip is shared. Returns a predicate over trip objects.
+function wSharedTripTest(access) {
+  const userOwnerEmails = new Set();
+  Object.values(access || {}).forEach(u => {
+    if (u && u.role === 'user' && u.email) userOwnerEmails.add(u.email);
+  });
+  return t => !!t && !(t.ownerId && userOwnerEmails.has(t.ownerId));
+}
+
+// The trip the Today and Wine widgets show: a shared trip under way, else the
+// soonest shared upcoming one. A trip whose last day has passed is over
+// whatever its status still says — statuses are set by hand and go stale.
+function wPickWidgetTripId(trips, access, todayISO) {
+  const isShared = wSharedTripTest(access);
+  const live = Object.keys(trips || {})
+    .filter(id => isShared(trips[id]) && (trips[id].status === 'active' || trips[id].status === 'upcoming'))
+    .map(id => ({ id, t: trips[id], startISO: wTripStartISO(trips[id]) }))
+    .filter(x => x.startISO && wTripEndISO(x.t) >= todayISO)
+    .sort((a, b) => a.startISO.localeCompare(b.startISO));
+  const active = live.find(x => x.t.status === 'active');
+  return (active || live[0] || {}).id || null;
 }
 
 // A day's city field carries decoration the geocoder chokes on: leading travel
@@ -1652,13 +1665,9 @@ function wineTripTotals(trip) {
 // A 🍷 activity without a key gets one here, so the widget can point at it.
 async function handleWineWidgetData(env, body) {
   if (!(await wineWidgetCaller(env, body.key))) return jsonResponse({ error: 'Widget is off' }, 401);
-  const trips = (await fbGet(env, 'trips')) || {};
-  const ids = Object.keys(trips).filter(id => trips[id]);
-  let tripId = ids.find(id => trips[id].status === 'active');
-  if (!tripId) {
-    tripId = ids.filter(id => trips[id].status === 'upcoming' && trips[id].startDateISO)
-      .sort((a, b) => trips[a].startDateISO.localeCompare(trips[b].startDateISO))[0];
-  }
+  const [trips, access] = await Promise.all([fbGet(env, 'trips'), fbGet(env, 'access')]);
+  const todayISO = /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : new Date().toISOString().slice(0, 10);
+  const tripId = wPickWidgetTripId(trips || {}, access, todayISO);
   if (!tripId) return jsonResponse({ trip: null, stops: [], totals: wineCounts(null) });
   const trip = trips[tripId];
   const found = [];
