@@ -66,7 +66,8 @@ struct DayWeather: Decodable, Hashable {
     var rain: Int? = nil         // chance of rain, %, when 20+
     var sunset: String? = nil    // "7:28pm"
     var sun: [SunEvent]? = nil   // today's sunrise and sunset, tomorrow's sunrise
-    var forecast: [NextWeatherDay]? = nil   // the next 3 days
+    var forecast: [NextWeatherDay]? = nil   // the next 3 days, each at its own city
+    var city: String? = nil   // where today's weather is for
 
     // Just the icon, which is the first word
     var icon: String { (text ?? "").split(separator: " ").first.map(String.init) ?? "" }
@@ -113,6 +114,19 @@ struct NextWeatherDay: Decodable, Hashable {
     let icon: String?
     let hi: Int?
     let lo: Int?
+    var city: String? = nil   // where the trip is that day
+}
+
+// One stop of a longer multi-city trip: "LISBON / Nov 6–8 / 🌦️ / 68° 54° / rain Sun".
+// hi/lo are nil until the stop is within the forecast; forecastFrom says when.
+struct CityWeather: Decodable, Hashable {
+    let city: String?
+    let dates: String?
+    let icon: String?
+    let hi: Int?
+    let lo: Int?
+    let note: String?
+    let forecastFrom: String?
 }
 
 struct NextFlight: Decodable, Hashable {
@@ -130,6 +144,7 @@ struct NextFlight: Decodable, Hashable {
 struct NextTripInfo: Decodable, Hashable {
     let datesLabel: String?   // "Wed Oct 7 – Sat Oct 17 · 10 nights"
     let weather: [NextWeatherDay]?
+    let cities: [CityWeather]?   // a longer multi-city trip: one tile per stop
     let forecastFrom: String? // "Oct 14", when the trip is beyond the forecast
     let hotel: String?
     let checkIn: String?
@@ -247,9 +262,10 @@ struct TodayEntry: TimelineEntry {
                             summary: "Showers this afternoon", rain: 40, sunset: "7:12pm",
                             sun: [SunEvent(at: Date().addingTimeInterval(8 * 3600).timeIntervalSince1970 * 1000,
                                            label: "7:12pm", rise: false)],
-                            forecast: [NextWeatherDay(label: "THU 8", icon: "🌧️", hi: 61, lo: 50),
-                                       NextWeatherDay(label: "FRI 9", icon: "🌤️", hi: 66, lo: 52),
-                                       NextWeatherDay(label: "SAT 10", icon: "☀️", hi: 70, lo: 54)]),
+                            forecast: [NextWeatherDay(label: "THU 8", icon: "🌧️", hi: 61, lo: 50, city: "Paris"),
+                                       NextWeatherDay(label: "FRI 9", icon: "🌤️", hi: 66, lo: 52, city: "Paris"),
+                                       NextWeatherDay(label: "SAT 10", icon: "☀️", hi: 70, lo: 54, city: "Paris")],
+                            city: "London"),
         hotel: "The Hoxton, Holborn",
         flights: [],
         tomorrow: TomorrowPreview(city: "Paris", activities: [
@@ -598,8 +614,9 @@ private struct WeatherText: View {
     }
 }
 
-// The large widget's weather: today (highlighted) and the next 3 days, with
-// what to expect today under them
+// The large widget's weather: today (highlighted) and the next 3 days, each
+// at that day's city (the city named over a day the trip moves on; the days
+// stop when the trip ends), with what to expect today under them
 //   TODAY │  FRI  │  SAT  │  SUN
 //    ⛈️   │  ⛈️   │  🌧️   │  ⛈️
 //  87° 75°│84° 77°│84° 77°│81° 74°
@@ -610,13 +627,20 @@ private struct WeatherTable: View {
 
     var body: some View {
         let days = Array((weather.forecast ?? []).prefix(3))
+        // A day in a different city from the one before it is labeled with
+        // the city; the row of labels only appears when the trip moves on
+        let cities = [weather.city] + days.map { $0.city }
+        let moves = cities.indices.map { i in i > 0 && cities[i] != nil && cities[i - 1] != nil && cities[i] != cities[i - 1] }
+        let labeled = moves.contains(true)
         VStack(spacing: 5) {
             HStack(spacing: 0) {
-                column(label: "TODAY", icon: weather.icon, hi: weather.hi, lo: weather.lo, today: true)
-                ForEach(days, id: \.self) { d in
-                    Rectangle().fill(Palette.ink.opacity(0.1)).frame(width: 1, height: 36)
+                column(label: "TODAY", icon: weather.icon, hi: weather.hi, lo: weather.lo, today: true,
+                       city: labeled ? "" : nil)
+                ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                    Rectangle().fill(Palette.ink.opacity(moves[i + 1] ? 0.25 : 0.1)).frame(width: 1, height: labeled ? 48 : 36)
                     column(label: (d.label ?? "").split(separator: " ").first.map(String.init) ?? "",
-                           icon: d.icon ?? "", hi: d.hi, lo: d.lo, today: false)
+                           icon: d.icon ?? "", hi: d.hi, lo: d.lo, today: false,
+                           city: labeled ? (moves[i + 1] ? d.city ?? "" : "") : nil)
                 }
             }
             outlook
@@ -651,8 +675,17 @@ private struct WeatherTable: View {
         }
     }
 
-    private func column(label: String, icon: String, hi: Int?, lo: Int?, today: Bool) -> some View {
+    // city: nil leaves the label row out; "" keeps its height, blank
+    private func column(label: String, icon: String, hi: Int?, lo: Int?, today: Bool, city: String?) -> some View {
         VStack(spacing: 1) {
+            if let city = city {
+                Text(city.uppercased())
+                    .font(.system(size: 8, weight: .heavy))
+                    .foregroundStyle(Palette.terracotta)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 2)
+            }
             Text(label)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(today ? Palette.terracotta : Palette.muted)
@@ -668,25 +701,160 @@ private struct WeatherTable: View {
     }
 }
 
-// "WED 7 / ☀️ / 88° 76°" for each day, on a sand strip
+// "WED 7 / ☀️ / 88° 76°" for each day, on a sand strip. When the days span
+// more than one city they're grouped under the city's name, with a divider
+// where the trip moves on:
+//      AMSTERDAM     │      MADRID
+//   THU 5   FRI 6    │  SAT 7   SUN 8
 private struct ForecastStrip: View {
     let days: [NextWeatherDay]
 
+    // Runs of consecutive days in the same city
+    private var groups: [(city: String, days: [NextWeatherDay])] {
+        var out: [(city: String, days: [NextWeatherDay])] = []
+        for d in days {
+            let city = d.city ?? ""
+            if let last = out.last, last.city == city { out[out.count - 1].days.append(d) }
+            else { out.append((city: city, days: [d])) }
+        }
+        return out
+    }
+
     var body: some View {
+        let groups = self.groups
+        let labeled = groups.count > 1 && !groups.contains { $0.city.isEmpty }
+        WeightedRow {
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                if index > 0 {
+                    Rectangle().fill(Palette.ink.opacity(0.18)).frame(width: 1).padding(.vertical, 2)
+                }
+                VStack(spacing: 4) {
+                    if labeled {
+                        Text(group.city.uppercased())
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Palette.terracotta)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .padding(.horizontal, 3)
+                    }
+                    HStack(spacing: 0) {
+                        ForEach(group.days, id: \.self) { d in dayColumn(d) }
+                    }
+                }
+                // Each day gets the same width, whichever city it's in
+                .layoutValue(key: DayWeight.self, value: group.days.count)
+            }
+        }
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+    }
+
+    private func dayColumn(_ d: NextWeatherDay) -> some View {
+        VStack(spacing: 1) {
+            Text(d.label ?? "")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Palette.muted)
+            Text(d.icon ?? "")
+                .font(.system(size: 15))
+            (Text("\(d.hi ?? 0)° ").foregroundColor(Palette.ink)
+                + Text("\(d.lo ?? 0)°").foregroundColor(Palette.muted))
+                .font(.system(size: 11, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct DayWeight: LayoutValueKey { static let defaultValue = 0 }
+
+// Lays its children side by side, sharing the width out by each one's
+// DayWeight (its number of days); a child without one (a divider) keeps its
+// own width. A plain HStack would give each city the same width instead.
+private struct WeightedRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 300
+        let height = zip(subviews, widths(width, subviews))
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (view, width) in zip(subviews, widths(bounds.width, subviews)) {
+            view.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                       proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width
+        }
+    }
+
+    private func widths(_ total: CGFloat, _ subviews: Subviews) -> [CGFloat] {
+        let weights = subviews.map { CGFloat($0[DayWeight.self]) }
+        let fixed = zip(subviews, weights).map { $1 > 0 ? 0 : $0.sizeThatFits(.unspecified).width }
+        let free = max(0, total - fixed.reduce(0, +))
+        let sum = max(1, weights.reduce(0, +))
+        return zip(fixed, weights).map { $1 > 0 ? free * $1 / sum : $0 }
+    }
+}
+
+// A longer multi-city trip: one tile per stop, with its dates, the warmest
+// high and coolest low there, and a note when a day there turns wet
+//   LISBON  │  PORTO  │ MADRID  │ BARCELONA
+//  Nov 6–8  │ Nov 9–10│Nov 11–12│ Nov 13–14
+//    🌦️     │   🌧️    │   ☀️    │    🌤️
+//  68° 54°  │ 61° 49° │ 59° 39° │  65° 50°
+//  rain Sun │ rain Mon│         │
+private struct CityStrip: View {
+    let cities: [CityWeather]
+
+    var body: some View {
+        let shown = Array(cities.prefix(5))
+        let notes = shown.contains { ($0.note ?? "").isEmpty == false }
         HStack(spacing: 0) {
-            ForEach(days, id: \.self) { d in
+            ForEach(Array(shown.enumerated()), id: \.offset) { index, c in
+                if index > 0 {
+                    Rectangle().fill(Palette.ink.opacity(0.18)).frame(width: 1).padding(.vertical, 2)
+                }
                 VStack(spacing: 1) {
-                    Text(d.label ?? "")
+                    Text((c.city ?? "").uppercased())
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(Palette.terracotta)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(c.dates ?? "")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(Palette.muted)
-                    Text(d.icon ?? "")
-                        .font(.system(size: 15))
-                    (Text("\(d.hi ?? 0)° ").foregroundColor(Palette.ink)
-                        + Text("\(d.lo ?? 0)°").foregroundColor(Palette.muted))
-                        .font(.system(size: 11, weight: .bold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.7)
+                    if let hi = c.hi, let lo = c.lo {
+                        Text(c.icon ?? "")
+                            .font(.system(size: 15))
+                        (Text("\(hi)° ").foregroundColor(Palette.ink)
+                            + Text("\(lo)°").foregroundColor(Palette.muted))
+                            .font(.system(size: 11, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    } else {
+                        // Not in the forecast yet
+                        Text("🗓️")
+                            .font(.system(size: 15))
+                            .opacity(0.6)
+                        Text(c.forecastFrom.map { "from " + $0 } ?? "—")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    if notes {
+                        Text(c.note ?? " ")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Palette.terracotta)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
                 }
+                .padding(.horizontal, 2)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -1015,6 +1183,17 @@ private struct NextTripLarge: View {
 
     private var flights: [NextFlight] { next.flights ?? [] }
 
+    // How much taller than a plain row of days the weather is (the city names,
+    // a stop's dates and its rain note), taken out of the space above it so
+    // the flights below still fit
+    private var weatherExtra: CGFloat {
+        if let cities = next.cities, !cities.isEmpty {
+            return cities.contains { ($0.note ?? "").isEmpty == false } ? 26 : 14
+        }
+        let named = (next.weather ?? []).prefix(5).map { $0.city ?? "" }
+        return Set(named).count > 1 && !named.contains("") ? 13 : 0
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 3) {
@@ -1039,7 +1218,7 @@ private struct NextTripLarge: View {
                     .foregroundStyle(Palette.terracotta)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: flights.count > 1 ? 124 : 146)
+            .frame(height: (flights.count > 1 ? 124 : 146) - weatherExtra)
 
             VStack(alignment: .leading, spacing: 0) {
                 weatherRow
@@ -1069,10 +1248,13 @@ private struct NextTripLarge: View {
         }
     }
 
-    // "WED 7 / ☀️ / 88° 76°" × 5, or when the forecast starts
+    // A tile per stop on a longer multi-city trip, else "WED 7 / ☀️ / 88° 76°"
+    // per day (grouped by city), or when the forecast starts
     @ViewBuilder private var weatherRow: some View {
         let days = Array((next.weather ?? []).prefix(5))
-        if !days.isEmpty {
+        if let cities = next.cities, !cities.isEmpty {
+            CityStrip(cities: cities)
+        } else if !days.isEmpty {
             ForecastStrip(days: days)
         } else if let from = next.forecastFrom {
             Text("🌤️  Forecast appears 16 days out (\(from))")
