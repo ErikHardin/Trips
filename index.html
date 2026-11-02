@@ -527,6 +527,9 @@ body {
 .cf-ok { font-size: 12px; color: var(--sage-dark); margin-top: 6px; }
 .cf-airports { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; padding: 8px 10px; background: var(--gold-light); border-radius: 10px; font-size: 12px; color: var(--ink); }
 .cf-airports b { font-weight: 600; letter-spacing: .5px; }
+.cf-typical { margin-top: 10px; font-size: 13px; color: var(--ink); line-height: 1.4; }
+.cf-typical b { font-weight: 600; }
+.cf-typical span { display: block; font-size: 11px; color: var(--muted); }
 .cf-note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
 .cf-sub { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 12px 0 2px; }
 .cf-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-top: 1px solid var(--border); background: none; font-family: inherit; text-align: left; color: var(--ink); cursor: pointer; }
@@ -5221,17 +5224,25 @@ function _cfSummary(trip, legs, saved) {
 }
 
 // Price for one row in the chosen cabin: that airline's average when known, else the route's
+// A row's own price — only when the fares data has this flight or airline.
+// The route-wide typical price is shown once on the card instead of being
+// repeated on every row, where it looked like a per-flight price.
+function _cfFlightKey(num) { return String(num || '').replace(/\s+/g, '').toUpperCase(); }
+function _cfOwnEco(f, p) {
+  if (!p) return null;
+  const byF = p.byFlight && p.byFlight[_cfFlightKey(f.num)];
+  if (byF) return { avg: byF, sub: 'this flight' };
+  const byA = f.airlineIata && p.byAirline && p.byAirline[f.airlineIata];
+  return byA ? { avg: byA, sub: (f.airline || f.airlineIata) + ' avg' } : null;
+}
 function _cfRowPrice(f, r, cabin) {
   const p = r.prices;
   if (!p) return null;
   if (cabin === 'biz') {
-    if (f.airlineIata && (r.budgetCarriers || []).includes(f.airlineIata)) return { main: '—', sub: 'no business', dim: true };
-    const s = p.biz || p.first;
-    return s ? { main: '$' + s.avg, sub: 'route avg' } : { main: '—', sub: 'no data', dim: true };
+    return f.airlineIata && (r.budgetCarriers || []).includes(f.airlineIata) ? { main: '—', sub: 'no business', dim: true } : null;
   }
-  const a = f.airlineIata && p.byAirline && p.byAirline[f.airlineIata];
-  if (a) return { main: '$' + a, sub: 'avg' };
-  return p.eco ? { main: '$' + p.eco.avg, sub: 'route avg' } : null;
+  const own = _cfOwnEco(f, p);
+  return own ? { main: '$' + own.avg, sub: own.sub === 'this flight' ? 'avg' : 'airline avg' } : null;
 }
 
 const CF_PLANE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>';
@@ -5288,6 +5299,13 @@ function _cfResultsHTML(leg, saved, cabin, canSearch) {
     h += `<div class="cf-note">No airport with scheduled flights within about 90 miles of ${escHtml(!fromCodes.length ? leg.from : leg.to)}.</div>`;
   } else {
     h += _cfAirportsHTML(r, leg);
+    {
+      const p = r.prices;
+      const st = p && (cabin === 'biz' ? (p.biz || p.first) : p.eco);
+      const label = cabin === 'biz' ? 'Business' : 'Economy';
+      if (st) h += `<div class="cf-typical"><b>${label} usually $${st.lo}–$${st.hi}</b> one-way · avg $${st.avg}<span>Recent fares on this route, not live prices</span></div>`;
+      else if (p) h += `<div class="cf-note">No recent ${label.toLowerCase()} fares found for this route.</div>`;
+    }
     if (r.dateUsed && r.dateUsed !== r.date) {
       h += `<div class="cf-note">Typical schedule: times are from ${escHtml(_cfDate(r.dateUsed))}, the same weekday. Airlines haven't published ${escHtml(_cfDate(r.date).split(', ').pop())} schedules yet.</div>`;
     }
@@ -5306,11 +5324,6 @@ function _cfResultsHTML(leg, saved, cabin, canSearch) {
     if (!nonstop.length && !oneStop.length) {
       h += `<div class="cf-note">No nonstop or 1-stop flights found between ${escHtml(fromCodes.join('/'))} and ${escHtml(toCodes.join('/'))} that day.</div>`;
     }
-    const p = r.prices;
-    const s = p && (cabin === 'biz' ? (p.biz || p.first) : p.eco);
-    const label = cabin === 'biz' ? 'Business' : 'Economy';
-    const range = s ? `${label} usually $${s.lo}–$${s.hi} one-way` : (p ? `No recent ${label.toLowerCase()} fares found` : '');
-    if (range) h += `<div class="cf-note">${escHtml(range)} · recent averages, not live fares</div>`;
   }
   h += `<div class="cf-foot"><span>Searched ${escHtml(_cfAgo(r.searchedAt))}${canSearch ? ` · <button type="button" class="cf-refresh" onclick="findCityFlights('${leg.key}')">${_cfSearching.has(leg.key) ? 'Refreshing…' : 'Refresh'}</button>` : ''}</span>` +
     (fromCodes.length && toCodes.length ? `<a href="${escAttr(_cfGoogleUrl(fromCodes[0], toCodes[0], leg.date, cabin))}" target="_blank" rel="noopener">Google Flights ↗</a>` : '') + '</div>';
@@ -5416,8 +5429,9 @@ window.openCityFlightSheet = function(key, kind, i) {
   const apName = code => { const a = ap(code); return a ? a.name : ''; };
   const title = kind === 'n' ? [f.airline, f.num].filter(Boolean).join(' ') : (f.legs || []).join(' + ');
   const p = r.prices || null;
-  const box = (label, st, none) => `<div>${label}<b>${st ? '$' + st.avg : '—'}</b>${st ? 'usually $' + st.lo + '–$' + st.hi : none}</div>`;
-  const eco = p && ((f.airlineIata && p.byAirline && p.byAirline[f.airlineIata]) ? Object.assign({}, p.eco || {}, { avg: p.byAirline[f.airlineIata] }) : p.eco);
+  const box = (label, avg, note) => `<div>${label}<b>${avg ? '$' + avg : '—'}</b>${escHtml(note)}</div>`;
+  const own = _cfOwnEco(f, p);
+  const route = st => st ? 'route usually $' + st.lo + '–$' + st.hi : '';
   const noBiz = f.airlineIata && (r.budgetCarriers || []).includes(f.airlineIata);
   const biz = p && !noBiz ? (p.biz || p.first) : null;
   const row = (l, v) => v ? `<div class="det-row"><span class="det-row-label">${l}</span><span class="det-row-value">${escHtml(v)}</span></div>` : '';
@@ -5437,7 +5451,7 @@ window.openCityFlightSheet = function(key, kind, i) {
     ${ap(f.to) ? row('To ' + leg.to, _cfMi(ap(f.to).km) + ' mi from ' + f.to) : ''}
     ${r.dateUsed && r.dateUsed !== r.date ? row('Schedule', 'Typical — from ' + _cfDate(r.dateUsed)) : ''}
     ${p ? `<div class="cf-sub" style="margin-top:16px;">Average one-way price</div>
-      <div class="cf-prices">${box('Economy', eco, 'no recent fares')}${box('Business', biz, noBiz ? 'no business cabin' : 'no recent fares')}</div>
+      <div class="cf-prices">${box('Economy', own ? own.avg : (p.eco && p.eco.avg), own ? (own.sub === 'this flight' ? 'this flight · ' : 'airline average · ') + route(p.eco) : (p.eco ? 'route average · ' + route(p.eco) : 'no recent fares'))}${box('Business', biz && biz.avg, noBiz ? 'no business cabin' : (biz ? 'route average · ' + route(biz) : 'no recent fares'))}</div>
       <div class="cf-note">Averages from recent searches, not live fares. Check the airline or Google Flights for today’s price.</div>` : ''}
     <a href="${escAttr(_cfGoogleUrl(f.from, f.to, leg.date, cabin))}" target="_blank" rel="noopener" class="det-btn primary" style="margin-top:16px;">Open in Google Flights ↗</a>
     <button type="button" class="det-btn plain" data-act="copy" style="margin-top:8px;">Copy flight number</button>`);
