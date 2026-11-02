@@ -45,7 +45,9 @@ The Worker reads: `ANTHROPIC_KEY`, `FIREBASE_URL`, `FIREBASE_SECRET`,
 AeroAPI, for departure gates), and optionally `TRAVELPAYOUTS_TOKEN` (free
 Aviasales data API token from travelpayouts.com, for the average fares on
 Logistics → Getting between cities; without it the section shows flight times
-only). `NTFY_TOPIC` and `NTFY_TOKEN` are no longer used and
+only), and optionally `SERPAPI_KEY` (SerpApi, for Google Flights results and
+current prices in that section — tried first, with AeroDataBox schedules and
+Travelpayouts averages as the backup; two searches per move). `NTFY_TOPIC` and `NTFY_TOKEN` are no longer used and
 can be deleted.
 
 ### 2. Connect the repo
