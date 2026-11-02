@@ -5085,8 +5085,11 @@ function _bookingsSectionHTML(trip, tripId) {
   const chainHTML = c => {
     const f = c.legs[0];
     if (c.legs.length === 1) {
+      // "+1" when it lands on a later day, as on the connecting-flight cards
+      const plus1 = f.arrMin != null ? Math.floor(f.arrAbs / 1440) - Math.floor(f.depAbs / 1440) : 0;
+      const times = f.line.split(' · ').slice(1).join(' · ') + (plus1 > 0 ? ' +' + plus1 : '');
       return `<div class="bk-card" data-line="${escAttr(f.line)}" onclick="openFlightSheet(this.dataset.line)"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(f.line.split(' · ')[0])}</span>${pill(confFrom(subs.flightsBooked, f.num))}${x('_cancelFlight(this.closest(\'.bk-card\').dataset.line)')}</div>
-      <div class="bk-card-sub">${escHtml([f.when, f.line.split(' · ').slice(1).join(' · '), f.who.join(', ')].filter(Boolean).join(' · '))}</div></div>`;
+      <div class="bk-card-sub">${escHtml([f.when, times, f.who.join(', ')].filter(Boolean).join(' · '))}</div></div>`;
     }
     const last = c.legs[c.legs.length - 1];
     const route = [f.from, ...c.legs.map(l => l.to)].join(' → ');
