@@ -640,7 +640,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-01.5';
+const WORKER_VERSION = '2026-11-02.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2996,15 +2996,27 @@ async function cfPrices(env, origins, dests, date) {
   if (!env.TRAVELPAYOUTS_TOKEN) return null;
   const month = date.slice(0, 7);
   const base = 'https://api.travelpayouts.com';
-  const eco = [], ecoNonstopByAirline = {}, biz = [], first = [];
+  const eco = [], ecoNonstopByAirline = {}, ecoByFlight = {}, biz = [], first = [];
   await Promise.all(origins.flatMap(o => dests.map(async d => {
     const common = `origin=${o}&destination=${d}&currency=usd&one_way=true`;
     let rows = await cfTp(env, `${base}/aviasales/v3/prices_for_dates?${common}&departure_at=${month}&direct=false&sorting=price&limit=100`);
     if (!rows.length) rows = await cfTp(env, `${base}/aviasales/v3/prices_for_dates?${common}&direct=false&sorting=price&limit=100`);
-    rows.forEach(r => {
-      if (typeof r.price !== 'number') return;
-      eco.push(r.price);
-      if (!r.transfers && r.airline) (ecoNonstopByAirline[r.airline] = ecoNonstopByAirline[r.airline] || []).push(r.price);
+    // Nonstop-only too: the mixed list is mostly the cheapest connections, so
+    // it rarely has a fare per nonstop airline or flight
+    let direct = await cfTp(env, `${base}/aviasales/v3/prices_for_dates?${common}&departure_at=${month}&direct=true&sorting=price&limit=500`);
+    if (!direct.length) direct = await cfTp(env, `${base}/aviasales/v3/prices_for_dates?${common}&direct=true&sorting=price&limit=500`);
+    rows.forEach(r => { if (typeof r.price === 'number') eco.push(r.price); });
+    const seenTicket = new Set();
+    [...rows, ...direct].forEach(r => {
+      if (typeof r.price !== 'number' || r.transfers || !r.airline) return;
+      const k = r.airline + (r.flight_number || '') + (r.departure_at || '') + r.price;
+      if (seenTicket.has(k)) return;
+      seenTicket.add(k);
+      (ecoNonstopByAirline[r.airline] = ecoNonstopByAirline[r.airline] || []).push(r.price);
+      if (r.flight_number) {
+        const fk = (r.airline + r.flight_number).replace(/\s+/g, '').toUpperCase();
+        (ecoByFlight[fk] = ecoByFlight[fk] || []).push(r.price);
+      }
     });
     const [b, f] = await Promise.all([1, 2].map(tc =>
       cfTp(env, `${base}/v2/prices/latest?${common}&period_type=year&trip_class=${tc}&limit=100&show_to_affiliates=true`)));
@@ -3013,7 +3025,9 @@ async function cfPrices(env, origins, dests, date) {
   })));
   const byAirline = {};
   Object.entries(ecoNonstopByAirline).forEach(([k, v]) => { const s = cfStats(v); if (s) byAirline[k] = s.avg; });
-  return { eco: cfStats(eco), biz: cfStats(biz), first: cfStats(first), byAirline };
+  const byFlight = {};
+  Object.entries(ecoByFlight).forEach(([k, v]) => { const s = cfStats(v); if (s) byFlight[k] = s.avg; });
+  return { eco: cfStats(eco), biz: cfStats(biz), first: cfStats(first), byAirline, byFlight };
 }
 
 async function handleCityFlights(baseEnv, body) {
