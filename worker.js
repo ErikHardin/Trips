@@ -640,7 +640,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-02.2';
+const WORKER_VERSION = '2026-11-03.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2629,6 +2629,21 @@ async function buildMorningBrief(env, trip, dayId, day, acts, dateISO, tz) {
 // learn its real times; it polls again only in the 4 hours before departure,
 // so a leg costs about ten lookups.
 
+// "UA1638 DEN → LAX · …" lines in travel order: start where nothing flies in,
+// then follow each arrival to the flight leaving from it (as the app does)
+function wFlightAirportOrder(lines) {
+  const parse = l => { const m = String(l).match(/^\S+\s+([A-Z]{3})\s*→\s*([A-Z]{3})/i); return { l, from: m ? m[1].toUpperCase() : '', to: m ? m[2].toUpperCase() : '' }; };
+  const left = lines.map(parse), out = [];
+  while (left.length) {
+    const last = out[out.length - 1];
+    let next = last && last.to ? left.find(f => f.from === last.to) : null;
+    if (!next) { const tos = new Set(left.map(f => f.to)); next = left.find(f => !tos.has(f.from)) || left[0]; }
+    out.push(next);
+    left.splice(left.indexOf(next), 1);
+  }
+  return out.map(f => f.l);
+}
+
 function tripFlightLegs(trip) {
   const legs = [];
   const add = (formatted, dateISO, idx) => {
@@ -2642,8 +2657,11 @@ function tripFlightLegs(trip) {
   };
   const outISO = named(trip.flightOutDate, wTripStartISO(trip));
   const retISO = named(trip.flightReturnDate, wTripEndISO(trip));
-  String(trip.flightOut || '').split('\n').filter(Boolean).forEach((f, i) => add(f, outISO, i));
-  String(trip.flightReturn || '').split('\n').filter(Boolean).forEach((f, i) => add(f, retISO, i));
+  // Positions in travel order (by airport, however they were entered), so idx > 0
+  // means a later leg of a connection
+  const inOrder = (lines, iso) => wFlightAirportOrder(lines).forEach((f, i) => add(f, iso, i));
+  inOrder(String(trip.flightOut || '').split('\n').filter(Boolean), outISO);
+  inOrder(String(trip.flightReturn || '').split('\n').filter(Boolean), retISO);
   Object.values(trip.days || {}).forEach(d => {
     if (!d || !d.flightInfo) return;
     (Array.isArray(d.flightInfo) ? d.flightInfo : [d.flightInfo]).forEach((fi, i) => fi && add(fi.formatted, d.dateISO || dayDateISO(d, trip.year), i));

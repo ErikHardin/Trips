@@ -2558,7 +2558,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 396 };
+window.BUILD_INFO = { prNumber: 397 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4994,12 +4994,47 @@ function _bkParseFlight(line) {
   return { num: m ? m[1] : String(line).split(' ')[0], from: m ? m[2].toUpperCase() : '', to: m ? m[3].toUpperCase() : '',
            depMin: t ? toMin(t[1]) : null, arrMin: t ? toMin(t[2]) : null };
 }
+// Same-date legs (outbound / return) in travel order by airport, whatever
+// order they were entered in: start where nothing flies in (DEN), then follow
+// each arrival to the flight leaving from it (DEN → LAX → HKG). Clock times
+// alone can't order them — an 11pm leg is followed by a 6am one.
+function _bkAirportOrder(list) {
+  const left = list.slice();
+  const out = [];
+  const byTime = (a, b) => (a.depMin ?? 0) - (b.depMin ?? 0);
+  while (left.length) {
+    const last = out[out.length - 1];
+    let next = last && last.to ? left.filter(f => f.from === last.to).sort(byTime)[0] : null;
+    if (!next) {
+      const tos = new Set(left.map(f => f.to));
+      next = left.filter(f => !tos.has(f.from)).sort(byTime)[0] || left.slice().sort(byTime)[0];
+    }
+    out.push(next);
+    left.splice(left.indexOf(next), 1);
+  }
+  return out;
+}
+// Travel order for one date's flight lines, kept per traveler (each person's
+// legs stay together, in the order people first appear): returns the indexes.
+function _flightTravelOrder(lines, names) {
+  const items = (lines || []).map((l, i) => Object.assign({ i, who: (names || [])[i] || '' }, _bkParseFlight(l)));
+  const whos = [...new Set(items.map(x => x.who))];
+  return whos.flatMap(w => _bkAirportOrder(items.filter(x => x.who === w))).map(x => x.i);
+}
+// Same, for lists of { formatted, travelerName } (edit screen, day flights)
+function _sortFlightObjs(list) {
+  if (!list || list.length < 2) return list || [];
+  const order = _flightTravelOrder(list.map(f => f.formatted), list.map(f => f.travelerName || ''));
+  return order.map(i => list[i]);
+}
+
 // Puts flights on one timeline (minutes from epoch, local clock) in travel
-// order. Outbound and return legs share one date, so they keep the order they
-// were entered in, each leaving no earlier than the last one landed.
+// order. Outbound and return legs share one date, so they're ordered by
+// airport, each leaving no earlier than the last one landed.
 function _bkTimeline(list, sharedDate) {
   const dayMin = iso => (iso ? Math.round(Date.parse(iso + 'T00:00:00Z') / 60000) : 0);
-  if (!sharedDate) list = list.slice().sort((a, b) => (a.iso || '').localeCompare(b.iso || '') || (a.depMin ?? 0) - (b.depMin ?? 0));
+  if (sharedDate) list = _bkAirportOrder(list);
+  else list = list.slice().sort((a, b) => (a.iso || '').localeCompare(b.iso || '') || (a.depMin ?? 0) - (b.depMin ?? 0));
   let prevArr = null;
   list.forEach(f => {
     let dep = dayMin(f.iso) + (f.depMin ?? 0);
@@ -7876,7 +7911,9 @@ window.generateTripPDF = async function(tripId) {
   // 6. Outbound flights HTML
   let flightsHTML = '';
   if (trip.flightOut) {
-    const rows = trip.flightOut.split('\n').map((f, i) => {
+    const outLines = trip.flightOut.split('\n').filter(Boolean);
+    const rows = _flightTravelOrder(outLines, trip.flightOutNames).map(i => {
+      const f = outLines[i];
       const code = f.split(' ')[0];
       const rest = f.slice(f.indexOf(' ')+1);
       const on = _dayOffsetBadge(f, (trip.flightOutDayOffsets||[])[i]);
@@ -8670,6 +8707,9 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
     .map((f, i) => ({ formatted: f, date: trip.flightOutDate || '', isoDate: trip.startDateISO || '', travelerName: (trip.flightOutNames || [])[i] || '', dayOffset: (trip.flightOutDayOffsets || [])[i] ?? null }));
   _editFlightsRet = (trip.flightReturn || '').split('\n').filter(Boolean)
     .map((f, i) => ({ formatted: f, date: trip.flightReturnDate || '', isoDate: '', travelerName: (trip.flightReturnNames || [])[i] || '', dayOffset: (trip.flightReturnDayOffsets || [])[i] ?? null }));
+  // Shown (and saved) in travel order, whatever order they were added in
+  _editFlightsOut = _sortFlightObjs(_editFlightsOut);
+  _editFlightsRet = _sortFlightObjs(_editFlightsRet);
   // Collect in-trip flights stored on individual days
   _editFlightsIntrip = [];
   const _sortedDays = trip.days ? Object.entries(trip.days) : [];
@@ -8806,6 +8846,9 @@ window.saveEditedTrip = async function() {
   }
   // Use update (not set) so only edited fields are touched —
   // preserves days, logistics, packingList, startDateISO, avatars etc.
+  // Flights added on this screen are appended — save them in travel order
+  _editFlightsOut = _sortFlightObjs(_editFlightsOut);
+  _editFlightsRet = _sortFlightObjs(_editFlightsRet);
   const updates = {
     name: document.getElementById('editTripName').value.trim(),
     emoji: document.getElementById('editTripEmoji').value.trim() || '✈️',
@@ -9049,9 +9092,9 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted, travelerName,
   travelerName = travelerName || '';
   dayOffset = dayOffset ?? null;
   if (dir === 'out') {
-    _editFlightsOut.push({ formatted, date: humanDate, isoDate, travelerName, dayOffset });
+    _editFlightsOut = _sortFlightObjs([..._editFlightsOut, { formatted, date: humanDate, isoDate, travelerName, dayOffset }]);
   } else if (dir === 'ret') {
-    _editFlightsRet.push({ formatted, date: humanDate, isoDate, travelerName, dayOffset });
+    _editFlightsRet = _sortFlightObjs([..._editFlightsRet, { formatted, date: humanDate, isoDate, travelerName, dayOffset }]);
   } else {
     const trip = allTrips[editingTripId];
     const days = trip.days ? Object.entries(trip.days) : [];
@@ -9064,7 +9107,7 @@ async function _addFlightEntry(dir, isoDate, humanDate, formatted, travelerName,
     if (!match) { showToast('No trip day found for ' + humanDate); return; }
     const [dayId, day] = match;
     const existingForDay = _editFlightsIntrip.filter(f => f.dayId === dayId).map(f => ({ formatted: f.formatted, date: f.date, travelerName: f.travelerName || '', dayOffset: f.dayOffset ?? null }));
-    const newFlightInfo = [...existingForDay, { formatted, date: humanDate, travelerName, dayOffset }];
+    const newFlightInfo = _sortFlightObjs([...existingForDay, { formatted, date: humanDate, travelerName, dayOffset }]);
     await window._update(window._ref(window._db, 'trips/' + editingTripId + '/days/' + dayId), { flightInfo: newFlightInfo });
     logChange(editingTripId, 'Flight added', formatted);
     _editFlightsIntrip.push({
@@ -10746,8 +10789,13 @@ function _dayOffsetBadge(f, offset) {
 }
 
 function _buildFlightRows(flightStr, names, offsets) {
-  const flights = (flightStr || '').split('\n').filter(Boolean);
+  let flights = (flightStr || '').split('\n').filter(Boolean);
   if (!flights.length) return '';
+  // Travel order by airport, whatever order the flights were added in
+  const order = _flightTravelOrder(flights, names);
+  flights = order.map(i => flights[i]);
+  names = names ? order.map(i => names[i]) : names;
+  offsets = offsets ? order.map(i => offsets[i]) : offsets;
   const fRow = (f, i) => `<div class="flight-row"><span class="flight-code">${f.split(' ')[0]}</span> ${f.slice(f.indexOf(' ')+1)}${_dayOffsetBadge(f, (offsets||[])[i])}</div>`;
   const hasNames = (names || []).some(n => n);
   if (!hasNames) return flights.map((f, i) => fRow(f, i)).join('');
@@ -10765,6 +10813,7 @@ function _buildFlightRows(flightStr, names, offsets) {
 
 function _buildFlightRowsFromInfos(flightInfos) {
   if (!flightInfos || !flightInfos.length) return '';
+  flightInfos = _sortFlightObjs(flightInfos.filter(Boolean));
   const fRow = f => `<div class="flight-row"><span class="flight-code">${f.formatted.split(' ')[0]}</span> ${f.formatted.slice(f.formatted.indexOf(' ')+1)}${_dayOffsetBadge(f.formatted, f.dayOffset)}</div>`;
   const hasNames = flightInfos.some(fi => fi.travelerName);
   if (!hasNames) return flightInfos.map(fRow).join('');
@@ -12779,12 +12828,15 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
   });
   [['flightOut', out], ['flightReturn', ret]].forEach(([field, leg]) => {
     if (!leg.touched) return;
+    // Saved in travel order by airport, however the confirmation listed them
+    const ord = _flightTravelOrder(leg.lines, leg.names);
+    leg.lines = ord.map(i => leg.lines[i]); leg.names = ord.map(i => leg.names[i]); leg.offs = ord.map(i => leg.offs[i]);
     updates[base + '/' + field] = leg.lines.join('\n');
     updates[base + '/' + field + 'Names'] = leg.names;
     updates[base + '/' + field + 'DayOffsets'] = leg.offs;
     updates[base + '/' + field + 'Date'] = leg.date;
   });
-  Object.entries(dayFlights).forEach(([dayId, infos]) => { updates[base + '/days/' + dayId + '/flightInfo'] = infos; });
+  Object.entries(dayFlights).forEach(([dayId, infos]) => { updates[base + '/days/' + dayId + '/flightInfo'] = _sortFlightObjs(infos); });
 
   // ── Hotels: the name on every night from check-in up to check-out
   for (const h of (p.hotels || [])) {
