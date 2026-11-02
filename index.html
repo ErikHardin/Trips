@@ -494,6 +494,14 @@ body {
 .bk-nights { display: flex; gap: 3px; margin-top: 8px; }
 .bk-nights i { flex: 1; height: 5px; border-radius: 3px; background: var(--sand); }
 .bk-nights i.on { background: var(--sage); }
+.bk-group { font-size: 12px; color: var(--muted); margin: 14px 0 8px; }
+.bk-group b { font-size: 13px; font-weight: 600; color: var(--ink); margin-right: 4px; }
+.bk-sub + .bk-group { margin-top: 0; }
+.bk-legs { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--sand); display: flex; flex-direction: column; gap: 6px; }
+.bk-leg { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.bk-leg span { flex: 1; min-width: 0; }
+.bk-leg b { font-weight: 500; color: var(--ink); }
+.bk-lay { font-size: 12px; color: var(--gold); }
 
 /* Logistics: collapsible sections */
 .logi-toolbar { display: flex; justify-content: flex-end; padding: 0 16px; }
@@ -2550,7 +2558,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 395 };
+window.BUILD_INFO = { prNumber: 396 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -4156,6 +4164,7 @@ function switchTripTab(name, btn) {
     setTimeout(() => initTripMap(allTrips[currentTripId]).catch(e => console.warn('Map error:', e)), 50);
   }
   if (name === 'logistics' && currentTripId) {
+    _resetLogiSections();
     renderLogisticsPanel(currentTripId);
   }
   if (name === 'changes' && currentTripId) {
@@ -4973,6 +4982,44 @@ window.openSetHotel = function(dayId) {
   });
 };
 
+// "UA869 SFO → HKG · 1:05am – 6:45am" → number, airports, times in minutes
+function _bkParseFlight(line) {
+  const m = String(line).match(/^(\S+)\s+([A-Z]{3})\s*→\s*([A-Z]{3})/i);
+  const t = String(line).match(/(\d{1,2}:\d{2}\s*(?:am|pm))\s*[–\-]\s*(\d{1,2}:\d{2}\s*(?:am|pm))/i);
+  const toMin = v => {
+    const x = String(v || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+    if (!x) return null;
+    return ((+x[1] % 12) + (x[3].toLowerCase() === 'pm' ? 12 : 0)) * 60 + +x[2];
+  };
+  return { num: m ? m[1] : String(line).split(' ')[0], from: m ? m[2].toUpperCase() : '', to: m ? m[3].toUpperCase() : '',
+           depMin: t ? toMin(t[1]) : null, arrMin: t ? toMin(t[2]) : null };
+}
+// Puts flights on one timeline (minutes from epoch, local clock) in travel
+// order. Outbound and return legs share one date, so they keep the order they
+// were entered in, each leaving no earlier than the last one landed.
+function _bkTimeline(list, sharedDate) {
+  const dayMin = iso => (iso ? Math.round(Date.parse(iso + 'T00:00:00Z') / 60000) : 0);
+  if (!sharedDate) list = list.slice().sort((a, b) => (a.iso || '').localeCompare(b.iso || '') || (a.depMin ?? 0) - (b.depMin ?? 0));
+  let prevArr = null;
+  list.forEach(f => {
+    let dep = dayMin(f.iso) + (f.depMin ?? 0);
+    if (sharedDate && prevArr != null) { let n = 0; while (dep < prevArr && n++ < 2) dep += 1440; }
+    const off = f.offset != null ? f.offset : (_isOvernightFlight(f.line) ? 1 : 0);
+    let arr = Math.floor(dep / 1440) * 1440 + off * 1440 + (f.arrMin ?? f.depMin ?? 0);
+    if (arr < dep) arr += 1440;
+    f.depAbs = dep; f.arrAbs = arr;
+    prevArr = arr;
+  });
+  return list;
+}
+
+window.openLogiCities = function() {
+  const el = document.querySelector('#tripLogisticsPanel .logi-sec[data-logi-sec="cities"]');
+  if (!el) return;
+  if (!el.classList.contains('open')) toggleLogiSection('cities');
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 // ── Logistics → Bookings: flights, where you sleep each night, and cars ──
 function _bookingsSectionHTML(trip, tripId) {
   const subs = normalizeBookingSubItems((trip.logistics || {}).bookingSubItems);
@@ -4984,25 +5031,88 @@ function _bookingsSectionHTML(trip, tripId) {
   const canEdit = canEditCurrentTrip();
   const x = call => canEdit ? `<button type="button" class="bk-x" title="Cancel booking" onclick="event.stopPropagation();${call}">×</button>` : '';
 
-  // Flights: outbound, in-trip, return — one card per flight, travelers merged
+  // Flights in three groups — Outbound, During the trip, Return — each in date
+  // order. Connecting flights (the next leaves from the airport the last landed
+  // at, within 24 hours) share one card with the layover between them.
   const flights = [];
-  const addFlight = (line, who, when) => {
+  const range = _tripRangeISO(trip);
+  const labelISO = (label, fallback) => {
+    const [mon, num] = String(label || '').trim().split(/\s+/);
+    return (mon && num && dayISO({ dateMonth: mon, dateNum: num }, trip.year)) || fallback || '';
+  };
+  const addFlight = (line, who, when, group, iso, offset) => {
     if (!line) return;
     const ex = flights.find(f => f.line === line);
     if (ex) { if (who && !ex.who.includes(who)) ex.who.push(who); return; }
-    flights.push({ line, who: who ? [who] : [], when });
+    flights.push(Object.assign({ line, who: who ? [who] : [], when, group, iso: iso || '', offset: offset ?? null }, _bkParseFlight(line)));
   };
-  String(trip.flightOut || '').split('\n').filter(Boolean).forEach((l, i) => addFlight(l, (trip.flightOutNames || [])[i], trip.flightOutDate));
-  _tripDayEntries(trip).forEach(([, day]) => {
+  String(trip.flightOut || '').split('\n').filter(Boolean).forEach((l, i) =>
+    addFlight(l, (trip.flightOutNames || [])[i], trip.flightOutDate, 'out', labelISO(trip.flightOutDate, range.start), (trip.flightOutDayOffsets || [])[i]));
+  _tripDayEntries(trip).forEach(([, day, iso]) => {
     const infos = Array.isArray(day.flightInfo) ? day.flightInfo : (day.flightInfo ? [day.flightInfo] : []);
-    infos.forEach(fi => fi && addFlight(fi.formatted, fi.travelerName, fi.date));
+    infos.forEach(fi => fi && addFlight(fi.formatted, fi.travelerName, fi.date, 'trip', iso, fi.dayOffset));
   });
-  String(trip.flightReturn || '').split('\n').filter(Boolean).forEach((l, i) => addFlight(l, (trip.flightReturnNames || [])[i], trip.flightReturnDate));
-  const flightsHTML = flights.map(f => {
-    const num = f.line.split(' ')[0];
-    return `<div class="bk-card" data-line="${escAttr(f.line)}" onclick="openFlightSheet(this.dataset.line)"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(f.line.split(' · ')[0])}</span>${pill(confFrom(subs.flightsBooked, num))}${x('_cancelFlight(this.closest(\'.bk-card\').dataset.line)')}</div>
-      <div class="bk-card-sub">${escHtml([f.when, f.line.split(' · ').slice(1).join(' · '), f.who.join(', ')].filter(Boolean).join(' · '))}</div></div>`;
-  }).join('');
+  String(trip.flightReturn || '').split('\n').filter(Boolean).forEach((l, i) =>
+    addFlight(l, (trip.flightReturnNames || [])[i], trip.flightReturnDate, 'ret', labelISO(trip.flightReturnDate, range.end), (trip.flightReturnDayOffsets || [])[i]));
+
+  const groupsOrder = [['out', 'Outbound', 'getting there'], ['trip', 'During the trip', 'between cities'], ['ret', 'Return', 'getting home']];
+  const chains = [];
+  groupsOrder.forEach(([g]) => {
+    const list = _bkTimeline(flights.filter(f => f.group === g), g !== 'trip');
+    list.forEach(f => {
+      const cur = chains[chains.length - 1];
+      const prev = cur && cur.group === g ? cur.legs[cur.legs.length - 1] : null;
+      const sameWho = prev && (!prev.who.length || !f.who.length || prev.who.slice().sort().join() === f.who.slice().sort().join());
+      const gap = prev ? f.depAbs - prev.arrAbs : null;
+      if (prev && sameWho && prev.to && prev.to === f.from && gap != null && gap >= 0 && gap <= 24 * 60) {
+        f.layover = gap;
+        cur.legs.push(f);
+        f.who.forEach(w => { if (!cur.who.includes(w)) cur.who.push(w); });
+      } else {
+        chains.push({ group: g, legs: [f], who: f.who.slice(), iso: f.iso });
+      }
+    });
+  });
+
+  // Moves between cities with no flight yet — a reminder in "During the trip"
+  // (moves short enough to drive are dropped once Getting between cities knows)
+  const gaps = _cityLegs(trip).filter(l => !_cfBookedLines(trip, l).length && !_cfRoadKeys.has(l.key))
+    .map(l => ({ group: 'trip', gap: l, iso: l.date }));
+  const tripItems = [...chains.filter(c => c.group === 'trip'), ...gaps].sort((a, b) => (a.iso || '').localeCompare(b.iso || ''));
+
+  const hhmm = m => { if (m == null) return ''; const h = Math.floor(m / 60) % 24, mm = m % 60; return (h % 12 || 12) + ':' + String(mm).padStart(2, '0') + (h < 12 ? 'am' : 'pm'); };
+  const dur = m => (Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : '') + (m % 60 ? (m % 60) + 'm' : (Math.floor(m / 60) ? '' : '0m'));
+  const chainHTML = c => {
+    const f = c.legs[0];
+    if (c.legs.length === 1) {
+      // "+1" when it lands on a later day, as on the connecting-flight cards
+      const plus1 = f.arrMin != null ? Math.floor(f.arrAbs / 1440) - Math.floor(f.depAbs / 1440) : 0;
+      const times = f.line.split(' · ').slice(1).join(' · ') + (plus1 > 0 ? ' +' + plus1 : '');
+      return `<div class="bk-card" data-line="${escAttr(f.line)}" onclick="openFlightSheet(this.dataset.line)"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(f.line.split(' · ')[0])}</span>${pill(confFrom(subs.flightsBooked, f.num))}${x('_cancelFlight(this.closest(\'.bk-card\').dataset.line)')}</div>
+      <div class="bk-card-sub">${escHtml([f.when, times, f.who.join(', ')].filter(Boolean).join(' · '))}</div></div>`;
+    }
+    const last = c.legs[c.legs.length - 1];
+    const route = [f.from, ...c.legs.map(l => l.to)].join(' → ');
+    const confs = [...new Set(c.legs.map(l => confFrom(subs.flightsBooked, l.num)).filter(Boolean))];
+    const plus = Math.floor(last.arrAbs / 1440) - Math.floor(f.depAbs / 1440);
+    const stops = c.legs.length - 1;
+    const times = f.depMin != null && last.arrMin != null ? hhmm(f.depMin) + ' – ' + hhmm(last.arrMin) + (plus > 0 ? ' +' + plus : '') : '';
+    const legs = c.legs.map((l, k) => (k ? `<div class="bk-lay">${escHtml(dur(l.layover))} layover in ${escHtml(l.from)}</div>` : '') +
+      `<div class="bk-leg" data-line="${escAttr(l.line)}" onclick="event.stopPropagation();openFlightSheet(this.dataset.line)"><span><b>${escHtml(l.num)}</b> ${escHtml(l.from + ' → ' + l.to + (l.depMin != null ? ' · ' + hhmm(l.depMin) + ' – ' + hhmm(l.arrMin) : ''))}</span>${x('_cancelFlight(this.closest(\'.bk-leg\').dataset.line)')}</div>`).join('');
+    return `<div class="bk-card" data-line="${escAttr(f.line)}" onclick="openFlightSheet(this.dataset.line)"><div class="bk-card-head"><span class="bk-name">✈️ ${escHtml(route)}</span>${confs.map(pill).join('')}</div>
+      <div class="bk-card-sub">${escHtml([f.when, times, stops + (stops === 1 ? ' stop' : ' stops'), c.who.join(', ')].filter(Boolean).join(' · '))}</div>
+      <div class="bk-legs">${legs}</div></div>`;
+  };
+  const gapHTML = g => `<div class="bk-card warn bk-gap" data-cf-leg="${escAttr(g.gap.key)}" onclick="openLogiCities()">
+      <div class="bk-card-head" style="color:var(--muted);">${escHtml(g.gap.from)} → ${escHtml(g.gap.to)} · not booked</div>
+      <div class="bk-card-sub">${escHtml(_inboxShortDate(g.gap.date))} · <span style="color:var(--terracotta);">See flights in Getting between cities</span></div></div>`;
+  let flightsHTML = '';
+  groupsOrder.forEach(([g, title, sub]) => {
+    const items = g === 'trip' ? tripItems : chains.filter(c => c.group === g);
+    if (!items.length) return;
+    flightsHTML += `<div class="bk-group"><b>${title}</b> ${sub}</div>` + items.map(it => it.gap ? gapHTML(it) : chainHTML(it)).join('');
+  });
+  if (!flights.length) flightsHTML = '';
 
   // Stays, in date order, with a warning for any night that has no hotel
   const entries = _tripDayEntries(trip);
@@ -5051,7 +5161,7 @@ function _bookingsSectionHTML(trip, tripId) {
   // Collapsed-header summary: "3 flights · 6 hotels · 21 nights · 1 car"
   const many = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const nights = stays.reduce((n, st) => n + st.dayIds.length, 0);
-  const summary = [flights.length && many(flights.length, 'flight'), stays.length && many(stays.length, 'hotel'),
+  const summary = [chains.length && chains.length !== flights.length && many(chains.length, 'trip'), flights.length && many(flights.length, 'flight'), stays.length && many(stays.length, 'hotel'),
     nights && many(nights, 'night'), seen.size && many(seen.size, 'car')].filter(Boolean).join(' · ');
   return {
     summary,
@@ -5064,16 +5174,17 @@ function _bookingsSectionHTML(trip, tripId) {
 }
 
 // ── Logistics: collapsible sections ──
-// Open/closed is remembered per trip on this device; every section starts closed.
-// (logiSections2: states saved while "Getting between cities" defaulted to open
-// are left behind, so it starts closed like the rest.)
+// Every section starts closed each time the Logistics tab is opened (tapping
+// the tab, opening the trip, relaunching the app). While you're on the tab,
+// what you open stays open across the re-renders data updates cause.
 const LOGI_SECTION_DEFAULTS = { bookings: false, spend: false, checklist: false, cities: false, packing: false };
+let _logiOpenMem = { tripId: null, st: {} };
 function _logiOpenState(tripId) {
-  try { return JSON.parse(localStorage.getItem('logiSections2:' + tripId) || '{}') || {}; } catch (e) { return {}; }
+  if (_logiOpenMem.tripId !== tripId) _logiOpenMem = { tripId, st: {} };
+  return _logiOpenMem.st;
 }
-function _logiSaveState(tripId, st) {
-  try { localStorage.setItem('logiSections2:' + tripId, JSON.stringify(st)); } catch (e) {}
-}
+function _logiSaveState(tripId, st) { _logiOpenMem = { tripId, st }; }
+function _resetLogiSections() { _logiOpenMem = { tripId: null, st: {} }; }
 function _logiIsOpen(tripId, key) {
   const st = _logiOpenState(tripId);
   return key in st ? !!st[key] : !!LOGI_SECTION_DEFAULTS[key];
@@ -5129,6 +5240,7 @@ window.toggleAllLogiSections = function() {
 const CF_ROAD_MAX_HOURS = 4;
 const _cfExpanded = new Set();   // legs showing every nonstop
 const _cfSearching = new Set();  // legs with a search in flight
+const _cfRoadKeys = new Set();   // moves short enough to drive (no "not booked" reminder)
 let _cfSaved = {};               // tripId → logistics.cityFlights
 let _cfLegs = {};                // tripId → legs from the last render
 let _cfRenderSeq = 0;
@@ -5367,6 +5479,8 @@ async function renderCityFlights(tripId, legs, saved) {
     const drive = km != null ? _cfRoad(km) : null;
     if (drive && drive.mins <= CF_ROAD_MAX_HOURS * 60 && !leg.forceSearch) {
       road++;
+      _cfRoadKeys.add(leg.key);
+      document.querySelectorAll('#tripLogisticsPanel .bk-gap[data-cf-leg="' + leg.key + '"]').forEach(n => n.remove());
       return `<div class="cf-card road">${_cfHead(CF_CAR, leg, 'about ' + _cfDur(drive.mins) + ' by car (~' + _cfMi(drive.roadKm) + ' mi)',
         '<div class="cf-ok">No flight needed — the drive is quicker door to door.</div>' +
         (canSearch ? `<button type="button" class="cf-link" onclick="findCityFlights('${leg.key}',true)">Search flights anyway</button>` : ''))}</div>`;
