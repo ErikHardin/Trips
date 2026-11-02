@@ -4994,12 +4994,33 @@ function _bkParseFlight(line) {
   return { num: m ? m[1] : String(line).split(' ')[0], from: m ? m[2].toUpperCase() : '', to: m ? m[3].toUpperCase() : '',
            depMin: t ? toMin(t[1]) : null, arrMin: t ? toMin(t[2]) : null };
 }
+// Same-date legs (outbound / return) in travel order by airport, whatever
+// order they were entered in: start where nothing flies in (DEN), then follow
+// each arrival to the flight leaving from it (DEN → LAX → HKG). Clock times
+// alone can't order them — an 11pm leg is followed by a 6am one.
+function _bkAirportOrder(list) {
+  const left = list.slice();
+  const out = [];
+  const byTime = (a, b) => (a.depMin ?? 0) - (b.depMin ?? 0);
+  while (left.length) {
+    const last = out[out.length - 1];
+    let next = last && last.to ? left.filter(f => f.from === last.to).sort(byTime)[0] : null;
+    if (!next) {
+      const tos = new Set(left.map(f => f.to));
+      next = left.filter(f => !tos.has(f.from)).sort(byTime)[0] || left.slice().sort(byTime)[0];
+    }
+    out.push(next);
+    left.splice(left.indexOf(next), 1);
+  }
+  return out;
+}
 // Puts flights on one timeline (minutes from epoch, local clock) in travel
-// order. Outbound and return legs share one date, so they keep the order they
-// were entered in, each leaving no earlier than the last one landed.
+// order. Outbound and return legs share one date, so they're ordered by
+// airport, each leaving no earlier than the last one landed.
 function _bkTimeline(list, sharedDate) {
   const dayMin = iso => (iso ? Math.round(Date.parse(iso + 'T00:00:00Z') / 60000) : 0);
-  if (!sharedDate) list = list.slice().sort((a, b) => (a.iso || '').localeCompare(b.iso || '') || (a.depMin ?? 0) - (b.depMin ?? 0));
+  if (sharedDate) list = _bkAirportOrder(list);
+  else list = list.slice().sort((a, b) => (a.iso || '').localeCompare(b.iso || '') || (a.depMin ?? 0) - (b.depMin ?? 0));
   let prevArr = null;
   list.forEach(f => {
     let dep = dayMin(f.iso) + (f.depMin ?? 0);
