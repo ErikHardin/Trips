@@ -640,7 +640,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-02.1';
+const WORKER_VERSION = '2026-11-02.2';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -650,6 +650,7 @@ const WORKER_ENV_KEYS = [
   'FIREBASE_SECRET',
   'AERODATABOX_KEY',
   'TRAVELPAYOUTS_TOKEN',
+  'SERPAPI_KEY',
   'ADMIN_PIN',
   'ADMIN_PIN_2',
   'APNS_KEY_P8',
@@ -3030,6 +3031,100 @@ async function cfPrices(env, origins, dests, date) {
   return { eco: cfStats(eco), biz: cfStats(biz), first: cfStats(first), byAirline, byFlight };
 }
 
+// ── Google Flights via SerpApi (SERPAPI_KEY) ──
+// One search per cabin: Economy, and Business for the Business & First toggle.
+// Prices are Google's at the moment of the search, not a bookable quote.
+async function cfSerp(env, origins, dests, date, travelClass) {
+  const q = new URLSearchParams({
+    engine: 'google_flights', departure_id: origins.join(','), arrival_id: dests.join(','),
+    outbound_date: date, type: '2', travel_class: String(travelClass), stops: '2',
+    currency: 'USD', hl: 'en', gl: 'us', api_key: env.SERPAPI_KEY,
+  });
+  const r = await fetch('https://serpapi.com/search.json?' + q);
+  const d = await r.json().catch(() => null);
+  if (d && d.error && /hasn't returned any results|no results/i.test(d.error)) return { items: [], insights: null, url: '' };
+  if (!r.ok || !d || d.error) throw new Error('Google Flights: ' + ((d && d.error) || ('HTTP ' + r.status)));
+  return {
+    items: [...(d.best_flights || []), ...(d.other_flights || [])],
+    insights: d.price_insights || null,
+    url: (d.search_metadata && d.search_metadata.google_flights_url) || '',
+  };
+}
+
+// "2027-03-01 6:45" or "2027-03-01 06:45" → "06:45"
+const cfSerpTime = t => { const m = String(t || '').match(/(\d{1,2}):(\d{2})\s*$/); return m ? m[1].padStart(2, '0') + ':' + m[2] : ''; };
+
+async function cfGoogleFlights(env, origins, dests, date) {
+  const [eco, biz] = await Promise.all([
+    cfSerp(env, origins, dests, date, 1),
+    cfSerp(env, origins, dests, date, 3).catch(() => null),
+  ]);
+  const keyOf = it => (it.flights || []).map(f => String(f.flight_number || '').replace(/\s+/g, '')).join('+');
+  const bizPrice = {};
+  ((biz && biz.items) || []).forEach(it => {
+    const k = keyOf(it);
+    if (typeof it.price === 'number' && (!bizPrice[k] || it.price < bizPrice[k])) bizPrice[k] = it.price;
+  });
+  const iata = num => String(num || '').trim().split(/\s+/)[0].slice(0, 2).toUpperCase();
+  const seen = {};
+  const nonstop = [], conns = [];
+  eco.items.forEach(it => {
+    const fl = it.flights || [];
+    if (!fl.length || fl.length > 2) return;
+    const k = keyOf(it);
+    if (seen[k] && (seen[k].price || Infinity) <= (it.price || Infinity)) return;
+    const first = fl[0], last = fl[fl.length - 1];
+    const dep = first.departure_airport || {}, arr = last.arrival_airport || {};
+    const row = {
+      airline: fl.every(f => f.airline === first.airline) ? first.airline : fl.map(f => f.airline).filter(Boolean).join(' + '),
+      airlineIata: fl.every(f => iata(f.flight_number) === iata(first.flight_number)) ? iata(first.flight_number) : '',
+      from: dep.id, to: arr.id, dep: cfSerpTime(dep.time), arr: cfSerpTime(arr.time),
+      plus: cfPlus(String(dep.time || '').slice(0, 10), String(arr.time || '').slice(0, 10)),
+      mins: it.total_duration || first.duration || null,
+      price: typeof it.price === 'number' ? it.price : null,
+      priceBiz: bizPrice[k] || null,
+    };
+    if (fl.length === 1) {
+      Object.assign(row, { num: first.flight_number || '', aircraft: first.airplane || '' });
+    } else {
+      const lay = (it.layovers || [])[0] || {};
+      Object.assign(row, { via: lay.id || (first.arrival_airport || {}).id, viaName: lay.name || '', legs: fl.map(f => f.flight_number || ''), layover: lay.duration || null });
+    }
+    if (seen[k]) {
+      const list = fl.length === 1 ? nonstop : conns;
+      list.splice(list.indexOf(seen[k]), 1);
+    }
+    seen[k] = row;
+    (fl.length === 1 ? nonstop : conns).push(row);
+  });
+  nonstop.sort((a, b) => a.dep.localeCompare(b.dep));
+  const oneStop = nonstop.length <= 2
+    ? conns.sort((a, b) => (a.mins || 0) - (b.mins || 0)).slice(0, 5).sort((a, b) => a.dep.localeCompare(b.dep))
+    : [];
+
+  const range = (ins, items) => {
+    const vals = items.map(x => x).filter(v => typeof v === 'number');
+    const st = cfStats(vals);
+    if (ins && Array.isArray(ins.typical_price_range) && ins.typical_price_range.length === 2) {
+      const [lo, hi] = ins.typical_price_range;
+      return { lo: Math.round(lo), hi: Math.round(hi), avg: st ? st.avg : Math.round((lo + hi) / 2), low: ins.lowest_price || null, level: ins.price_level || '' };
+    }
+    return st ? Object.assign(st, { low: Math.min(...vals), level: '' }) : null;
+  };
+  return {
+    source: 'google',
+    nonstop, oneStop,
+    prices: {
+      live: true,
+      eco: range(eco.insights, eco.items.map(it => it.price)),
+      biz: biz ? range(biz.insights, biz.items.map(it => it.price)) : null,
+      first: null, byAirline: {}, byFlight: {},
+    },
+    googleUrl: eco.url, googleUrlBiz: (biz && biz.url) || '',
+    budgetCarriers: [],
+  };
+}
+
 async function handleCityFlights(baseEnv, body) {
   const env = Object.create(baseEnv); // per-request rate limiter lives on this
   if (!env.AERODATABOX_KEY) return { error: 'Flight data is not configured (AERODATABOX_KEY)' };
@@ -3043,6 +3138,18 @@ async function handleCityFlights(baseEnv, body) {
   if (!fromAirports.length || !toAirports.length) return result;
   const origins = fromAirports.map(a => a.iata), dests = toAirports.map(a => a.iata);
   if (origins.some(o => dests.includes(o))) return result; // same airport — nothing to fly
+
+  // Google Flights first (real flights and current prices). The schedules +
+  // average fares below are the backup when it's not set up, fails or finds nothing.
+  if (env.SERPAPI_KEY) {
+    try {
+      const g = await cfGoogleFlights(env, origins, dests, date);
+      if (g.nonstop.length || g.oneStop.length) return Object.assign(result, g);
+    } catch (e) {
+      result.googleError = e.message;
+    }
+  }
+  result.source = 'estimate';
 
   const pricesJob = cfPrices(env, origins, dests, date).catch(() => null);
 

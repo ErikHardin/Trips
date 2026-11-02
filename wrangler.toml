@@ -44,6 +44,8 @@ crons = ["*/5 * * * *"]
 #   AERODATABOX_KEY   /flight-lookup, /city-flights
 #   TRAVELPAYOUTS_TOKEN  /city-flights average fares (optional; free token
 #                     from travelpayouts.com → Aviasales data API)
+#   SERPAPI_KEY       /city-flights Google Flights results + current prices
+#                     (optional; tried first, schedules + averages are the backup)
 #   FLIGHTAWARE_KEY   departure gates (optional; flight-alert cron)
 #   ADMIN_PIN         /verify-pin
 #   ADMIN_PIN_2       /verify-pin

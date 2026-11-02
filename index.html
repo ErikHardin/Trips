@@ -2550,7 +2550,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 394 };
+window.BUILD_INFO = { prNumber: 395 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5238,6 +5238,11 @@ function _cfOwnEco(f, p) {
 function _cfRowPrice(f, r, cabin) {
   const p = r.prices;
   if (!p) return null;
+  // Google Flights: each flight's own price when searched
+  if (r.source === 'google') {
+    if (cabin === 'biz') return f.priceBiz ? { main: '$' + f.priceBiz, sub: 'business' } : { main: '—', sub: 'no business', dim: true };
+    return f.price ? { main: '$' + f.price, sub: 'economy' } : null;
+  }
   if (cabin === 'biz') {
     return f.airlineIata && (r.budgetCarriers || []).includes(f.airlineIata) ? { main: '—', sub: 'no business', dim: true } : null;
   }
@@ -5303,9 +5308,11 @@ function _cfResultsHTML(leg, saved, cabin, canSearch) {
       const p = r.prices;
       const st = p && (cabin === 'biz' ? (p.biz || p.first) : p.eco);
       const label = cabin === 'biz' ? 'Business' : 'Economy';
-      if (st) h += `<div class="cf-typical"><b>${label} usually $${st.lo}–$${st.hi}</b> one-way · avg $${st.avg}<span>Recent fares on this route, not live prices</span></div>`;
+      if (st && p.live) h += `<div class="cf-typical"><b>${label} from $${st.low || st.lo}</b> one-way${st.level ? ' · prices are ' + escHtml(st.level) : ''} · usually $${st.lo}–$${st.hi}<span>Google Flights prices when searched — tap Refresh for today’s</span></div>`;
+      else if (st) h += `<div class="cf-typical"><b>${label} usually $${st.lo}–$${st.hi}</b> one-way · avg $${st.avg}<span>Recent fares on this route, not live prices</span></div>`;
       else if (p) h += `<div class="cf-note">No recent ${label.toLowerCase()} fares found for this route.</div>`;
     }
+    if (r.googleError) h += `<div class="cf-note">Google Flights didn’t answer, so these are published schedules with average fares.</div>`;
     if (r.dateUsed && r.dateUsed !== r.date) {
       h += `<div class="cf-note">Typical schedule: times are from ${escHtml(_cfDate(r.dateUsed))}, the same weekday. Airlines haven't published ${escHtml(_cfDate(r.date).split(', ').pop())} schedules yet.</div>`;
     }
@@ -5326,7 +5333,7 @@ function _cfResultsHTML(leg, saved, cabin, canSearch) {
     }
   }
   h += `<div class="cf-foot"><span>Searched ${escHtml(_cfAgo(r.searchedAt))}${canSearch ? ` · <button type="button" class="cf-refresh" onclick="findCityFlights('${leg.key}')">${_cfSearching.has(leg.key) ? 'Refreshing…' : 'Refresh'}</button>` : ''}</span>` +
-    (fromCodes.length && toCodes.length ? `<a href="${escAttr(_cfGoogleUrl(fromCodes[0], toCodes[0], leg.date, cabin))}" target="_blank" rel="noopener">Google Flights ↗</a>` : '') + '</div>';
+    (fromCodes.length && toCodes.length ? `<a href="${escAttr((cabin === 'biz' ? r.googleUrlBiz : r.googleUrl) || _cfGoogleUrl(fromCodes.join(','), toCodes.join(','), leg.date, cabin))}" target="_blank" rel="noopener">Google Flights ↗</a>` : '') + '</div>';
   return h + '</div>';
 }
 
@@ -5371,7 +5378,7 @@ async function renderCityFlights(tripId, legs, saved) {
       ${canSearch && a && b ? `<button type="button" class="cf-find" ${busy ? 'disabled' : ''} onclick="findCityFlights('${leg.key}')">${busy ? 'Searching…' : 'Find flights'}</button>` : ''}
     </div>`;
   });
-  body.innerHTML = `<div class="cf-intro">Nearest airports for each move · prices are recent averages in USD</div>
+  body.innerHTML = `<div class="cf-intro">Nearest airports for each move · prices in USD from Google Flights</div>
     <div class="cf-cabin" role="group" aria-label="Cabin">
       <button type="button" class="${cabin === 'eco' ? 'on' : ''}" aria-pressed="${cabin === 'eco'}" onclick="setCityFlightsCabin('eco')">Economy</button>
       <button type="button" class="${cabin === 'biz' ? 'on' : ''}" aria-pressed="${cabin === 'biz'}" onclick="setCityFlightsCabin('biz')">Business &amp; First</button>
@@ -5450,7 +5457,10 @@ window.openCityFlightSheet = function(key, kind, i) {
     ${ap(f.from) ? row('From ' + leg.from, _cfMi(ap(f.from).km) + ' mi to ' + f.from) : ''}
     ${ap(f.to) ? row('To ' + leg.to, _cfMi(ap(f.to).km) + ' mi from ' + f.to) : ''}
     ${r.dateUsed && r.dateUsed !== r.date ? row('Schedule', 'Typical — from ' + _cfDate(r.dateUsed)) : ''}
-    ${p ? `<div class="cf-sub" style="margin-top:16px;">Average one-way price</div>
+    ${p && r.source === 'google' ? `<div class="cf-sub" style="margin-top:16px;">One-way price</div>
+      <div class="cf-prices">${box('Economy', f.price, f.price ? 'on Google Flights' : 'not found')}${box('Business', f.priceBiz, f.priceBiz ? 'on Google Flights' : 'not offered on this flight')}</div>
+      <div class="cf-note">Google Flights prices from when this was searched (${escHtml(_cfAgo(r.searchedAt))}). They change — tap Refresh or open Google Flights for today’s.</div>` : ''}
+    ${p && r.source !== 'google' ? `<div class="cf-sub" style="margin-top:16px;">Average one-way price</div>
       <div class="cf-prices">${box('Economy', own ? own.avg : (p.eco && p.eco.avg), own ? (own.sub === 'this flight' ? 'this flight · ' : 'airline average · ') + route(p.eco) : (p.eco ? 'route average · ' + route(p.eco) : 'no recent fares'))}${box('Business', biz && biz.avg, noBiz ? 'no business cabin' : (biz ? 'route average · ' + route(biz) : 'no recent fares'))}</div>
       <div class="cf-note">Averages from recent searches, not live fares. Check the airline or Google Flights for today’s price.</div>` : ''}
     <a href="${escAttr(_cfGoogleUrl(f.from, f.to, leg.date, cabin))}" target="_blank" rel="noopener" class="det-btn primary" style="margin-top:16px;">Open in Google Flights ↗</a>
