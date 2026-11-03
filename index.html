@@ -540,6 +540,23 @@ body {
 .cf-typical span { display: block; font-size: 11px; color: var(--muted); }
 .cf-note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
 .cf-sub { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 12px 0 2px; }
+.cf-rowwrap { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
+.cf-rowwrap .cf-row { border-top: none; flex: 1; min-width: 0; }
+.cf-rank { width: 40px; height: 40px; flex-shrink: 0; border-radius: 20px; border: 1.5px solid var(--sand-dark); background: var(--warm-white); color: var(--terracotta); font-family: inherit; font-size: 18px; cursor: pointer; }
+.cf-rank.on { background: var(--terracotta); border-color: var(--terracotta); color: #fff; font-size: 15px; font-weight: 700; }
+.cf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.cf-chip { font-size: 11px; font-weight: 500; border-radius: 20px; padding: 2px 8px; }
+.cf-chooser { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 0 12px 50px; font-size: 12px; color: var(--muted); }
+.cf-chooser button { min-width: 44px; min-height: 34px; padding: 0 10px; border-radius: 17px; border: 1px solid var(--sand-dark); background: var(--warm-white); color: var(--ink); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cf-chooser button.on { background: var(--terracotta); border-color: var(--terracotta); color: #fff; }
+.cf-chooser button.rm { color: var(--terracotta); font-weight: 500; }
+.cf-sub-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cf-sub-row > span:first-child { white-space: nowrap; }
+.cf-sub-hint { font-size: 11px; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.cf-top { display: block; width: 100%; text-align: left; margin-top: 12px; border: 1.5px solid var(--sage); border-radius: 12px; padding: 11px 12px; background: var(--sage-light); font-family: inherit; color: var(--ink); cursor: pointer; }
+.cf-top-label { display: block; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--sage-dark); }
+.cf-top-main { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 15px; }
+.cf-top-votes { display: block; font-size: 12px; color: var(--sage-dark); margin-top: 3px; }
 .cf-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-top: 1px solid var(--border); background: none; font-family: inherit; text-align: left; color: var(--ink); cursor: pointer; }
 .cf-row-main { flex: 1; min-width: 0; }
 .cf-times { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -5408,16 +5425,59 @@ function _cfHead(icon, leg, extra, innerHTML) {
 }
 const _cfWhy = leg => leg.crossRegion ? leg.fromRegion + ' → ' + leg.toRegion : (leg.toRegion ? 'city change in ' + leg.toRegion : 'city change');
 
-function _cfRowHTML(leg, f, kind, i, r, cabin) {
+// ── Ranking: each person managing the trip ranks the options 1st, 2nd, 3rd…
+// Saved per person under cityFlights/{leg}/ranks/{person} = { name, picks: [flight ids] }.
+const _cfFlightId = f => (f.legs && f.legs.length ? f.legs.join('+') : String(f.num || '')).replace(/\s+/g, '').toUpperCase();
+const _cfMeKey = () => String((currentUser && currentUser.email) || adminUser || 'me').toLowerCase().replace(/[.#$\[\]\/]/g, ',');
+const _cfMeName = () => adminUser || String((currentUser && currentUser.email) || 'You').split('@')[0];
+const _cfOrd = n => ['1st', '2nd', '3rd'][n] || (n + 1) + 'th';
+const CF_RANK_COLORS = [['var(--terracotta-light)', 'var(--terracotta)'], ['var(--blue-light)', 'var(--blue)'], ['var(--sage-light)', 'var(--sage-dark)'], ['var(--gold-light)', 'var(--gold)']];
+let _cfRankEditing = '';   // "legKey|flightId" with its 1st/2nd/3rd chooser open
+function _cfRankers(saved) {
+  return Object.entries((saved && saved.ranks) || {})
+    .map(([k, v]) => ({ key: k, name: (v && v.name) || k.split(',')[0], picks: ((v && v.picks) || []).filter(Boolean) }))
+    .filter(x => x.picks.length)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+// Combined pick: a 1st choice is worth 3 points, 2nd 2, 3rd 1; ties go to the cheaper flight
+function _cfTopPick(r, rankers, cabin) {
+  const all = [...(r.nonstop || []).map((f, i) => ({ f, kind: 'n', i })), ...(r.oneStop || []).map((f, i) => ({ f, kind: 'c', i }))];
+  const price = f => (cabin === 'biz' ? f.priceBiz : f.price) || Infinity;
+  const scored = all.map(x => {
+    const id = _cfFlightId(x.f);
+    x.points = rankers.reduce((s, p) => { const n = p.picks.indexOf(id); return s + (n === -1 ? 0 : Math.max(0, 3 - n)); }, 0);
+    x.votes = rankers.map(p => { const n = p.picks.indexOf(id); return n === -1 ? '' : p.name + '’s ' + _cfOrd(n); }).filter(Boolean);
+    return x;
+  }).filter(x => x.points > 0);
+  return scored.sort((a, b) => b.points - a.points || price(a.f) - price(b.f))[0] || null;
+}
+
+function _cfRowHTML(leg, f, kind, i, r, cabin, rank) {
   const pr = _cfRowPrice(f, r, cabin);
   const meta = kind === 'n'
     ? [f.airline ? f.airline + ' ' + f.num : f.num, (r.fromAirports || []).length > 1 ? 'from ' + f.from : '', _cfDur(f.mins)]
     : [f.airline, 'via ' + f.via, _cfDur(f.mins)];
-  return `<button type="button" class="cf-row" onclick="openCityFlightSheet('${leg.key}','${kind}',${i})">
+  const id = _cfFlightId(f);
+  const chips = (rank.rankers || []).map((p, k) => {
+    const n = p.picks.indexOf(id);
+    if (n === -1) return '';
+    const [bg, fg] = CF_RANK_COLORS[k % CF_RANK_COLORS.length];
+    return `<span class="cf-chip" style="background:${bg};color:${fg};">${escHtml(p.name)} · ${_cfOrd(n)}</span>`;
+  }).join('');
+  const mine = rank.mine || [];
+  const myN = mine.indexOf(id);
+  const editing = _cfRankEditing === leg.key + '|' + id;
+  const rankBtn = rank.can
+    ? `<button type="button" class="cf-rank${myN !== -1 ? ' on' : ''}" aria-label="${myN !== -1 ? 'Change your ranking (now ' + _cfOrd(myN) + ')' : 'Add as your ' + _cfOrd(mine.length) + ' choice'}" onclick="rankCityFlight('${leg.key}','${escAttr(id)}')">${myN !== -1 ? myN + 1 : '☆'}</button>`
+    : '';
+  const chooser = editing && myN !== -1
+    ? `<div class="cf-chooser"><span>Your choice:</span>${mine.map((_, n) => `<button type="button" class="${n === myN ? 'on' : ''}" onclick="moveCityFlightRank('${leg.key}','${escAttr(id)}',${n})">${_cfOrd(n)}</button>`).join('')}<button type="button" class="rm" onclick="moveCityFlightRank('${leg.key}','${escAttr(id)}',-1)">Remove</button></div>`
+    : '';
+  return `<div class="cf-rowwrap">${rankBtn}<button type="button" class="cf-row" onclick="openCityFlightSheet('${leg.key}','${kind}',${i})">
     <span class="cf-row-main"><span class="cf-times" style="display:block;">${escHtml(f.dep)} → ${escHtml(f.arr)}${f.plus ? '<sup>+' + f.plus + '</sup>' : ''}</span>
-    <span class="cf-meta" style="display:block;">${escHtml(meta.filter(Boolean).join(' · '))}</span></span>
+    <span class="cf-meta" style="display:block;">${escHtml(meta.filter(Boolean).join(' · '))}</span>${chips ? `<span class="cf-chips">${chips}</span>` : ''}</span>
     ${pr ? `<span class="cf-price"><b class="${pr.dim ? 'dim' : ''}">${escHtml(pr.main)}</b><span>${escHtml(pr.sub)}</span></span>` : ''}
-  </button>`;
+  </button></div>${chooser}`;
 }
 
 const _cfMi = km => Math.round(km * 0.621371);
@@ -5463,17 +5523,32 @@ function _cfResultsHTML(leg, saved, cabin, canSearch) {
     if (r.dateUsed && r.dateUsed !== r.date) {
       h += `<div class="cf-note">Typical schedule: times are from ${escHtml(_cfDate(r.dateUsed))}, the same weekday. Airlines haven't published ${escHtml(_cfDate(r.date).split(', ').pop())} schedules yet.</div>`;
     }
+    const rankers = _cfRankers(saved);
+    const meP = rankers.find(p => p.key === _cfMeKey());
+    const rank = { can: canSearch, rankers, mine: meP ? meP.picks : [] };
+    const top = _cfTopPick(r, rankers, cabin);
+    if (top) {
+      const pr = _cfRowPrice(top.f, r, cabin);
+      h += `<button type="button" class="cf-top" onclick="openCityFlightSheet('${leg.key}','${top.kind}',${top.i})">
+        <span class="cf-top-label">Top pick so far</span>
+        <span class="cf-top-main"><b>${escHtml((top.kind === 'n' ? top.f.num : (top.f.legs || []).join(' + ')) + ' · ' + top.f.dep + ' → ' + top.f.arr)}</b>${pr && !pr.dim ? `<b>${escHtml(pr.main)}</b>` : ''}</span>
+        <span class="cf-top-votes">${escHtml(top.votes.join(' · '))}</span></button>`;
+    }
+    const ranked = f => rankers.some(p => p.picks.includes(_cfFlightId(f)));
     if (nonstop.length) {
       const all = _cfExpanded.has(leg.key);
-      h += `<div class="cf-sub">Nonstop · ${nonstop.length} flight${nonstop.length === 1 ? '' : 's'}</div>` +
-        (all ? nonstop : nonstop.slice(0, 4)).map((f, i) => _cfRowHTML(leg, f, 'n', i, r, cabin)).join('');
-      if (nonstop.length > 4) {
-        h += `<button type="button" class="cf-more" onclick="toggleCityFlightsMore('${leg.key}')">${all ? 'Show fewer' : 'Show ' + (nonstop.length - 4) + ' more nonstop' + (nonstop.length - 4 === 1 ? '' : 's')}</button>`;
+      // Collapsed: the first 4, plus any further down that someone ranked
+      const shown = nonstop.map((f, i) => ({ f, i })).filter(x => all || x.i < 4 || ranked(x.f));
+      h += `<div class="cf-sub cf-sub-row"><span>Nonstop · ${nonstop.length} flight${nonstop.length === 1 ? '' : 's'}</span>${canSearch ? '<span class="cf-sub-hint">☆ to rank</span>' : ''}</div>` +
+        shown.map(x => _cfRowHTML(leg, x.f, 'n', x.i, r, cabin, rank)).join('');
+      const hidden = nonstop.length - shown.length;
+      if (nonstop.length > 4 && (all || hidden)) {
+        h += `<button type="button" class="cf-more" onclick="toggleCityFlightsMore('${leg.key}')">${all ? 'Show fewer' : 'Show ' + hidden + ' more nonstop' + (hidden === 1 ? '' : 's')}</button>`;
       }
     }
     if (oneStop.length) {
       h += `<div class="cf-sub">1 stop${nonstop.length ? ' · few nonstops on this route' : ''}</div>` +
-        oneStop.map((f, i) => _cfRowHTML(leg, f, 'c', i, r, cabin)).join('');
+        oneStop.map((f, i) => _cfRowHTML(leg, f, 'c', i, r, cabin, rank)).join('');
     }
     if (!nonstop.length && !oneStop.length) {
       h += `<div class="cf-note">No nonstop or 1-stop flights found between ${escHtml(fromCodes.join('/'))} and ${escHtml(toCodes.join('/'))} that day.</div>`;
@@ -5537,6 +5612,44 @@ async function renderCityFlights(tripId, legs, saved) {
   if (sum) sum.textContent = [many(legs.length, 'move'), booked && booked + ' booked', road && road + ' by road', toPlan && toPlan + ' to plan'].filter(Boolean).join(' · ');
 }
 
+// ☆ adds the flight as your next choice; your number opens the 1st/2nd/3rd chooser
+window.rankCityFlight = function(key, id) {
+  const saved = (_cfSaved[currentTripId] || {})[key];
+  if (!saved) return;
+  const mine = (((saved.ranks || {})[_cfMeKey()] || {}).picks || []).filter(Boolean);
+  if (mine.includes(id)) {
+    _cfRankEditing = _cfRankEditing === key + '|' + id ? '' : key + '|' + id;
+    renderCityFlights(currentTripId, _cfLegs[currentTripId], _cfSaved[currentTripId]);
+    return;
+  }
+  _cfSaveRanks(key, [...mine, id]);
+};
+// Move to slot n (the others shift to make room), or -1 to remove
+window.moveCityFlightRank = function(key, id, n) {
+  const saved = (_cfSaved[currentTripId] || {})[key];
+  if (!saved) return;
+  const rest = (((saved.ranks || {})[_cfMeKey()] || {}).picks || []).filter(x => x && x !== id);
+  if (n >= 0) rest.splice(n, 0, id);
+  _cfRankEditing = '';
+  _cfSaveRanks(key, rest);
+};
+async function _cfSaveRanks(key, picks) {
+  const tripId = currentTripId;
+  const saved = (_cfSaved[tripId] || {})[key];
+  if (!saved) return;
+  const me = _cfMeKey();
+  const val = picks.length ? { name: _cfMeName(), picks } : null;
+  // Show it at once; the database write follows
+  saved.ranks = Object.assign({}, saved.ranks);
+  if (val) saved.ranks[me] = val; else delete saved.ranks[me];
+  renderCityFlights(tripId, _cfLegs[tripId], _cfSaved[tripId]);
+  try {
+    await window._set(window._ref(window._db, `trips/${tripId}/logistics/cityFlights/${key}/ranks/${me}`), val);
+  } catch (e) {
+    showToast('Couldn’t save your ranking — check connection');
+  }
+}
+
 window.toggleCityFlightsMore = function(key) {
   _cfExpanded.has(key) ? _cfExpanded.delete(key) : _cfExpanded.add(key);
   if (currentTripId && _cfLegs[currentTripId]) renderCityFlights(currentTripId, _cfLegs[currentTripId], _cfSaved[currentTripId]);
@@ -5561,6 +5674,17 @@ window.findCityFlights = async function(key, force) {
     const result = await res.json().catch(() => ({ error: 'Bad response' }));
     if (!res.ok || result.error) throw new Error(result.error || ('HTTP ' + res.status));
     const rec = { from: leg.from, to: leg.to, date: leg.date, result, by: adminUser || '' };
+    // Everyone's picks carry over for flights still in the new results
+    const prev = (_cfSaved[tripId] || {})[key];
+    if (prev && prev.ranks && prev.from === leg.from && prev.to === leg.to && prev.date === leg.date) {
+      const ids = new Set([...(result.nonstop || []), ...(result.oneStop || [])].map(_cfFlightId));
+      const ranks = {};
+      Object.entries(prev.ranks).forEach(([k, v]) => {
+        const picks = ((v && v.picks) || []).filter(id => ids.has(id));
+        if (picks.length) ranks[k] = { name: (v && v.name) || '', picks };
+      });
+      if (Object.keys(ranks).length) rec.ranks = ranks;
+    }
     // JSON round-trip drops anything Firebase can't store
     await window._set(window._ref(window._db, `trips/${tripId}/logistics/cityFlights/${key}`), JSON.parse(JSON.stringify(rec)));
     _cfSaved[tripId] = Object.assign({}, _cfSaved[tripId], { [key]: rec });
