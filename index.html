@@ -5602,11 +5602,16 @@ async function renderCityFlights(tripId, legs, saved) {
       ${canSearch && a && b ? `<button type="button" class="cf-find" ${busy ? 'disabled' : ''} onclick="findCityFlights('${leg.key}')">${busy ? 'Searching…' : 'Find flights'}</button>` : ''}
     </div>`;
   });
+  // Redrawing (e.g. after ranking a flight) mustn't move the page
+  const scroller = body.closest('.screen') || document.getElementById('tripLogisticsPanel');
+  const keepTop = scroller ? scroller.scrollTop : null, keepY = window.scrollY;
   body.innerHTML = `<div class="cf-intro">Nearest airports for each move · prices in USD from Google Flights</div>
     <div class="cf-cabin" role="group" aria-label="Cabin">
       <button type="button" class="${cabin === 'eco' ? 'on' : ''}" aria-pressed="${cabin === 'eco'}" onclick="setCityFlightsCabin('eco')">Economy</button>
       <button type="button" class="${cabin === 'biz' ? 'on' : ''}" aria-pressed="${cabin === 'biz'}" onclick="setCityFlightsCabin('biz')">Business &amp; First</button>
     </div>` + cards.join('');
+  if (scroller && keepTop != null) scroller.scrollTop = keepTop;
+  if (window.scrollY !== keepY) window.scrollTo(0, keepY);
   const sum = document.getElementById('logisum-cities');
   const many = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   if (sum) sum.textContent = [many(legs.length, 'move'), booked && booked + ' booked', road && road + ' by road', toPlan && toPlan + ' to plan'].filter(Boolean).join(' · ');
@@ -11645,6 +11650,9 @@ async function _renderLogisticsInner(tripId, panel) {
   const packAll = (packingList || []).flatMap(p => (p.sections || []).flatMap(sec => (sec.items || []).filter(Boolean)));
   const packSummary = packAll.length ? packAll.filter(i => i.checked).length + ' of ' + packAll.length + ' packed' : 'Not started';
 
+  // Keep the flight list on screen while the redraw fills it in again — an
+  // empty list for a moment shortens the page and the scroll position jumps up
+  const _cfPrevBody = (document.getElementById('cfBody') || {}).innerHTML || '';
   panel.innerHTML =
     '<div class="logi-toolbar"><button type="button" id="logiAllBtn" onclick="toggleAllLogiSections()"></button></div>' +
 
@@ -11660,7 +11668,7 @@ async function _renderLogisticsInner(tripId, panel) {
 
     (legs.length ? _logiSection(tripId, 'cities', 'Getting between cities',
       escHtml(_cfSummary(_trip, legs, logistics.cityFlights)),
-      '<div class="cf-wrap" id="cfBody"></div>') : '') +
+      '<div class="cf-wrap" id="cfBody">' + _cfPrevBody + '</div>') : '') +
 
     _logiSection(tripId, 'packing', 'Packing List', escHtml(packSummary),
       '<div style="height:4px;"></div>' + generateBtnHTML +
