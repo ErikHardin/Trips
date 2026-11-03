@@ -5427,6 +5427,13 @@ const _cfWhy = leg => leg.crossRegion ? leg.fromRegion + ' → ' + leg.toRegion 
 
 // ── Ranking: each person managing the trip ranks the options 1st, 2nd, 3rd…
 // Saved per person under cityFlights/{leg}/ranks/{person} = { name, picks: [flight ids] }.
+// "07:00" / "18:35" (as the search returns them) → "7:00am" / "6:35pm"
+const _cf12 = t => {
+  const m = String(t || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return String(t || '');
+  const h = +m[1];
+  return (h % 12 || 12) + ':' + m[2] + (h < 12 ? 'am' : 'pm');
+};
 const _cfFlightId = f => (f.legs && f.legs.length ? f.legs.join('+') : String(f.num || '')).replace(/\s+/g, '').toUpperCase();
 const _cfMeKey = () => String((currentUser && currentUser.email) || adminUser || 'me').toLowerCase().replace(/[.#$\[\]\/]/g, ',');
 const _cfMeName = () => adminUser || String((currentUser && currentUser.email) || 'You').split('@')[0];
@@ -5474,7 +5481,7 @@ function _cfRowHTML(leg, f, kind, i, r, cabin, rank) {
     ? `<div class="cf-chooser"><span>Your choice:</span>${mine.map((_, n) => `<button type="button" class="${n === myN ? 'on' : ''}" onclick="moveCityFlightRank('${leg.key}','${escAttr(id)}',${n})">${_cfOrd(n)}</button>`).join('')}<button type="button" class="rm" onclick="moveCityFlightRank('${leg.key}','${escAttr(id)}',-1)">Remove</button></div>`
     : '';
   return `<div class="cf-rowwrap">${rankBtn}<button type="button" class="cf-row" onclick="openCityFlightSheet('${leg.key}','${kind}',${i})">
-    <span class="cf-row-main"><span class="cf-times" style="display:block;">${escHtml(f.dep)} → ${escHtml(f.arr)}${f.plus ? '<sup>+' + f.plus + '</sup>' : ''}</span>
+    <span class="cf-row-main"><span class="cf-times" style="display:block;">${escHtml(_cf12(f.dep))} → ${escHtml(_cf12(f.arr))}${f.plus ? '<sup>+' + f.plus + '</sup>' : ''}</span>
     <span class="cf-meta" style="display:block;">${escHtml(meta.filter(Boolean).join(' · '))}</span>${chips ? `<span class="cf-chips">${chips}</span>` : ''}</span>
     ${pr ? `<span class="cf-price"><b class="${pr.dim ? 'dim' : ''}">${escHtml(pr.main)}</b><span>${escHtml(pr.sub)}</span></span>` : ''}
   </button></div>${chooser}`;
@@ -5531,7 +5538,7 @@ function _cfResultsHTML(leg, saved, cabin, canSearch) {
       const pr = _cfRowPrice(top.f, r, cabin);
       h += `<button type="button" class="cf-top" onclick="openCityFlightSheet('${leg.key}','${top.kind}',${top.i})">
         <span class="cf-top-label">Top pick so far</span>
-        <span class="cf-top-main"><b>${escHtml((top.kind === 'n' ? top.f.num : (top.f.legs || []).join(' + ')) + ' · ' + top.f.dep + ' → ' + top.f.arr)}</b>${pr && !pr.dim ? `<b>${escHtml(pr.main)}</b>` : ''}</span>
+        <span class="cf-top-main"><b>${escHtml((top.kind === 'n' ? top.f.num : (top.f.legs || []).join(' + ')) + ' · ' + _cf12(top.f.dep) + ' → ' + _cf12(top.f.arr))}</b>${pr && !pr.dim ? `<b>${escHtml(pr.main)}</b>` : ''}</span>
         <span class="cf-top-votes">${escHtml(top.votes.join(' · '))}</span></button>`;
     }
     const ranked = f => rankers.some(p => p.picks.includes(_cfFlightId(f)));
@@ -5725,9 +5732,9 @@ window.openCityFlightSheet = function(key, kind, i) {
     <div class="det-meta" style="margin-bottom:2px;">${escHtml(_cfDate(leg.date))} · ${escHtml(leg.from)} → ${escHtml(leg.to)}</div>
     <div class="modal-title" style="margin-bottom:0;">✈️ ${escHtml(title)}</div>
     <div class="cf-sheet-times">
-      <div style="flex:1;"><div class="t">${escHtml(f.dep)}</div><div class="cf-meta">${escHtml(f.from)}${apName(f.from) ? ' · ' + escHtml(apName(f.from)) : ''}</div></div>
+      <div style="flex:1;"><div class="t">${escHtml(_cf12(f.dep))}</div><div class="cf-meta">${escHtml(f.from)}${apName(f.from) ? ' · ' + escHtml(apName(f.from)) : ''}</div></div>
       <div class="mid"><span>${escHtml(_cfDur(f.mins))}</span><i></i><span>${kind === 'n' ? 'nonstop' : 'via ' + escHtml(f.via)}</span></div>
-      <div style="flex:1;text-align:right;"><div class="t">${escHtml(f.arr)}${f.plus ? '<sup style="font-size:11px;color:var(--terracotta);">+' + f.plus + '</sup>' : ''}</div><div class="cf-meta">${escHtml(f.to)}${apName(f.to) ? ' · ' + escHtml(apName(f.to)) : ''}</div></div>
+      <div style="flex:1;text-align:right;"><div class="t">${escHtml(_cf12(f.arr))}${f.plus ? '<sup style="font-size:11px;color:var(--terracotta);">+' + f.plus + '</sup>' : ''}</div><div class="cf-meta">${escHtml(f.to)}${apName(f.to) ? ' · ' + escHtml(apName(f.to)) : ''}</div></div>
     </div>
     ${row('Airline', f.airline)}
     ${kind === 'c' ? row('Connection', (f.viaName || f.via) + (f.layover ? ' · ' + _cfDur(f.layover) + ' layover' : '')) : ''}
