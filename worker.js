@@ -640,7 +640,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-03.1';
+const WORKER_VERSION = '2026-11-04.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2879,13 +2879,14 @@ async function runEditDigest(env, tripId, trip, recipients, access, prefsOf, cur
 
 const CF_ADB_HOST = 'aerodatabox.p.rapidapi.com';
 const CF_AIRPORT_RADIUS_KM = 150;
-const CF_ADB_SPACING_MS = 1100;
+// AeroDataBox Pro plan: 2 requests a second — a little over 500ms apart
+const CF_ADB_SPACING_MS = 550;
 // Connection hubs worth trying first for a 1-stop, roughly by size
 const CF_HUBS = ['SIN', 'BKK', 'KUL', 'HKG', 'DMK', 'SGN', 'HAN', 'CGK', 'MNL', 'TPE', 'ICN', 'CAN', 'PVG', 'DPS', 'NRT', 'HND', 'DOH', 'DXB', 'DEL', 'BOM', 'SYD'];
 // Carriers with no business cabin, so a Business & First price doesn't apply
 const CF_NO_BUSINESS = new Set(['FD', 'AK', 'D7', 'Z2', 'QZ', 'XJ', 'XT', 'DJ', 'DD', 'TR', '3K', 'JQ', 'GK', '5J', 'DG', 'JT', 'IW', 'QG', 'ID', 'BL', '6E', 'IX', 'SG', 'G8', 'HC', 'FY', 'OD']);
 
-// AeroDataBox's RapidAPI plans allow about one request a second, so a
+// AeroDataBox's RapidAPI plans cap requests per second (Pro: 2), so a
 // search's calls go out one at a time, spaced, and a per-second 429 is
 // retried. A monthly-quota 429 can't be retried — that's reported as such.
 const cfSleep = ms => new Promise(r => setTimeout(r, ms));
