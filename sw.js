@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hardin-trips-v2';
+const CACHE_NAME = 'hardin-trips-v3';
 
 const SHELL = [
   '/Trips/',
