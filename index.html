@@ -707,8 +707,13 @@ body {
 .note-photos-grid.count-2 { grid-template-columns: 1fr 1fr; }
 .note-photos-grid.count-3 { grid-template-columns: 1fr 1fr 1fr; }
 .note-photos-grid.count-many { grid-template-columns: 1fr 1fr; }
-.note-photos-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: pointer; }
-.note-photos-grid.count-1 img { aspect-ratio: 4/3; max-height: 240px; }
+/* Photos are shown whole (contain), never cropped: multi-photo grids keep even
+   square cells and letterbox each photo; a single photo keeps its own shape. */
+.note-photos-grid img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--sand); display: block; cursor: pointer; }
+.note-photos-grid.count-1 img { aspect-ratio: auto; height: auto; max-height: 70vh; }
+.mem-photos { display: grid; gap: 2px; }
+.mem-photo { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--sand); display: block; cursor: pointer; }
+.mem-photos.single .mem-photo { aspect-ratio: auto; height: auto; max-height: 70vh; }
 .save-note-btn {
   width: 100%; margin-top: 10px;
   padding: 12px; background: var(--terracotta);
@@ -6362,10 +6367,10 @@ async function renderTripOverview(trip) {
           ${allNotes.map(note => {
             const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
             const photosHTML = photos.length ? `
-              <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
+              <div class="mem-photos${photos.length===1?' single':''}" style="grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);">
                 ${photos.map((url,i)=>isVideoUrl(url)
                   ? `<div style="width:100%;aspect-ratio:1;background:#111;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})"><svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="rgba(255,255,255,0.2)"/><polygon points="14,11 28,18 14,25" fill="white"/></svg></div>`
-                  : `<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
+                  : `<img src="${url}" class="mem-photo" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
               </div>` : '';
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
             var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
@@ -6637,8 +6642,8 @@ function renderShareHighlights(trip) {
         ${allNotes.map(note => {
           const photos = note.photoUrls ? Object.values(note.photoUrls) : (note.photoUrl ? [note.photoUrl] : []);
           const photosHTML = photos.length ? `
-            <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);gap:2px;">
-              ${photos.map((url,i)=>`<img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
+            <div class="mem-photos${photos.length===1?' single':''}" style="grid-template-columns:repeat(${Math.min(photos.length,3)},1fr);">
+              ${photos.map((url,i)=>`<img src="${url}" class="mem-photo" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
             </div>` : '';
           var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
           var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
