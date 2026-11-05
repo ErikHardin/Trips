@@ -6120,7 +6120,11 @@ async function shareTrip() {
     return;
   }
 
-  const url = `${window.location.origin}${window.location.pathname}?trip=${tripId}`;
+  // Shared links go through the Worker's /t/ route so iMessage and other link
+  // previews show the trip's emoji and name instead of the static page title;
+  // tapping it redirects to the app's ?trip= share view.
+  const url = `${PUSH_WORKER_URL}/t/${encodeURIComponent(tripId)}`;
+  const shareTitle = `${trip.emoji || '✈️'} ${trip.name || 'Trip Itinerary'}`;
 
   // Hand the link over first. This used to await ensureDaySummaries() — several
   // seconds of AI call plus a Firebase write — before calling navigator.share(),
@@ -6132,7 +6136,7 @@ async function shareTrip() {
   let delivered = false;
   if (navigator.share) {
     try {
-      await navigator.share({ title: trip.name || 'Trip Itinerary', url });
+      await navigator.share({ title: shareTitle, url });
       delivered = true;
     } catch(e) {
       // AbortError means the sheet opened and the user dismissed it — done.
