@@ -2575,7 +2575,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 401 };
+window.BUILD_INFO = { prNumber: 402 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -6120,7 +6120,11 @@ async function shareTrip() {
     return;
   }
 
-  const url = `${window.location.origin}${window.location.pathname}?trip=${tripId}`;
+  // Shared links go through the Worker's /t/ route so iMessage and other link
+  // previews show the trip's emoji and name instead of the static page title;
+  // tapping it redirects to the app's ?trip= share view.
+  const url = `${PUSH_WORKER_URL}/t/${encodeURIComponent(tripId)}`;
+  const shareTitle = `${trip.emoji || '✈️'} ${trip.name || 'Trip Itinerary'}`;
 
   // Hand the link over first. This used to await ensureDaySummaries() — several
   // seconds of AI call plus a Firebase write — before calling navigator.share(),
@@ -6132,7 +6136,7 @@ async function shareTrip() {
   let delivered = false;
   if (navigator.share) {
     try {
-      await navigator.share({ title: trip.name || 'Trip Itinerary', url });
+      await navigator.share({ title: shareTitle, url });
       delivered = true;
     } catch(e) {
       // AbortError means the sheet opened and the user dismissed it — done.

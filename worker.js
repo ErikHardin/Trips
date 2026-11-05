@@ -26,6 +26,12 @@ export default {
       return handleVersion(env);
     }
 
+    // Share links — /t/<tripId>. Link-preview fetchers (iMessage, Slack…) get a
+    // page whose title is the trip's emoji + name; people are redirected to the app.
+    if (url.pathname.startsWith('/t/')) {
+      return handleShareLink(env, request, url);
+    }
+
     // Everything below is a JSON POST. A GET to an unrouted path used to reach
     // request.json() and throw, surfacing as an opaque Cloudflare 1101 rather
     // than "no such route" — which made a stale deploy and a real bug look alike.
@@ -640,7 +646,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-04.1';
+const WORKER_VERSION = '2026-11-05.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -662,6 +668,7 @@ const WORKER_ENV_KEYS = [
 
 const WORKER_ROUTES = [
   '/version',
+  '/t/<tripId>',
   '/widget-data',
   '/widget-upcoming',
   '/verify-pin',
@@ -714,6 +721,54 @@ async function handleVersion(env) {
     env:     configured,
     firebase,
   }), { headers: CORS });
+}
+
+// ── Share link previews ─────────────────────────────────────────────────────
+// The app is static on GitHub Pages, so a pasted ?trip= link always previews as
+// "Hardin Trips". Share links point here instead: the preview fetcher reads
+// og:title with the trip's emoji and name, and a person tapping the link is
+// sent straight on to the app. Only name, emoji and dates are exposed — the
+// share view itself already reads the whole trip without signing in.
+const SHARE_APP_URL = 'https://ech-technicalsolutions.com/Trips/';
+
+function shEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function handleShareLink(env, request, url) {
+  const tripId = decodeURIComponent(url.pathname.slice(3)).replace(/\/+$/, '');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(tripId)) return Response.redirect(SHARE_APP_URL, 302);
+  const appUrl = SHARE_APP_URL + '?trip=' + encodeURIComponent(tripId);
+
+  // People go straight through; only preview bots need the metadata page
+  const ua = request.headers.get('User-Agent') || '';
+  const isBot = /bot|facebookexternalhit|crawler|spider|preview|slack|discord|whatsapp|telegram|linkedin|embedly|skype/i.test(ua);
+  if (!isBot) return Response.redirect(appUrl, 302);
+
+  let name = '', emoji = '', dates = '';
+  try {
+    const [n, e, d] = await Promise.all(['name', 'emoji', 'dates'].map(f => fbGet(env, 'trips/' + tripId + '/' + f).catch(() => null)));
+    name = typeof n === 'string' ? n.trim() : '';
+    emoji = typeof e === 'string' ? e.trim() : '';
+    dates = typeof d === 'string' ? d.trim() : '';
+  } catch (e) {}
+  const title = name ? ((emoji || '✈️') + ' ' + name) : 'Hardin Trips';
+  const desc = name ? (dates ? dates + ' · Hardin Trips itinerary' : 'Hardin Trips itinerary') : 'Trip itinerary';
+  const img = SHARE_APP_URL + 'icon-512.png';
+
+  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+    '<title>' + shEsc(title) + '</title>' +
+    '<meta property="og:title" content="' + shEsc(title) + '">' +
+    '<meta property="og:description" content="' + shEsc(desc) + '">' +
+    '<meta property="og:site_name" content="Hardin Trips">' +
+    '<meta property="og:type" content="website">' +
+    '<meta property="og:url" content="' + shEsc(url.href) + '">' +
+    '<meta property="og:image" content="' + shEsc(img) + '">' +
+    '<meta name="twitter:card" content="summary">' +
+    '<meta name="twitter:title" content="' + shEsc(title) + '">' +
+    '<meta http-equiv="refresh" content="0;url=' + shEsc(appUrl) + '">' +
+    '</head><body><a href="' + shEsc(appUrl) + '">' + shEsc(title) + '</a></body></html>';
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } });
 }
 
 // Throws on a non-OK response so a rejected credential surfaces as an error.
