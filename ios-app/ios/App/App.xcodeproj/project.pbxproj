@@ -19,6 +19,7 @@
 		7E1D9A012F00000100000005 /* UpcomingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000001 /* UpcomingWidget.swift */; };
 		7E1D9A012F00000100000021 /* TodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000020 /* TodayWidget.swift */; };
 		7E1D9A012F00000100000031 /* WineWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000030 /* WineWidget.swift */; };
+		7E1D9A012F00000100000041 /* MemoriesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000040 /* MemoriesWidget.swift */; };
 		7E1D9A012F00000100000006 /* HardinTripsWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000002 /* HardinTripsWidgets.swift */; };
 		7E1D9A012F00000100000007 /* UpcomingWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E1D9A012F00000100000004 /* UpcomingWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -62,6 +63,7 @@
 		7E1D9A012F00000100000001 /* UpcomingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingWidget.swift; sourceTree = "<group>"; };
 		7E1D9A012F00000100000020 /* TodayWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayWidget.swift; sourceTree = "<group>"; };
 		7E1D9A012F00000100000030 /* WineWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WineWidget.swift; sourceTree = "<group>"; };
+		7E1D9A012F00000100000040 /* MemoriesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoriesWidget.swift; sourceTree = "<group>"; };
 		7E1D9A012F00000100000032 /* UpcomingWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UpcomingWidget.entitlements; sourceTree = "<group>"; };
 		7E1D9A012F00000100000002 /* HardinTripsWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardinTripsWidgets.swift; sourceTree = "<group>"; };
 		7E1D9A012F00000100000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 				7E1D9A012F00000100000001 /* UpcomingWidget.swift */,
 				7E1D9A012F00000100000020 /* TodayWidget.swift */,
 				7E1D9A012F00000100000030 /* WineWidget.swift */,
+				7E1D9A012F00000100000040 /* MemoriesWidget.swift */,
 				7E1D9A012F00000100000003 /* Info.plist */,
 				7E1D9A012F00000100000032 /* UpcomingWidget.entitlements */,
 			);
@@ -260,6 +263,7 @@
 				7E1D9A012F00000100000005 /* UpcomingWidget.swift in Sources */,
 				7E1D9A012F00000100000021 /* TodayWidget.swift in Sources */,
 				7E1D9A012F00000100000031 /* WineWidget.swift in Sources */,
+				7E1D9A012F00000100000041 /* MemoriesWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

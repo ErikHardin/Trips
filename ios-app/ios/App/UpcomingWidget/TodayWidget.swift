@@ -614,12 +614,12 @@ private struct WeatherText: View {
     }
 }
 
-// The large widget's weather: today (highlighted) and the next 3 days, each
-// at that day's city (the city named over a day the trip moves on; the days
-// stop when the trip ends), with what to expect today under them
-//   TODAY │  FRI  │  SAT  │  SUN
-//    ⛈️   │  ⛈️   │  🌧️   │  ⛈️
-//  87° 75°│84° 77°│84° 77°│81° 74°
+// The large widget's weather, kept short so more of the day fits under it:
+// today (highlighted) and the next 3 days, each at that day's city (named
+// beside the day where the trip moves on; the days stop when the trip ends),
+// with what to expect today on one line under them
+//     TODAY    │ SPAIN · SAT │    SUN
+//  ⛈️ 87° 75°  │ 🌧️ 84° 77°  │ ⛈️ 81° 74°
 //   Storms this evening · ☔ 100% · 🌅 6:43pm
 private struct WeatherTable: View {
     let weather: DayWeather
@@ -632,70 +632,75 @@ private struct WeatherTable: View {
         let cities = [weather.city] + days.map { $0.city }
         let moves = cities.indices.map { i in i > 0 && cities[i] != nil && cities[i - 1] != nil && cities[i] != cities[i - 1] }
         let labeled = moves.contains(true)
-        VStack(spacing: 5) {
+        VStack(spacing: 3) {
             HStack(spacing: 0) {
-                column(label: "TODAY", icon: weather.icon, hi: weather.hi, lo: weather.lo, today: true,
-                       city: labeled ? "" : nil)
+                column(label: "TODAY", icon: weather.icon, hi: weather.hi, lo: weather.lo, today: true, city: nil)
                 ForEach(Array(days.enumerated()), id: \.offset) { i, d in
-                    Rectangle().fill(Palette.ink.opacity(moves[i + 1] ? 0.25 : 0.1)).frame(width: 1, height: labeled ? 48 : 36)
+                    Rectangle().fill(Palette.ink.opacity(moves[i + 1] ? 0.25 : 0.1)).frame(width: 1, height: 26)
                     column(label: (d.label ?? "").split(separator: " ").first.map(String.init) ?? "",
                            icon: d.icon ?? "", hi: d.hi, lo: d.lo, today: false,
-                           city: labeled ? (moves[i + 1] ? d.city ?? "" : "") : nil)
+                           city: labeled && moves[i + 1] ? d.city : nil)
                 }
             }
             outlook
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Palette.muted)
-                .multilineTextAlignment(.center)
                 .padding(.horizontal, 8)
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, 5)
         .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
     }
 
-    // "Storms this evening · ☔ 100% · 🌅 Sunset 6:43pm" on one line when it
-    // fits; otherwise the summary, then the rain and sun on their own line,
-    // so a wrap never splits the sun from its time
+    // "Storms this evening · ☔ 100% · 🌅 6:43pm" on one line: the rain and sun
+    // always whole, the summary shrinking a little and then cut short with "…"
+    // when the line is too long
     @ViewBuilder private var outlook: some View {
-        let details = weather.details(at: now)
-        let all = [weather.summary, details].compactMap { $0 }
-        if !all.isEmpty {
-            ViewThatFits(in: .horizontal) {
-                Text(all.joined(separator: " · ")).lineLimit(1)
-                VStack(spacing: 1) {
-                    if let summary = weather.summary {
-                        Text(summary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let details = details {
-                        Text(details).lineLimit(1).minimumScaleFactor(0.85)
-                    }
+        let details = weather.details(at: now)?
+            .replacingOccurrences(of: "Sunset ", with: "")
+            .replacingOccurrences(of: "Sunrise ", with: "")
+        if weather.summary != nil || details != nil {
+            HStack(spacing: 0) {
+                if let summary = weather.summary {
+                    Text(summary + (details != nil ? " · " : ""))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                        .truncationMode(.tail)
+                }
+                if let details = details {
+                    Text(details).lineLimit(1).fixedSize().layoutPriority(1)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
-    // city: nil leaves the label row out; "" keeps its height, blank
+    // Two short lines: "SPAIN · SAT" (the city only where the trip moves on),
+    // then the icon beside the high and low
     private func column(label: String, icon: String, hi: Int?, lo: Int?, today: Bool, city: String?) -> some View {
         VStack(spacing: 1) {
-            if let city = city {
-                Text(city.uppercased())
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundStyle(Palette.terracotta)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 2)
+            Group {
+                if let city = city, !city.isEmpty {
+                    Text(city.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundColor(Palette.terracotta)
+                        + Text(" · " + label).font(.system(size: 9, weight: .bold)).foregroundColor(Palette.muted)
+                } else {
+                    Text(label)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(today ? Palette.terracotta : Palette.muted)
+                }
             }
-            Text(label)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(today ? Palette.terracotta : Palette.muted)
-            Text(icon)
-                .font(.system(size: today ? 20 : 16))
-            (Text(hi.map { "\($0)° " } ?? "").foregroundColor(Palette.ink)
-                + Text(lo.map { "\($0)°" } ?? "").foregroundColor(Palette.muted))
-                .font(.system(size: today ? 12.5 : 11.5, weight: .bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 2)
+            HStack(spacing: 3) {
+                Text(icon)
+                    .font(.system(size: today ? 15 : 13))
+                (Text(hi.map { "\($0)° " } ?? "").foregroundColor(Palette.ink)
+                    + Text(lo.map { "\($0)°" } ?? "").foregroundColor(Palette.muted))
+                    .font(.system(size: today ? 12.5 : 11.5, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         }
         .frame(maxWidth: .infinity)
     }
