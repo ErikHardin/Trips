@@ -20,6 +20,11 @@ export default {
       return handleWidgetUpcoming(env, request);
     }
 
+    // Memories widget — GET: photos from a trip day this time last year
+    if (url.pathname === '/widget-memories') {
+      return handleWidgetMemories(env, request);
+    }
+
     // Deployed-build probe — GET, so it can be checked from a browser or curl.
     // Answers "is the Worker in Cloudflare current?" without reading its source.
     if (url.pathname === '/version') {
@@ -657,7 +662,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-08.1';
+const WORKER_VERSION = '2026-11-08.2';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -682,6 +687,7 @@ const WORKER_ROUTES = [
   '/t/<tripId>',
   '/widget-data',
   '/widget-upcoming',
+  '/widget-memories',
   '/verify-pin',
   '/flight-lookup',
   '/city-flights',
@@ -3289,4 +3295,115 @@ async function handleCityFlights(baseEnv, body) {
   result.prices = await pricesJob;
   result.budgetCarriers = [...new Set([...result.nonstop, ...result.oneStop].map(f => f.airlineIata).filter(c => CF_NO_BUSINESS.has(c)))];
   return result;
+}
+
+// ── Memories widget (/widget-memories) ───────────────────────────────────────
+// One past trip day with photos in its memories, for the large Memories widget:
+// "This time last year" — a day within about two weeks of today's date a year
+// ago — else 2, 3… years ago, else any past day with photos. Which matching day
+// changes once a day (picked from the phone's date), so the widget shows a new
+// one each morning. Public like /widget-data: it returns that one day's photo
+// links, a line from a memory, and where it was.
+const MEM_WINDOW_DAYS = 15;
+const MEM_MAX_PHOTOS = 6;
+const MEM_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MEM_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+async function handleWidgetMemories(env, request) {
+  const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  if (!env.FIREBASE_URL) {
+    return new Response(JSON.stringify({ error: 'FIREBASE_URL not configured' }), { status: 500, headers: CORS });
+  }
+  const dateParam = new URL(request.url).searchParams.get('date');
+  const todayISO = /^\d{4}-\d{2}-\d{2}$/.test(dateParam || '') ? dateParam : new Date().toISOString().slice(0, 10);
+  const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+  let trips;
+  try {
+    trips = await wFetchJson(env.FIREBASE_URL + '/trips.json' + auth);
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Firebase fetch failed: ' + e.message }), { status: 502, headers: CORS });
+  }
+  return new Response(JSON.stringify(memPick(trips || {}, todayISO)), { headers: CORS });
+}
+
+// Every past day with at least one photo in its memories
+function memDays(trips, todayISO) {
+  const out = [];
+  Object.entries(trips || {}).forEach(([tripId, trip]) => {
+    if (!trip || !trip.days) return;
+    const days = Object.entries(trip.days)
+      .map(([id, d]) => [id, d, d && (d.dateISO || dayDateISO(d, trip.year))])
+      .filter(([, d, iso]) => d && iso)
+      .sort((a, b) => a[2].localeCompare(b[2]) || (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+    days.forEach(([dayId, d, iso], i) => {
+      if (iso >= todayISO || !d.notes) return;
+      const m = memPhotos(d);
+      if (!m.photos.length) return;
+      out.push({ tripId, trip, dayId, day: d, iso, dayNumber: i + 1, photos: m.photos, quote: m.quote });
+    });
+  });
+  return out;
+}
+
+// A day's memory photos in itinerary order (the day's own memories first),
+// and the first thing written about it
+function memPhotos(day) {
+  const acts = Array.isArray(day.activities) ? day.activities : Object.values(day.activities || {});
+  const order = key => {
+    if (key === '__daily__') return -1;
+    if (/^\d+$/.test(key)) return +key;
+    const i = acts.findIndex(a => a && a.key === key);
+    return i === -1 ? 9999 : i;
+  };
+  const photos = [];
+  let quote = '';
+  Object.keys(day.notes || {}).sort((a, b) => order(a) - order(b)).forEach(k => {
+    const notes = day.notes[k];
+    if (!notes || typeof notes !== 'object') return;
+    Object.keys(notes).sort().forEach(id => {
+      const n = notes[id];
+      if (!n || typeof n !== 'object') return;
+      const urls = n.photoUrls ? Object.keys(n.photoUrls).sort().map(p => n.photoUrls[p]) : (n.photoUrl ? [n.photoUrl] : []);
+      urls.forEach(u => { if (typeof u === 'string' && /^https:\/\//.test(u) && !photos.includes(u)) photos.push(u); });
+      const t = String(n.text || '').replace(/\s+/g, ' ').trim();
+      if (!quote && t) quote = t.length > 140 ? t.slice(0, 139).replace(/\s+\S*$/, '') + '…' : t;
+    });
+  });
+  return { photos, quote };
+}
+
+function memShiftYears(iso, years) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const day = Math.min(d, new Date(Date.UTC(y - years, m, 0)).getUTCDate());   // Feb 29 → 28
+  return `${y - years}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function memPick(trips, todayISO) {
+  const all = memDays(trips, todayISO);
+  if (!all.length) return { header: null, trip: null, day: null, photos: [], quote: null };
+  const dayMs = 86400000;
+  let header = 'From your trips', pool = [];
+  for (let years = 1; years <= 10 && !pool.length; years++) {
+    const target = Date.parse(memShiftYears(todayISO, years) + 'T00:00:00Z');
+    pool = all.filter(x => Math.abs(Date.parse(x.iso + 'T00:00:00Z') - target) <= MEM_WINDOW_DAYS * dayMs);
+    if (pool.length) header = years === 1 ? 'This time last year' : `This time ${years} years ago`;
+  }
+  if (!pool.length) pool = all;
+  // The same pick all day, a different one tomorrow
+  let h = 0;
+  for (const c of todayISO) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const x = pool.slice().sort((a, b) => a.iso.localeCompare(b.iso) || a.dayId.localeCompare(b.dayId))[h % pool.length];
+  const dt = new Date(x.iso + 'T12:00:00Z');
+  return {
+    header,
+    trip: { id: x.tripId, name: x.trip.name || '', emoji: x.trip.emoji || '' },
+    day: {
+      id: x.dayId,
+      city: String(x.day.city || x.day.description || '').replace(/[🛬🚗✈️🏠]/g, '').trim(),
+      dayNumber: x.dayNumber,
+      dateLabel: `${MEM_WEEKDAYS[dt.getUTCDay()]}, ${MEM_MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}, ${dt.getUTCFullYear()}`,
+    },
+    photos: x.photos.slice(0, MEM_MAX_PHOTOS),
+    quote: x.quote || null,
+  };
 }

@@ -9,5 +9,6 @@ struct HardinTripsWidgets: WidgetBundle {
         UpcomingWidget()
         TodayWidget()
         WineWidget()
+        MemoriesWidget()
     }
 }
