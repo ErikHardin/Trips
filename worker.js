@@ -503,14 +503,25 @@ function wFlightTimes(formatted) {
 // widget that colors the status itself. A flight drops off 30 minutes before
 // it lands.
 async function widgetFlights(env, trip, dateISO) {
-  const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO);
+  // One row per flight: the same flight saved for two travelers shows once
+  const seen = new Set();
+  const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO && !seen.has(l.num) && seen.add(l.num));
   const now = Date.now();
-  const rows = await Promise.all(legs.map(async leg => {
+  const rows = await Promise.all(legs.map(async (leg, i) => {
     const key = (leg.num + '_' + leg.dateISO).replace(/[^A-Za-z0-9_-]/g, '');
     const st = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
-    return wFlightLanded(st, now) ? null : widgetFlightRow(leg, st);
+    if (wFlightLanded(st, now)) return null;
+    const local = (st && (st.depLocal || st.schedLocal)) || wFlightTimes(leg.formatted).departs;
+    return { row: widgetFlightRow(leg, st), utc: (st && (st.depUtc || st.schedUtc)) || null, mins: wActStartMinutes(local), i };
   }));
-  return rows.filter(Boolean);
+  // In departure order, not the order they're saved in the trip (outbound, then
+  // return, then flights on days): by the looked-up departure when every flight
+  // has one (right across time zones), else by local departure time. Ties keep
+  // travel order, so a connection's legs stay in sequence.
+  const live = rows.filter(Boolean);
+  const allUtc = live.every(x => x.utc);
+  live.sort((a, b) => (allUtc ? a.utc - b.utc : (a.mins ?? 9999) - (b.mins ?? 9999)) || a.i - b.i);
+  return live.map(x => x.row);
 }
 
 // Within 30 minutes of its landing time (the last lookup's, with any delay),
@@ -646,7 +657,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-05.1';
+const WORKER_VERSION = '2026-11-08.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
