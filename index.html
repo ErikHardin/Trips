@@ -1026,6 +1026,34 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 }
 .travel-idea-row:last-of-type { border-bottom: none; }
 .travel-idea-text { flex: 1; font-size: 13px; color: var(--ink); }
+.travel-add-dates-btn {
+  width: 120px; text-align: left; cursor: pointer; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.travel-add-dates-btn.empty { color: var(--muted); }
+
+/* ── DATE RANGE PICKER ── */
+.drp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: flex-end; justify-content: center; }
+.drp-sheet { background: var(--warm-white); border-radius: 20px 20px 0 0; width: 100%; max-width: 480px; padding: 20px 16px 32px; box-sizing: border-box; }
+.drp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.drp-month { font-size: 15px; font-weight: 600; color: var(--ink); }
+.drp-nav { width: 36px; height: 36px; border: 1px solid var(--sand); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 18px; cursor: pointer; }
+.drp-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.drp-dow { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); text-align: center; padding: 4px 0; }
+.drp-day { height: 40px; border: none; background: none; font-size: 14px; color: var(--ink); cursor: pointer; font-family: inherit; padding: 0; }
+.drp-day.blank { cursor: default; }
+.drp-day.today { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.drp-day.in-range { background: rgba(192,106,61,0.18); }
+.drp-day.start, .drp-day.end { background: var(--terracotta); color: #fff; }
+.drp-day.start { border-radius: 10px 0 0 10px; }
+.drp-day.end { border-radius: 0 10px 10px 0; }
+.drp-day.start.end { border-radius: 10px; }
+.drp-summary { font-size: 13px; color: var(--muted); text-align: center; margin: 12px 0 14px; min-height: 18px; }
+.drp-summary strong { color: var(--ink); font-weight: 600; }
+.drp-actions { display: flex; gap: 8px; }
+.drp-btn { flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: none; color: var(--ink); font-size: 14px; cursor: pointer; font-family: inherit; }
+.drp-btn.primary { border: none; background: var(--terracotta); color: #fff; font-weight: 500; }
+.drp-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ── COLOR SWATCHES ── */
 .color-swatch {
@@ -2580,7 +2608,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 407 };
+window.BUILD_INFO = { prNumber: 408 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -15870,6 +15898,164 @@ window.renderTravelTracker = function() {
   renderTravelIdeasSection();
 };
 
+// ── Trip date range picker ──
+// Trips store `dates` as display text ("Jun 12 – Jun 19") for back-compat with
+// older free-text entries, plus `startDate`/`endDate` (YYYY-MM-DD) set by the picker.
+const DRP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DRP_MONTHS_LONG = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function drpIso(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function drpFromIso(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+function formatTripDateRange(start, end) {
+  if (!start) return '';
+  const a = drpFromIso(start), b = drpFromIso(end || start);
+  const fa = DRP_MONTHS[a.getMonth()] + ' ' + a.getDate();
+  if (!b || +a === +b) return fa;
+  return fa + ' – ' + DRP_MONTHS[b.getMonth()] + ' ' + b.getDate();
+}
+
+// Best-effort read of an older free-text date ("Jan 5-8", "Jun 12 – Jun 19",
+// "8/6/26", "8/6/26 - 8/9/26") so the picker can open on the existing range.
+function parseLegacyTripDates(text, year) {
+  if (!text) return null;
+  const s = text.trim();
+  const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const y = parseInt(year, 10) || new Date().getFullYear();
+  let a = null, b = null;
+  let m = s.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:\s*[-–—]\s*(?:([A-Za-z]{3})[a-z]*\.?\s+)?(\d{1,2}))?/);
+  if (m && MONTHS[m[1].toLowerCase()] !== undefined) {
+    const ma = MONTHS[m[1].toLowerCase()];
+    a = new Date(y, ma, +m[2]);
+    if (m[4]) {
+      const mb = m[3] && MONTHS[m[3].toLowerCase()] !== undefined ? MONTHS[m[3].toLowerCase()] : ma;
+      b = new Date(mb < ma ? y + 1 : y, mb, +m[4]);
+    }
+  } else if ((m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?:\s*[-–—]\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?)?/))) {
+    const yr = v => v ? (v.length === 2 ? 2000 + +v : +v) : y;
+    a = new Date(yr(m[3]), +m[1] - 1, +m[2]);
+    if (m[4]) b = new Date(m[6] ? yr(m[6]) : a.getFullYear(), +m[4] - 1, +m[5]);
+  }
+  if (!a || isNaN(a)) return null;
+  if (!b || isNaN(b) || b < a) b = a;
+  return { start: drpIso(a), end: drpIso(b) };
+}
+
+// The range already on a trip, from picker fields or parsed from legacy text.
+function tripDateRange(t, year) {
+  if (!t) return null;
+  if (t.startDate) return { start: t.startDate, end: t.endDate || t.startDate };
+  return parseLegacyTripDates(t.dates, year);
+}
+
+// Single-month calendar in a bottom sheet: tap a start day, then an end day.
+// Opens on the existing range if there is one, otherwise on `defaultMonth`
+// (a Date; defaults to today). onDone({start, end}) — or onDone(null) on Clear.
+function openDateRangePicker({ start = null, end = null, defaultMonth = null, onDone }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let s = drpFromIso(start), e = drpFromIso(end || start);
+  const anchor = s || defaultMonth || today;
+  let viewY = anchor.getFullYear(), viewM = anchor.getMonth();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'drp-overlay';
+  overlay.innerHTML = '<div class="drp-sheet" role="dialog" aria-label="Choose trip dates"></div>';
+  const sheet = overlay.firstElementChild;
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = ev => { if (ev.key === 'Escape') close(); };
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
+  function render() {
+    const first = new Date(viewY, viewM, 1);
+    const daysIn = new Date(viewY, viewM + 1, 0).getDate();
+    let cells = ['S','M','T','W','T','F','S'].map(d => `<div class="drp-dow">${d}</div>`).join('');
+    for (let i = 0; i < first.getDay(); i++) cells += '<span class="drp-day blank"></span>';
+    for (let d = 1; d <= daysIn; d++) {
+      const dt = new Date(viewY, viewM, d);
+      const cls = ['drp-day'];
+      if (+dt === +today) cls.push('today');
+      if (s && +dt === +s) cls.push('start');
+      if (e && +dt === +e) cls.push('end');
+      if (s && e && dt > s && dt < e) cls.push('in-range');
+      cells += `<button type="button" class="${cls.join(' ')}" data-iso="${drpIso(dt)}">${d}</button>`;
+    }
+    let summary = 'Tap the first day of the trip';
+    if (s && !e) summary = `<strong>${formatTripDateRange(drpIso(s))}</strong> → tap the last day`;
+    else if (s && e) {
+      const nights = Math.round((e - s) / 86400000);
+      summary = `<strong>${formatTripDateRange(drpIso(s), drpIso(e))}${s.getFullYear() !== today.getFullYear() ? ', ' + s.getFullYear() : ''}</strong>` +
+        (nights ? ` · ${nights} night${nights !== 1 ? 's' : ''}` : '');
+    }
+    sheet.innerHTML = `
+      <div class="drp-head">
+        <button type="button" class="drp-nav" data-nav="-1" aria-label="Previous month">‹</button>
+        <div class="drp-month">${DRP_MONTHS_LONG[viewM]} ${viewY}</div>
+        <button type="button" class="drp-nav" data-nav="1" aria-label="Next month">›</button>
+      </div>
+      <div class="drp-grid">${cells}</div>
+      <div class="drp-summary">${summary}</div>
+      <div class="drp-actions">
+        <button type="button" class="drp-btn" data-act="clear">Clear</button>
+        <button type="button" class="drp-btn" data-act="cancel">Cancel</button>
+        <button type="button" class="drp-btn primary" data-act="done"${s ? '' : ' disabled'}>Done</button>
+      </div>`;
+  }
+
+  sheet.addEventListener('click', ev => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.nav) {
+      viewM += +btn.dataset.nav;
+      if (viewM < 0) { viewM = 11; viewY--; } else if (viewM > 11) { viewM = 0; viewY++; }
+    } else if (btn.dataset.iso) {
+      const dt = drpFromIso(btn.dataset.iso);
+      if (!s || e) { s = dt; e = null; }        // start a new selection
+      else if (dt < s) { s = dt; }              // tapped before start — move start
+      else { e = dt; }                          // complete the range (same day = 1-day trip)
+    } else if (btn.dataset.act === 'cancel') { close(); return; }
+    else if (btn.dataset.act === 'clear') { close(); onDone(null); return; }
+    else if (btn.dataset.act === 'done') {
+      if (!s) return;
+      close(); onDone({ start: drpIso(s), end: drpIso(e || s) }); return;
+    }
+    render();
+  });
+
+  render();
+  document.body.appendChild(overlay);
+}
+
+// Default month for a year block's picker: today in the current year,
+// January for other years (so a 2027 trip doesn't open on a 2026 month).
+function travelPickerDefaultMonth(year) {
+  const y = parseInt(year, 10), now = new Date();
+  return (!y || y === now.getFullYear()) ? now : new Date(y, 0, 1);
+}
+
+// Pending picker selections for the "add trip" rows, keyed by year.
+const travelAddDates = {};
+
+window.pickTravelAddDates = function(year) {
+  const cur = travelAddDates[year];
+  openDateRangePicker({
+    start: cur && cur.start, end: cur && cur.end,
+    defaultMonth: travelPickerDefaultMonth(year),
+    onDone: r => {
+      if (r) travelAddDates[year] = r; else delete travelAddDates[year];
+      const btn = document.getElementById('travelAddDates_' + year);
+      if (btn) {
+        btn.textContent = r ? formatTripDateRange(r.start, r.end) : 'Dates';
+        btn.classList.toggle('empty', !r);
+      }
+    }
+  });
+};
+
 function parseTripDateSort(dates) {
   if (!dates) return {m: 99, d: 99};
   const s = dates.trim();
@@ -16007,11 +16193,13 @@ function renderTravelYears() {
   });
 
   let curHtml = '';
-  curYears.forEach((year, i) => {
+  // Open the current year; if it hasn't been added, the nearest upcoming one.
+  const openYear = curYears.includes(thisYear) ? thisYear : Math.min(...curYears);
+  curYears.forEach(year => {
     const yStr = String(year);
     const trips = (travelTrackerData[yStr] && travelTrackerData[yStr].trips) || {};
     const tripArr = sortTripEntries(Object.entries(trips));
-    curHtml += renderTravelYearBlock(yStr, tripArr, i === 0);
+    curHtml += renderTravelYearBlock(yStr, tripArr, year === openYear);
   });
   curEl.innerHTML = curHtml;
 
@@ -16064,7 +16252,7 @@ function renderTravelYearBlock(year, tripArr, open, showAddForm = true) {
     body += `
       <div class="travel-add-row">
         <input class="travel-add-input" id="travelAddName_${year}" placeholder="Trip name" style="flex:1;">
-        <input class="travel-add-input" id="travelAddDates_${year}" placeholder="Dates" style="width:110px;">
+        <button type="button" class="travel-add-input travel-add-dates-btn${travelAddDates[year] ? '' : ' empty'}" id="travelAddDates_${year}" onclick="pickTravelAddDates('${year}')">${travelAddDates[year] ? formatTripDateRange(travelAddDates[year].start, travelAddDates[year].end) : 'Dates'}</button>
         <button class="travel-add-btn" onclick="addTravelTrip('${year}')">+ Add</button>
       </div>`;
   }
@@ -16092,8 +16280,8 @@ function renderTravelRow(year, id, t) {
   const allFilled = ['flights','hotel','car'].every(f => { const v = t[f]||''; return v === 'booked' || v === 'na'; });
   const cardCls = 'travel-trip-card' + (allFilled ? ' complete' : ' outstanding');
   const datesEl = t.dates
-    ? `<span class="travel-trip-dates-text" onclick="editTravelField('${year}','${id}','dates',this)">${escHtml(t.dates)}</span>`
-    : `<span class="travel-trip-dates-hint" onclick="editTravelField('${year}','${id}','dates',this)">Add dates…</span>`;
+    ? `<span class="travel-trip-dates-text" onclick="editTravelDates('${year}','${id}')">${escHtml(t.dates)}</span>`
+    : `<span class="travel-trip-dates-hint" onclick="editTravelDates('${year}','${id}')">Add dates…</span>`;
   return `
     <div class="${cardCls}" id="travelRow_${year}_${id}">
       <span class="travel-trip-name" onclick="editTravelField('${year}','${id}','name',this)">${escHtml(t.name||'')}</span>
@@ -16213,14 +16401,16 @@ window.cycleTravelStatus = function(year, tripId, field, btn) {
 
 window.addTravelTrip = function(year) {
   const nameEl = document.getElementById('travelAddName_' + year);
-  const datesEl = document.getElementById('travelAddDates_' + year);
   const name = nameEl && nameEl.value.trim();
   if (!name) { showToast('Enter a trip name'); return; }
-  const dates = datesEl ? datesEl.value.trim() : '';
+  const range = travelAddDates[year];
+  const dates = range ? formatTripDateRange(range.start, range.end) : '';
   const existing = travelTrackerData[year] && travelTrackerData[year].trips ? travelTrackerData[year].trips : {};
   const sortOrder = Object.keys(existing).length;
   const newTrip = {name, dates, flights: '', hotel: '', car: '', sortOrder};
+  if (range) { newTrip.startDate = range.start; newTrip.endDate = range.end; }
   window._push(window._ref(window._db, `travelTracker/${year}/trips`), newTrip).then(ref => {
+    delete travelAddDates[year];
     if (!travelTrackerData[year]) travelTrackerData[year] = {trips:{}, ideas:{}};
     if (!travelTrackerData[year].trips) travelTrackerData[year].trips = {};
     travelTrackerData[year].trips[ref.key] = newTrip;
@@ -16288,8 +16478,8 @@ window.scheduleIdea = function(year, ideaId) {
       <input id="scheduleTripName" type="text" value="${escAttr(ideaText)}"
         style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;">
       <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Dates</div>
-      <input id="scheduleDates" type="text" placeholder="e.g. Jun 12 – Jun 19"
-        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;">
+      <button id="scheduleDates" type="button"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:14px;box-sizing:border-box;text-align:left;color:var(--muted);font-family:inherit;cursor:pointer;">Choose dates…</button>
       <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Year</div>
       <input id="scheduleTargetYear" type="number" value="${escAttr(year)}"
         style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--sand);margin-bottom:16px;box-sizing:border-box;">
@@ -16302,10 +16492,24 @@ window.scheduleIdea = function(year, ideaId) {
     </div>`;
   document.body.appendChild(modal);
 
+  let range = null;
+  const datesBtn = modal.querySelector('#scheduleDates');
+  const yearInput = modal.querySelector('#scheduleTargetYear');
+  datesBtn.onclick = () => openDateRangePicker({
+    start: range && range.start, end: range && range.end,
+    defaultMonth: travelPickerDefaultMonth(yearInput.value),
+    onDone: r => {
+      range = r;
+      datesBtn.textContent = r ? formatTripDateRange(r.start, r.end) : 'Choose dates…';
+      datesBtn.style.color = r ? 'var(--ink)' : 'var(--muted)';
+      if (r) yearInput.value = r.start.slice(0, 4); // file the trip under the year it starts in
+    }
+  });
+
   modal.querySelector('#scheduleConfirmBtn').onclick = async function() {
     const name = modal.querySelector('#scheduleTripName').value.trim();
-    const dates = modal.querySelector('#scheduleDates').value.trim();
-    const targetYearVal = modal.querySelector('#scheduleTargetYear').value;
+    const dates = range ? formatTripDateRange(range.start, range.end) : '';
+    const targetYearVal = yearInput.value;
     if (!name) { showToast('Enter a trip name'); return; }
     if (!targetYearVal || isNaN(targetYearVal) || String(targetYearVal).length !== 4) { showToast('Enter a valid 4-digit year'); return; }
     const targetYear = String(parseInt(targetYearVal, 10));
@@ -16316,6 +16520,7 @@ window.scheduleIdea = function(year, ideaId) {
       const existing = (travelTrackerData[targetYear] && travelTrackerData[targetYear].trips) || {};
       const sortOrder = Object.keys(existing).length;
       const newTrip = {name, dates, flights: '', hotel: '', car: '', sortOrder};
+      if (range) { newTrip.startDate = range.start; newTrip.endDate = range.end; }
       const ref = await window._push(window._ref(window._db, `travelTracker/${targetYear}/trips`), newTrip);
       await window._remove(window._ref(window._db, `travelTracker/${year}/ideas/${ideaId}`));
 
@@ -16384,6 +16589,25 @@ function rerenderTravelYear(year) {
   tmp.innerHTML = renderTravelYearBlock(year, tripArr, wasOpen, !isPast);
   block.replaceWith(tmp.firstElementChild);
 }
+
+window.editTravelDates = function(year, tripId) {
+  const t = travelTrackerData[year] && travelTrackerData[year].trips && travelTrackerData[year].trips[tripId];
+  if (!t) return;
+  const cur = tripDateRange(t, year);
+  openDateRangePicker({
+    start: cur && cur.start, end: cur && cur.end,
+    defaultMonth: travelPickerDefaultMonth(year),
+    onDone: r => {
+      const upd = r
+        ? { dates: formatTripDateRange(r.start, r.end), startDate: r.start, endDate: r.end }
+        : { dates: '', startDate: null, endDate: null };
+      Object.entries(upd).forEach(([k, v]) => { if (v === null) delete t[k]; else t[k] = v; });
+      window._update(window._ref(window._db, `travelTracker/${year}/trips/${tripId}`), upd)
+        .catch(() => showToast('Error — check connection'));
+      rerenderTravelYear(year);
+    }
+  });
+};
 
 window.editTravelField = function(year, tripId, field, el) {
   const currentVal = (travelTrackerData[year] && travelTrackerData[year].trips &&
