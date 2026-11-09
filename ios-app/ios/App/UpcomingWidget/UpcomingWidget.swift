@@ -115,6 +115,7 @@ enum Palette {
     static let ink        = Color(hex: 0xEAF0EC)
     static let muted      = Color(hex: 0xB0BCB3)
     static let sand       = Color(hex: 0x414D45)
+    static let gold       = Color(hex: 0xE3C27A)   // a connection's layover line
 }
 
 extension Color {

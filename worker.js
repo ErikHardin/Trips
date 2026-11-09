@@ -294,9 +294,10 @@ async function handleWidgetData(env, request) {
     // Extras for the native Today widget (widget.js ignores them). Each one is
     // best-effort: a failed lookup just leaves its line off the widget.
     const todayPlace = (wTripPlaces(days, todayISO, todayISO)[0] || {}).city;
-    const [weather, flights] = await Promise.all([
+    const [weather, flights, journeys] = await Promise.all([
       wDayWeather(env, todayRow.d, todayISO, todayPlace).catch(() => null),
       widgetFlights(env, chosen, todayISO).catch(() => []),
+      widgetJourneys(env, chosen, todayISO).catch(() => []),
       widgetDrives(env, chosenId, todayRow, todayData.activities, raws).catch(() => {}),
     ]);
     // The look-ahead days at each day's own city, ending with the trip
@@ -313,6 +314,7 @@ async function handleWidgetData(env, request) {
     todayData.weather = weather;
     todayData.hotel = todayRow.d.hotel || null;
     todayData.flights = flights;
+    todayData.journeys = journeys;
   }
   let tomorrowData = null;
   if (tomorrowRow) {
@@ -321,7 +323,10 @@ async function handleWidgetData(env, request) {
     tomorrowData.activities = tomorrowData.activities.slice(0, 8);
     // Tomorrow's flights too, for the large widget's preview (the day's status
     // and gate from the flight-alert cron once it has looked them up)
-    tomorrowData.flights = await widgetFlights(env, chosen, tomorrowISO).catch(() => []);
+    [tomorrowData.flights, tomorrowData.journeys] = await Promise.all([
+      widgetFlights(env, chosen, tomorrowISO).catch(() => []),
+      widgetJourneys(env, chosen, tomorrowISO).catch(() => []),
+    ]);
   }
 
   // Not a trip day: the large widget shows the trip ahead instead
@@ -538,6 +543,118 @@ function wFlightLanded(st, now) {
   return !!dep && now >= dep + 5 * 3600e3;
 }
 
+// A day's flights as journeys, for the native Today widget (older builds and
+// widget.js keep using `flights`): each traveler's flights in travel order,
+// joined when the next leaves from the airport the last one landed at within
+// 24 hours, as Logistics → Bookings joins them. The same journey for two
+// travelers shows once with both names. A journey drops off once its last
+// flight has (wFlightLanded).
+//   { who: "Erik", route: "MAD → DUB → CLE",
+//     summary: "10:40am – 7:15pm · 1 stop · On time", alert: false,
+//     legs: [{ num: "EI593", text: "MAD → DUB · 10:40am – 12:20pm · Gate S",
+//              alert: false, layover: null },
+//            { num: "EI87", text: "DUB → CLE · 3:55pm – 7:15pm", alert: false,
+//              layover: "3h 35m layover in DUB" }],
+//     line, detail }   ← a one-flight journey also carries the usual flight row
+async function widgetJourneys(env, trip, dateISO) {
+  const legs = tripFlightLegs(trip).filter(l => l.dateISO === dateISO);
+  if (!legs.length) return [];
+  const now = Date.now();
+  const states = {};
+  await Promise.all([...new Set(legs.map(l => l.num))].map(async num => {
+    const key = (num + '_' + dateISO).replace(/[^A-Za-z0-9_-]/g, '');
+    states[num] = await fbGet(env, 'pushState/flights/' + key).catch(() => null);
+  }));
+  const info = leg => {
+    const st = states[leg.num];
+    const t = wFlightTimes(leg.formatted);
+    const s = wFlightStatus(st);
+    const looked = st && (st.depLocal || st.schedLocal);
+    const [from, to] = looked && st.from && st.to ? [st.from, st.to] : (t.route || ' → ').split(' → ');
+    const dep = (looked && (st.depLocal || st.schedLocal)) || t.departs;
+    const canceled = s.status === 'Canceled';
+    const arr = canceled ? '' : (looked && st.arrLocal) || (!s.alert ? t.arrives : '');
+    return {
+      leg, st, num: leg.num, from: (from || '').trim(), to: (to || '').trim(), dep, arr,
+      depMin: wActStartMinutes(dep), arrMin: wActStartMinutes(arr),
+      depUtc: (st && (st.depUtc || st.schedUtc)) || null, arrUtc: (st && st.arrUtc) || null,
+      s, landed: wFlightLanded(st, now),
+    };
+  };
+  // Minutes between landing and the next flight leaving the same airport:
+  // looked-up times when both are known, else the itinerary's local times
+  // (the same airport's clock); null when unknown
+  const gap = (a, b) => {
+    if (a.arrUtc && b.depUtc) return Math.round((b.depUtc - a.arrUtc) / 60000);
+    if (a.arrMin == null || b.depMin == null) return null;
+    const g = b.depMin - a.arrMin;
+    return g < 0 ? g + 1440 : g;
+  };
+  const dur = m => (Math.floor(m / 60) ? Math.floor(m / 60) + 'h ' : '') + (m % 60 ? (m % 60) + 'm' : (Math.floor(m / 60) ? '' : '0m')).trim();
+
+  const journeys = [];
+  [...new Set(legs.map(l => l.who))].forEach(who => {
+    // This traveler's flights, each once, in travel order by airport
+    const seen = new Set();
+    const mine = legs.filter(l => l.who === who && !seen.has(l.num) && seen.add(l.num)).map(info);
+    const left = mine.slice(), ordered = [];
+    const byTime = (a, b) => (a.depMin ?? 9999) - (b.depMin ?? 9999);
+    while (left.length) {
+      const last = ordered[ordered.length - 1];
+      let next = last && last.to ? left.filter(f => f.from === last.to).sort(byTime)[0] : null;
+      if (!next) {
+        const tos = new Set(left.map(f => f.to));
+        next = left.filter(f => !tos.has(f.from)).sort(byTime)[0] || left.slice().sort(byTime)[0];
+      }
+      ordered.push(next);
+      left.splice(left.indexOf(next), 1);
+    }
+    let cur = null;
+    ordered.forEach(f => {
+      const prev = cur && cur.legs[cur.legs.length - 1];
+      const g = prev && prev.to && prev.to === f.from ? gap(prev, f) : null;
+      if (prev && g != null && g >= 0 && g <= 24 * 60) { f.layover = g; cur.legs.push(f); }
+      else { cur = { who: who ? [who] : [], legs: [f] }; journeys.push(cur); }
+    });
+  });
+
+  // The same flights for two travelers: one journey, both names
+  const merged = [];
+  journeys.forEach(j => {
+    const key = j.legs.map(l => l.num).join('+');
+    const ex = merged.find(m => m.key === key);
+    if (ex) j.who.forEach(w => { if (!ex.who.includes(w)) ex.who.push(w); });
+    else merged.push(Object.assign(j, { key }));
+  });
+
+  const live = merged.filter(j => !j.legs[j.legs.length - 1].landed);
+  const allUtc = live.every(j => j.legs[0].depUtc);
+  live.sort((a, b) => (allUtc ? a.legs[0].depUtc - b.legs[0].depUtc : (a.legs[0].depMin ?? 9999) - (b.legs[0].depMin ?? 9999)));
+
+  return live.map(j => {
+    const first = j.legs[0], last = j.legs[j.legs.length - 1];
+    const stops = j.legs.length - 1;
+    const bad = j.legs.find(l => l.s.alert);
+    const status = bad ? bad.num + ' ' + bad.s.status.toLowerCase() : (j.legs.every(l => l.s.ok) ? 'On time' : '');
+    const out = {
+      who: j.who.join(' & '),
+      route: [first.from, ...j.legs.map(l => l.to)].join(' → '),
+      summary: [first.dep && last.arr ? first.dep + ' – ' + last.arr : first.dep,
+                stops ? stops + (stops === 1 ? ' stop' : ' stops') : 'nonstop', status].filter(Boolean).join(' · '),
+      alert: !!bad,
+      legs: j.legs.map(l => ({
+        num: l.num,
+        text: [l.from + ' → ' + l.to, l.dep && l.arr ? l.dep + ' – ' + l.arr : l.dep, l.s.alert ? l.s.status : '', l.s.gate]
+          .filter(Boolean).join(' · '),
+        alert: !!l.s.alert,
+        layover: l.layover != null ? dur(l.layover) + ' layover in ' + l.from : null,
+      })),
+    };
+    if (j.legs.length === 1) Object.assign(out, widgetFlightRow(first.leg, first.st));
+    return out;
+  });
+}
+
 function widgetFlightRow(leg, st) {
   const t = wFlightTimes(leg.formatted);
   const s = wFlightStatus(st);
@@ -662,7 +779,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-08.2';
+const WORKER_VERSION = '2026-11-09.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2718,9 +2835,9 @@ function wFlightAirportOrder(lines) {
 
 function tripFlightLegs(trip) {
   const legs = [];
-  const add = (formatted, dateISO, idx) => {
+  const add = (formatted, dateISO, idx, who) => {
     const m = String(formatted || '').trim().match(/^([A-Z0-9]{2}\s?\d{1,4}[A-Z]?)\b/i);
-    if (m && /^\d{4}-\d{2}-\d{2}$/.test(dateISO || '')) legs.push({ num: m[1].replace(/\s+/g, '').toUpperCase(), dateISO, idx, formatted });
+    if (m && /^\d{4}-\d{2}-\d{2}$/.test(dateISO || '')) legs.push({ num: m[1].replace(/\s+/g, '').toUpperCase(), dateISO, idx, formatted, who: who || '' });
   };
   const named = (label, fallback) => {
     if (!label) return fallback;
@@ -2729,14 +2846,20 @@ function tripFlightLegs(trip) {
   };
   const outISO = named(trip.flightOutDate, wTripStartISO(trip));
   const retISO = named(trip.flightReturnDate, wTripEndISO(trip));
-  // Positions in travel order (by airport, however they were entered), so idx > 0
-  // means a later leg of a connection
-  const inOrder = (lines, iso) => wFlightAirportOrder(lines).forEach((f, i) => add(f, iso, i));
-  inOrder(String(trip.flightOut || '').split('\n').filter(Boolean), outISO);
-  inOrder(String(trip.flightReturn || '').split('\n').filter(Boolean), retISO);
+  // Each traveler's legs in travel order (by airport, however they were
+  // entered), so idx > 0 means a later leg of a connection
+  const inOrder = (lines, names, iso) => {
+    const who = i => String((names || [])[i] || '');
+    [...new Set(lines.map((_, i) => who(i)))].forEach(w => {
+      wFlightAirportOrder(lines.filter((_, i) => who(i) === w)).forEach((f, i) => add(f, iso, i, w));
+    });
+  };
+  inOrder(String(trip.flightOut || '').split('\n').filter(Boolean), trip.flightOutNames, outISO);
+  inOrder(String(trip.flightReturn || '').split('\n').filter(Boolean), trip.flightReturnNames, retISO);
   Object.values(trip.days || {}).forEach(d => {
     if (!d || !d.flightInfo) return;
-    (Array.isArray(d.flightInfo) ? d.flightInfo : [d.flightInfo]).forEach((fi, i) => fi && add(fi.formatted, d.dateISO || dayDateISO(d, trip.year), i));
+    (Array.isArray(d.flightInfo) ? d.flightInfo : [d.flightInfo])
+      .forEach((fi, i) => fi && add(fi.formatted, d.dateISO || dayDateISO(d, trip.year), i, fi.travelerName));
   });
   return legs;
 }

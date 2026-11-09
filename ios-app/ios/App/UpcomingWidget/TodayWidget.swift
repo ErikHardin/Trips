@@ -108,6 +108,32 @@ struct TodayFlight: Decodable, Hashable {
     let alert: Bool?
 }
 
+// A day's flights joined into journeys (worker: widgetJourneys): one traveler's
+// connecting flights together, with the layover between them
+//   Erik · MAD → DUB → CLE / 10:40am – 7:15pm · 1 stop · On time
+//     EI593 MAD → DUB · 10:40am – 12:20pm · Gate S
+//     3h 35m layover in DUB
+//     EI87 DUB → CLE · 3:55pm – 7:15pm
+struct JourneyLeg: Decodable, Hashable {
+    let num: String?
+    let text: String?
+    let alert: Bool?
+    let layover: String?
+}
+
+struct TodayJourney: Decodable, Hashable {
+    let who: String?
+    let route: String?
+    let summary: String?
+    let alert: Bool?
+    let legs: [JourneyLeg]?
+    // A one-flight journey also carries the usual flight row
+    let line: String?
+    let detail: String?
+
+    var isConnection: Bool { (legs?.count ?? 0) > 1 }
+}
+
 // The trip ahead, for the large widget between trips (worker: widgetNextTrip)
 struct NextWeatherDay: Decodable, Hashable {
     let label: String?   // "WED 7"
@@ -158,6 +184,7 @@ private struct TodayDay: Decodable {
     let weather: DayWeather?
     let hotel: String?
     let flights: [TodayFlight]?
+    let journeys: [TodayJourney]?   // nil from a Worker without journeys
     let dayId: String?
 
     var label: String? { (description?.isEmpty == false) ? description : city }
@@ -176,6 +203,7 @@ struct TomorrowPreview: Hashable {
     let activities: [TodayActivity]
     var dayId: String? = nil
     var flights: [TodayFlight] = []
+    var journeys: [TodayJourney]? = nil
 }
 
 struct TodayEntry: TimelineEntry {
@@ -186,6 +214,7 @@ struct TodayEntry: TimelineEntry {
     var weather: DayWeather? = nil
     var hotel: String? = nil
     var flights: [TodayFlight] = []
+    var journeys: [TodayJourney]? = nil   // when the Worker sends them, shown instead of flights
     var tomorrow: TomorrowPreview? = nil
     var next: NextTripInfo? = nil
     var dayId: String? = nil
@@ -213,7 +242,7 @@ struct TodayEntry: TimelineEntry {
 
     func at(_ date: Date) -> TodayEntry {
         TodayEntry(date: date, trip: trip, city: city, activities: activities,
-                   weather: weather, hotel: hotel, flights: flights, tomorrow: tomorrow, next: next,
+                   weather: weather, hotel: hotel, flights: flights, journeys: journeys, tomorrow: tomorrow, next: next,
                    dayId: dayId, failed: failed)
     }
 
@@ -332,7 +361,7 @@ struct TodayProvider: TimelineProvider {
             let tomorrow = payload.tomorrow.flatMap { t -> TomorrowPreview? in
                 let acts = t.activities ?? [], flights = t.flights ?? []
                 return acts.isEmpty && flights.isEmpty ? nil
-                    : TomorrowPreview(city: t.label, activities: acts, dayId: t.dayId, flights: flights)
+                    : TomorrowPreview(city: t.label, activities: acts, dayId: t.dayId, flights: flights, journeys: t.journeys)
             }
             completion(TodayEntry(date: Date(),
                                   trip: payload.trip,
@@ -341,6 +370,7 @@ struct TodayProvider: TimelineProvider {
                                   weather: day?.weather,
                                   hotel: day?.hotel,
                                   flights: day?.flights ?? [],
+                                  journeys: day?.journeys,
                                   tomorrow: tomorrow,
                                   next: payload.next,
                                   dayId: day?.dayId,
@@ -422,7 +452,10 @@ struct TodayWidgetView: View {
         let all = entry.activities ?? []
         let remaining = entry.remaining
         let done = all.filter { !remaining.contains($0) }
-        let tomorrowFlights = entry.tomorrow?.flights ?? []
+        // Journeys (connections together) when the Worker sends them, else
+        // one row per flight
+        let todayTrips = flightRows(journeys: entry.journeys, flights: entry.flights)
+        let tomorrowFlights = flightRows(journeys: entry.tomorrow?.journeys, flights: entry.tomorrow?.flights ?? [])
         let tomorrowActs = entry.tomorrow?.activities ?? []
         let tomorrowCap = min(tomorrowActs.count, remaining.isEmpty ? 3 : 4)
         let tomorrowRank = remaining.count + 1
@@ -439,7 +472,7 @@ struct TodayWidgetView: View {
             if let weather = entry.weather { WeatherTable(weather: weather, now: entry.date) }
             SectionLabel(text: header, extra: 0, color: Palette.terracotta)
                 .padding(.top, 2)
-            ForEach(entry.flights, id: \.self) { FlightRow(flight: $0) }
+            ForEach(Array(todayTrips.enumerated()), id: \.offset) { _, j in JourneyRow(journey: j) }
             FitRows(totals: [.today: remaining.count, .tomorrow: tomorrowFlights.count + tomorrowActs.count]) {
                 ForEach(Array(all.enumerated()), id: \.offset) { i, a in
                     if let ahead = remaining.firstIndex(of: a) {
@@ -472,7 +505,7 @@ struct TodayWidgetView: View {
                         .padding(.bottom, 2)
                         .fit(rank: tomorrowRank)
                     ForEach(Array(tomorrowFlights.enumerated()), id: \.offset) { i, flight in
-                        FlightRow(flight: flight)
+                        JourneyRow(journey: flight)
                             .padding(.bottom, 4)
                             .tapOpens(entry.link(day: entry.tomorrow?.dayId))
                             .fit(rank: tomorrowRank + i, group: .tomorrow)
@@ -489,6 +522,14 @@ struct TodayWidgetView: View {
             }
             .clipped()
         }
+    }
+
+    // What to draw for a day's flights: the Worker's journeys, or for an older
+    // Worker each flight as a one-flight journey
+    private func flightRows(journeys: [TodayJourney]?, flights: [TodayFlight]) -> [TodayJourney] {
+        if let journeys = journeys { return journeys }
+        return flights.map { TodayJourney(who: nil, route: nil, summary: nil, alert: $0.alert, legs: nil,
+                                          line: $0.line, detail: $0.detail) }
     }
 
     // A "+N more" line for each N a group could leave out; FitRows shows the
@@ -871,16 +912,26 @@ private struct CityStrip: View {
 // ✈️ "BA286 · SFO → LHR · 5:10pm" / "Delayed 30 min · Gate A12 · T2"
 private struct FlightRow: View {
     let flight: TodayFlight
+    var who: String? = nil
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("✈️").font(.system(size: 13))
             VStack(alignment: .leading, spacing: 1) {
-                Text(flight.line ?? "Flight")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(flight.line ?? "Flight")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if let who = who, !who.isEmpty {
+                        Spacer(minLength: 4)
+                        Text(who)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(Palette.terracotta)
+                            .lineLimit(1)
+                    }
+                }
                 if let detail = flight.detail, !detail.isEmpty {
                     Text(detail)
                         .font(.system(size: 11, weight: .semibold))
@@ -891,6 +942,72 @@ private struct FlightRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.sand))
+    }
+}
+
+// A journey: connecting flights in one card — who, the whole route and times,
+// then each flight with its own times and gate and the layover between them.
+// A one-flight journey is the usual flight row, with the name on the right.
+private struct JourneyRow: View {
+    let journey: TodayJourney
+
+    var body: some View {
+        if journey.isConnection {
+            connection
+        } else {
+            FlightRow(flight: TodayFlight(line: journey.line ?? journey.route, detail: journey.detail ?? journey.summary,
+                                          alert: journey.alert), who: journey.who)
+        }
+    }
+
+    private var connection: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("✈️").font(.system(size: 13))
+                Text(journey.route ?? "")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                if let who = journey.who, !who.isEmpty {
+                    Text(who)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Palette.terracotta)
+                        .lineLimit(1)
+                }
+            }
+            if let summary = journey.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(journey.alert == true ? Palette.terracotta : Palette.muted)
+                    .lineLimit(1)
+                    .padding(.leading, 23)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array((journey.legs ?? []).enumerated()), id: \.offset) { _, leg in
+                    if let layover = leg.layover {
+                        Text(layover)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(Palette.gold)
+                            .lineLimit(1)
+                    }
+                    (Text((leg.num ?? "") + " ").font(.system(size: 11.5, weight: .bold)).foregroundColor(Palette.ink)
+                        + Text(leg.text ?? "").font(.system(size: 11.5)).foregroundColor(leg.alert == true ? Palette.terracotta : Palette.muted))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .padding(.leading, 8)
+            .overlay(alignment: .leading) {
+                Rectangle().fill(Palette.ink.opacity(0.15)).frame(width: 2)
+            }
+            .padding(.leading, 23)
+            .padding(.top, 4)
+        }
+        .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Palette.sand))
     }
