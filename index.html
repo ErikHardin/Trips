@@ -7005,6 +7005,7 @@ window.addWishlistItem = async function(tripId) {
   try {
     const newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
     await window._set(newRef, { emoji, text, notes: notes || null, createdAt: Date.now(), createdBy: adminUser || null });
+    await logChange(tripId, 'Wishlist idea added', text);
     showToast('Added to wishlist ✓');
     renderWishlistPanel(tripId);
   } catch(err) {
@@ -9917,6 +9918,7 @@ async function _moveActivityToWishlist(tripId, emoji, text) {
   try {
     const newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
     await window._set(newRef, { emoji: emoji || '📌', text, notes: null, createdAt: Date.now(), createdBy: adminUser || null });
+    await logChange(tripId, 'Wishlist idea added', text + ' (from itinerary)');
     showToast('Moved to wishlist ✓');
   } catch(err) {
     showToast('Error saving to wishlist — check connection');
