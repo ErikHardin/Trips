@@ -561,6 +561,7 @@ body {
 .cf-row-main { flex: 1; min-width: 0; }
 .cf-times { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .cf-times sup { font-size: 10px; color: var(--terracotta); margin-left: 2px; }
+.cf-times .cf-ap { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
 .cf-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .cf-price { text-align: right; flex-shrink: 0; }
 .cf-price b { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -5495,7 +5496,7 @@ function _cfTopPick(r, rankers, cabin) {
 function _cfRowHTML(leg, f, kind, i, r, cabin, rank) {
   const pr = _cfRowPrice(f, r, cabin);
   const meta = kind === 'n'
-    ? [f.airline ? f.airline + ' ' + f.num : f.num, (r.fromAirports || []).length > 1 ? 'from ' + f.from : '', _cfDur(f.mins)]
+    ? [f.airline ? f.airline + ' ' + f.num : f.num, _cfDur(f.mins)]
     : [f.airline, 'via ' + f.via, _cfDur(f.mins)];
   const id = _cfFlightId(f);
   const chips = (rank.rankers || []).map((p, k) => {
@@ -5514,7 +5515,7 @@ function _cfRowHTML(leg, f, kind, i, r, cabin, rank) {
     ? `<div class="cf-chooser"><span>Your choice:</span>${mine.map((_, n) => `<button type="button" class="${n === myN ? 'on' : ''}" onclick="moveCityFlightRank('${leg.key}','${escAttr(id)}',${n})">${_cfOrd(n)}</button>`).join('')}<button type="button" class="rm" onclick="moveCityFlightRank('${leg.key}','${escAttr(id)}',-1)">Remove</button></div>`
     : '';
   return `<div class="cf-rowwrap">${rankBtn}<button type="button" class="cf-row" onclick="openCityFlightSheet('${leg.key}','${kind}',${i})">
-    <span class="cf-row-main"><span class="cf-times" style="display:block;">${escHtml(_cf12(f.dep))} → ${escHtml(_cf12(f.arr))}${f.plus ? '<sup>+' + f.plus + '</sup>' : ''}</span>
+    <span class="cf-row-main"><span class="cf-times" style="display:block;">${escHtml(_cf12(f.dep))}${f.from ? ` <span class="cf-ap">${escHtml(f.from)}</span>` : ''} → ${escHtml(_cf12(f.arr))}${f.plus ? '<sup>+' + f.plus + '</sup>' : ''}${f.to ? ` <span class="cf-ap">${escHtml(f.to)}</span>` : ''}</span>
     <span class="cf-meta" style="display:block;">${escHtml(meta.filter(Boolean).join(' · '))}</span>${chips ? `<span class="cf-chips">${chips}</span>` : ''}</span>
     ${pr ? `<span class="cf-price"><b class="${pr.dim ? 'dim' : ''}">${escHtml(pr.main)}</b><span>${escHtml(pr.sub)}</span></span>` : ''}
   </button></div>${chooser}`;
