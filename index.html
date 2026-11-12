@@ -2608,7 +2608,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 408 };
+window.BUILD_INFO = { prNumber: 409 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -6997,6 +6997,9 @@ async function renderWishlistPanel(tripId) {
   }
 }
 
+// The Worker's wishlist push (runWishlistDigest) uses this to skip the person who added the idea
+const wishlistAdderEmail = () => ((currentUser && currentUser.email) || '').toLowerCase() || null;
+
 window.addWishlistItem = async function(tripId) {
   const emoji = (document.getElementById('wishlistEmoji').value.trim() || '📌');
   const text = document.getElementById('wishlistText').value.trim();
@@ -7004,7 +7007,7 @@ window.addWishlistItem = async function(tripId) {
   if (!text) { showToast('Enter a place or activity name'); return; }
   try {
     const newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
-    await window._set(newRef, { emoji, text, notes: notes || null, createdAt: Date.now(), createdBy: adminUser || null });
+    await window._set(newRef, { emoji, text, notes: notes || null, createdAt: Date.now(), createdBy: adminUser || null, createdByEmail: wishlistAdderEmail() });
     showToast('Added to wishlist ✓');
     renderWishlistPanel(tripId);
   } catch(err) {
@@ -9916,7 +9919,7 @@ async function _moveActivityToWishlist(tripId, emoji, text) {
   if (!text) return;
   try {
     const newRef = window._push(window._ref(window._db, 'trips/' + tripId + '/wishlist'));
-    await window._set(newRef, { emoji: emoji || '📌', text, notes: null, createdAt: Date.now(), createdBy: adminUser || null });
+    await window._set(newRef, { emoji: emoji || '📌', text, notes: null, createdAt: Date.now(), createdBy: adminUser || null, createdByEmail: wishlistAdderEmail() });
     showToast('Moved to wishlist ✓');
   } catch(err) {
     showToast('Error saving to wishlist — check connection');

@@ -779,7 +779,7 @@ async function handleWidgetUpcoming(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-09.1';
+const WORKER_VERSION = '2026-11-12.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -2508,6 +2508,8 @@ async function runPushCron(env) {
     catch (e) { console.warn('flights ' + tripId + ': ' + e.message); }
     try { await runEditDigest(env, tripId, trip, recipients, access, prefsOf, (state.editCursor || {})[tripId], send, now); }
     catch (e) { console.warn('edits ' + tripId + ': ' + e.message); }
+    try { await runWishlistDigest(env, tripId, trip, recipients, access, prefsOf, (state.wishCursor || {})[tripId], send, now); }
+    catch (e) { console.warn('wishlist ' + tripId + ': ' + e.message); }
   }
 
   if (Object.keys(sentNow).length) await fbWrite(env, 'PATCH', 'pushSent', sentNow).catch(e => console.warn('pushSent: ' + e.message));
@@ -3059,6 +3061,53 @@ async function runEditDigest(env, tripId, trip, recipients, access, prefsOf, cur
       threadId: tripId,
     });
   }
+}
+
+// ── Wishlist digest ──
+// New trips/{id}/wishlist items ({text, emoji, createdAt, createdBy, createdByEmail})
+// are bundled the same way as trip changes: once nobody has added an idea for
+// 10 minutes, everyone else on the trip gets one push. Kept out of changeLog on
+// purpose; it follows the same "Trip changes" setting.
+async function runWishlistDigest(env, tripId, trip, recipients, access, prefsOf, cursor, send, now) {
+  const items = Object.values(trip.wishlist || {}).filter(w => w && w.createdAt && w.text);
+  if (cursor == null) {   // first sight of this trip: start from now, don't replay history
+    await fbWrite(env, 'PUT', 'pushState/wishCursor/' + tripId, now);
+    return;
+  }
+  const fresh = items.filter(w => w.createdAt > cursor).sort((a, b) => a.createdAt - b.createdAt);
+  if (!fresh.length || fresh[fresh.length - 1].createdAt > now - 10 * 60000) return;   // still adding
+  const last = fresh[fresh.length - 1].createdAt;
+  await fbWrite(env, 'PUT', 'pushState/wishCursor/' + tripId, last);
+  const tripName = trip.name || 'a trip';
+  const policies = (await fbGet(env, 'config/rolePolicies').catch(() => null)) || {};
+  for (const k of recipients) {
+    if (!prefsOf(k).tripEdits || !canSeeWishlist(access[k], policies)) continue;
+    const myEmail = k.replace(/,/g, '.');
+    const myName = String((access[k] || {}).name || '').toLowerCase();
+    const others = fresh.filter(w => w.createdByEmail ? String(w.createdByEmail).toLowerCase() !== myEmail
+      : String(w.createdBy || '').toLowerCase() !== myName);
+    if (!others.length) continue;
+    const names = [...new Set(others.map(w => w.createdBy || 'Someone'))];
+    const lines = others.slice(0, 3).map(w => (w.emoji || '📌') + ' ' + w.text);
+    if (others.length > 3) lines.push('+' + (others.length - 3) + ' more');
+    await send('wish_' + tripId + '_' + last + '_' + k, k, {
+      title: '💡 ' + tripName + ': ' + (others.length === 1 ? 'new wishlist idea' : others.length + ' wishlist ideas') + ' from ' + names.join(' & '),
+      body: lines.join('\n'),
+      route: { screen: 'trip', tripId, tab: 'wishlist' },
+      threadId: tripId,
+    });
+  }
+}
+
+// Mirrors can('wishlist') in index.html: admins always; otherwise the person's
+// own policy if it's on their tier, else their tier's built-in one, unless that
+// policy turns the wishlist off.
+function canSeeWishlist(u, policies) {
+  if (!u) return false;
+  if (u.role === 'admin') return true;
+  const own = u.policy && policies[u.policy];
+  const p = own && own.base === u.role ? own : policies[u.role];
+  return !(p && p.perms && p.perms.wishlist === false);
 }
 
 // ── City-to-city flights (Logistics → Getting between cities) ───────────────
