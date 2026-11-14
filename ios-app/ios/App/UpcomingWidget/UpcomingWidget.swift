@@ -21,6 +21,7 @@ struct UpcomingTrip: Decodable, Hashable {
     let status: String?
     let daysUntil: Int?
     var dates: String? = nil   // "Dec 9 – Dec 13", as the trip holds it; the dashboard shows it
+    var id: String? = nil      // the Dashboard opens this trip on a tap
 }
 
 struct OutstandingBooking: Decodable, Hashable {
@@ -248,32 +249,35 @@ private struct TripRow: View {
 // "Jan 5-8"
 struct BookingRow: View {
     let booking: OutstandingBooking
+    // The Dashboard's roomier version: Scriptable's sizes rather than medium's
+    var large = false
 
     var body: some View {
         HStack(spacing: 4) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(booking.name ?? "Trip")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: large ? 11 : 10, weight: .medium))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 if let dates = booking.dates, !dates.isEmpty {
                     Text(dates)
-                        .font(.system(size: 9))
+                        .font(.system(size: large ? 10 : 9))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
             }
+            .layoutPriority(1)
             Spacer(minLength: 2)
             Text((booking.missing ?? []).map { bookingIcons[$0] ?? "•" }.joined())
-                .font(.system(size: 10))
+                .font(.system(size: large ? 11 : 10))
                 .lineLimit(1)
                 .fixedSize()
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.sand))
+        .padding(.vertical, large ? 5 : 4)
+        .padding(.horizontal, large ? 7 : 6)
+        .background(RoundedRectangle(cornerRadius: large ? 8 : 6).fill(Palette.sand))
     }
 }
 

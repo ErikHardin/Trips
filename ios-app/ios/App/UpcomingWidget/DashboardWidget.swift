@@ -479,7 +479,11 @@ struct DashboardWidgetView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .containerBackground(Palette.background, for: .widget)
+        // Painted under the content as well as set as the container background:
+        // the container alone came out lighter than the Scriptable widget's
+        // identical colour, so this one is drawn as an opaque fill of its own
+        .background(Palette.background)
+        .containerBackground(for: .widget) { Palette.background }
         .widgetURL(appURL)
     }
 
@@ -501,7 +505,10 @@ struct DashboardWidgetView: View {
                 if !entry.trips.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         SectionLabel(text: "TRIP COUNTDOWN", extra: 0)
-                        ForEach(Array(entry.trips.prefix(tripLimit)), id: \.self) { DashTripRow(trip: $0) }
+                        ForEach(Array(entry.trips.prefix(tripLimit)), id: \.self) { trip in
+                            tripLink(trip) { DashTripRow(trip: trip) }
+                                .padding(.bottom, 2)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -509,12 +516,24 @@ struct DashboardWidgetView: View {
                     let shown = Array(entry.outstanding.prefix(dashBookCount))
                     VStack(alignment: .leading, spacing: 4) {
                         SectionLabel(text: "TO BOOK", extra: entry.outstanding.count - shown.count)
-                        ForEach(shown, id: \.self) { BookingRow(booking: $0) }
+                        ForEach(shown, id: \.self) { BookingRow(booking: $0, large: true) }
                     }
                     .frame(width: 120, alignment: .leading)
                 }
             }
         }
+    }
+}
+
+// A tap on a trip row opens that trip (hardintrips://open?trip=…, handled by
+// handleWidgetLink in index.html); the rest of the widget just opens the app.
+@ViewBuilder private func tripLink<V: View>(_ trip: UpcomingTrip, @ViewBuilder _ row: () -> V) -> some View {
+    let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+    if let id = trip.id, let encoded = id.addingPercentEncoding(withAllowedCharacters: plain),
+       let url = URL(string: "hardintrips://open?trip=" + encoded) {
+        Link(destination: url) { row().contentShape(Rectangle()) }
+    } else {
+        row()
     }
 }
 
@@ -543,20 +562,24 @@ private struct DashTripRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(width: 50, alignment: .leading)
+            // layoutPriority: a Text that may scale down otherwise gives up its
+            // width to the spacer and shrinks even when it would fit — which is
+            // what made every name read a size smaller than the Scriptable one
             VStack(alignment: .leading, spacing: 0) {
                 Text(trip.name ?? "Trip")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.75)
                 if let dates = trip.dates, !dates.isEmpty {
                     Text(dates)
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
             }
+            .layoutPriority(1)
             Spacer(minLength: 4)
             Text(countdown)
                 .font(.system(size: 13, weight: .bold))
@@ -605,58 +628,56 @@ private struct CityRow: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text(wx.label)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 10.5, weight: .semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.8)
+                        .layoutPriority(1)
                     if !wx.sun.isEmpty {
-                        Spacer(minLength: 2)
                         Text(wx.sun)
-                            .font(.system(size: 8))
+                            .font(.system(size: 8.5))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .fixedSize()
                     }
                 }
                 .foregroundStyle(Palette.muted)
-                HStack(spacing: 5) {
-                    Text(wx.ok ? wx.sky : "—").font(.system(size: 18))
+                HStack(spacing: 6) {
+                    Text(wx.ok ? wx.sky : "—").font(.system(size: 20)).fixedSize()
                     if wx.ok {
                         Text("\(wx.now)°")
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.system(size: 26, weight: .bold))
                             .foregroundStyle(Palette.ink)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
+                            .fixedSize()
                         Text("\(wx.hi)°/\(wx.lo)°")
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .fixedSize()
                     }
                 }
             }
-            .frame(width: 122, alignment: .leading)
+            .frame(width: 128, alignment: .leading)
             Spacer(minLength: 4)
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 ForEach(Array(forecastSlots(wx, forecastDays).enumerated()), id: \.offset) { _, d in
-                    VStack(spacing: 2) {
+                    VStack(spacing: 3) {
                         Text(d?.dow ?? " ")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9.5, weight: .semibold))
                             .foregroundStyle(Palette.muted)
-                        Text(d?.sky ?? "—").font(.system(size: 13))
+                        Text(d?.sky ?? "—").font(.system(size: 14))
                         Text(d.map { "\($0.hi)/\($0.lo)" } ?? " ")
-                            .font(.system(size: 9))
+                            .font(.system(size: 10))
                             .foregroundStyle(Palette.ink)
-                            .minimumScaleFactor(0.7)
                     }
                     .lineLimit(1)
-                    .frame(width: 29)
+                    .fixedSize()
+                    .frame(width: 28)
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
         .padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Palette.sand))
     }
 }
 
@@ -690,6 +711,7 @@ private struct CityLine: View {
                 Text("\(wx.hi)/\(wx.lo)")
                     .font(.system(size: 9))
                     .foregroundStyle(Palette.muted)
+                    .fixedSize()
                     .padding(.leading, 5)
             }
             Spacer(minLength: 4)
@@ -704,7 +726,7 @@ private struct CityLine: View {
                             Text(d.map { "\($0.hi)/\($0.lo)" } ?? " ")
                                 .font(.system(size: 9))
                                 .foregroundStyle(Palette.ink)
-                                .minimumScaleFactor(0.7)
+                                .fixedSize()
                         }
                     }
                     .lineLimit(1)
