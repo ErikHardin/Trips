@@ -3,6 +3,7 @@ import Capacitor
 import WebKit
 import WidgetKit
 import Security
+import CoreLocation
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -34,6 +35,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // "Can't reach trips" (or showing stale flights) can be fixed by hand
     func sceneDidBecomeActive(_ scene: UIScene) {
         WidgetCenter.shared.reloadAllTimelines()
+        DashboardLocation.shared.askIfNeeded()
     }
 }
 
@@ -83,9 +85,29 @@ class ThemedBridgeViewController: CAPBridgeViewController, WKScriptMessageHandle
     }
 }
 
+// The Dashboard widget's "here" weather row reads the app's location
+// permission (NSWidgetWantsLocation in the widget's Info.plist). Asked only once
+// that widget is on the home screen, and only the first time — after that it's
+// the person's call in Settings.
+final class DashboardLocation: NSObject {
+    static let shared = DashboardLocation()
+    private let manager = CLLocationManager()
+
+    func askIfNeeded() {
+        guard manager.authorizationStatus == .notDetermined else { return }
+        WidgetCenter.shared.getCurrentConfigurations { result in
+            guard case .success(let widgets) = result,
+                  widgets.contains(where: { $0.kind == "DashboardWidget" }) else { return }
+            DispatchQueue.main.async { self.manager.requestWhenInUseAuthorization() }
+        }
+    }
+}
+
 // Taps on the Today widget (hardintrips://open?trip=…&day=…) go to the web
 // app's handleWidgetLink. One that launches the app waits for the page to say
 // it's up (its "widgetLink" message), so it isn't lost while the page loads.
+// The Dashboard's parcel band (hardintrips://parcels) opens the Parcel Pending
+// web app in Safari instead, where the barcode is full screen.
 final class WidgetLinks {
     static let shared = WidgetLinks()
     static func handles(_ url: URL) -> Bool { url.scheme == "hardintrips" }
@@ -95,6 +117,10 @@ final class WidgetLinks {
     private var ready = false
 
     func open(_ url: URL) {
+        if url.host == "parcels" {
+            UIApplication.shared.open(URL(string: "https://erikhardin.github.io/parcelpending/")!)
+            return
+        }
         pending = url
         if ready { deliver() }
     }
