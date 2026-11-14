@@ -21,6 +21,7 @@ struct UpcomingTrip: Decodable, Hashable {
     let status: String?
     let daysUntil: Int?
     var dates: String? = nil   // "Dec 9 – Dec 13", as the trip holds it; the dashboard shows it
+    var id: String? = nil      // the Dashboard opens this trip on a tap
 }
 
 struct OutstandingBooking: Decodable, Hashable {

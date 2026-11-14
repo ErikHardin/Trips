@@ -479,7 +479,11 @@ struct DashboardWidgetView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .containerBackground(Palette.background, for: .widget)
+        // Painted under the content as well as set as the container background:
+        // the container alone came out lighter than the Scriptable widget's
+        // identical colour, so this one is drawn as an opaque fill of its own
+        .background(Palette.background)
+        .containerBackground(for: .widget) { Palette.background }
         .widgetURL(appURL)
     }
 
@@ -501,8 +505,10 @@ struct DashboardWidgetView: View {
                 if !entry.trips.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         SectionLabel(text: "TRIP COUNTDOWN", extra: 0)
-                        ForEach(Array(entry.trips.prefix(tripLimit)), id: \.self) { DashTripRow(trip: $0) }
-                            .padding(.bottom, 2)
+                        ForEach(Array(entry.trips.prefix(tripLimit)), id: \.self) { trip in
+                            tripLink(trip) { DashTripRow(trip: trip) }
+                                .padding(.bottom, 2)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -516,6 +522,18 @@ struct DashboardWidgetView: View {
                 }
             }
         }
+    }
+}
+
+// A tap on a trip row opens that trip (hardintrips://open?trip=…, handled by
+// handleWidgetLink in index.html); the rest of the widget just opens the app.
+@ViewBuilder private func tripLink<V: View>(_ trip: UpcomingTrip, @ViewBuilder _ row: () -> V) -> some View {
+    let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+    if let id = trip.id, let encoded = id.addingPercentEncoding(withAllowedCharacters: plain),
+       let url = URL(string: "hardintrips://open?trip=" + encoded) {
+        Link(destination: url) { row().contentShape(Rectangle()) }
+    } else {
+        row()
     }
 }
 

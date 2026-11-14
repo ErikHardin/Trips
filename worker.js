@@ -710,16 +710,17 @@ async function handleWidgetUpcoming(env, request) {
 
   // Shared trips still ahead of (or currently under way) — soonest first
   const isShared = wSharedTripTest(access);
-  const upcoming = Object.values(trips || {})
-    .filter(t => isShared(t) && (t.status === 'upcoming' || t.status === 'active'))
-    .map(t => ({ t, startISO: wTripStartISO(t), endISO: wTripEndISO(t) }))
+  const upcoming = Object.entries(trips || {})
+    .filter(([, t]) => t && isShared(t) && (t.status === 'upcoming' || t.status === 'active'))
+    .map(([id, t]) => ({ id, t, startISO: wTripStartISO(t), endISO: wTripEndISO(t) }))
     .filter(x => x.startISO)
     // A trip whose last day has passed is over whatever its status still says.
     // Statuses are set by hand and go stale once a trip ends.
     .filter(x => x.endISO >= todayISO)
     .sort((a, b) => a.startISO.localeCompare(b.startISO))
     .slice(0, limit)
-    .map(({ t, startISO, endISO }) => ({
+    .map(({ id, t, startISO, endISO }) => ({
+      id,           // the Dashboard widget opens the trip on a tap
       name:         t.name || 'Untitled trip',
       emoji:        t.emoji || '✈️',
       status:       t.status,
