@@ -20,6 +20,7 @@ struct UpcomingTrip: Decodable, Hashable {
     let emoji: String?
     let status: String?
     let daysUntil: Int?
+    var dates: String? = nil   // "Dec 9 – Dec 13", as the trip holds it; the dashboard shows it
 }
 
 struct OutstandingBooking: Decodable, Hashable {
@@ -245,7 +246,7 @@ private struct TripRow: View {
 
 // "Aspen        ✈️🏨"
 // "Jan 5-8"
-private struct BookingRow: View {
+struct BookingRow: View {
     let booking: OutstandingBooking
 
     var body: some View {

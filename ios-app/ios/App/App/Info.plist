@@ -45,6 +45,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos and videos to add to your trips.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>The Dashboard widget shows the weather where you are when you're away from home, and the app can use your location to set a place.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record sound with videos you add to your trips.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

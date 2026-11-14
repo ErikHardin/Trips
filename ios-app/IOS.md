@@ -228,6 +228,20 @@ the home screen → **+** → Hardin Trips.
   gives the code the group's full name. Taps are kept on the phone and sent
   as absolute counts, so they survive no signal and a retry can't double up.
 
+- **Dashboard** (`DashboardWidget.swift`, large): the native version of
+  `widget-dashboard.js` — trip countdowns with dates and the bookings still to
+  make, a weather row each for Denver and Cleveland (now, today's high/low,
+  sunrise/sunset and the next five days, from Open-Meteo), and the Parcel
+  Pending band: how many packages are waiting, the newest one's code and
+  barcode, and a ✓ that marks it picked up without opening anything (it
+  PATCHes the parcel's `done` in the parcel app's Firebase, like the Scriptable
+  menu). Tapping the band opens the parcel web app in Safari for the
+  full-screen barcode; anywhere else opens Trips. When the phone is more than
+  25 miles from both cities, a third, tighter row shows the weather where you
+  are. That needs the app's location permission: the app asks once the
+  Dashboard is on the home screen (allow **While Using the App or Widgets**);
+  without it the strip just shows the two cities.
+
 A new widget file must be added to the **UpcomingWidget** target (Xcode does
 this when you create it there; the project file isn't folder-synced).
 
