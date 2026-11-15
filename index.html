@@ -7775,7 +7775,7 @@ window.createTrip = async function() {
 
   const newRef = window._push(window._ref(window._db, 'trips'));
   const tripId = newRef.key;
-  const tripData = { name, year, dates, emoji, status, startDateISO: startVal, ownerId: currentUser.email };
+  const tripData = { name, year, dates, emoji, status, startDateISO: startVal, endDateISO: endVal, ownerId: currentUser.email };
   // Users can't see/toggle the World Map checkbox themselves (admin-only), so their
   // trips shouldn't silently default to shown on the family's shared map.
   if (userRole === 'user') tripData.includeInWorldMap = false;
@@ -9198,6 +9198,9 @@ window.saveEditedTrip = async function() {
     const fmtShort = iso => isoToDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     updates.dates = `${fmtShort(startVal)} – ${fmtShort(endVal)}`;
     updates.year = isoToDate(startVal).getFullYear();
+    // Saved so the picker reopens on it: the itinerary's last day is often a
+    // day short of the trip's end (no day card for the flight home)
+    updates.endDateISO = endVal;
   }
   const newStart = startVal || null;
   let moveDays = null;
@@ -9628,11 +9631,11 @@ function _sdGetISO(day, tripYear) { return dayISO(day, tripYear); }
 
 // The trip's start and end as 'YYYY-MM-DD' for the edit form's pickers:
 // startDateISO, else the itinerary's first day, else the Dates text; the end
-// from the itinerary's last day, else the Dates text. '' when unknown.
+// from endDateISO, else the itinerary's last day, else the Dates text. '' when unknown.
 function tripDateRange(trip) {
   const isos = Object.values(trip.days || {}).map(d => dayISO(d, trip.year)).filter(Boolean).sort();
   const start = trip.startDateISO || isos[0] || parseTripStartISO(trip.dates, trip.year) || '';
-  let end = isos.length ? isos[isos.length - 1] : parseTripEndISO(trip.dates, trip.year, start) || '';
+  let end = trip.endDateISO || (isos.length ? isos[isos.length - 1] : parseTripEndISO(trip.dates, trip.year, start)) || '';
   if (end && start && end < start) end = start;
   return { start: end ? start : '', end: start ? end : '' };
 }
