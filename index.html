@@ -444,8 +444,9 @@ body {
 .day-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .day-title-row .day-name-text { flex: 1; min-width: 0; }
 .day-title-row .day-chips-row { flex-wrap: nowrap; flex-shrink: 0; }
-.day-info .day-name-text, .day-info .day-city-text, .day-move-from { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.day-move-from { font-size: 11.5px; color: var(--gold); }
+.day-info .day-name-text, .day-info .day-city-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.day-info .day-name-text { font-size: 13.5px; }
+.day-move-arrow { color: var(--gold); }
 .day-card.open { border-color: color-mix(in srgb, var(--terracotta) 45%, var(--border)); }
 .day-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .day-actions:empty { display: none; }
@@ -2649,7 +2650,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 417 };
+window.BUILD_INFO = { prNumber: 418 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5913,9 +5914,10 @@ window.openCityFlightSheet = function(key, kind, i) {
 };
 
 // Day card header: one line for the title and one for the hotel, never wrapped.
-// A moving day is titled with the city you sleep in; "✈️ from …" sits under it.
+// A moving day is titled with the city you leave, with "→ city you sleep in"
+// on a second line of its own.
 function _cardTitle(day, move) {
-  return day.description || (move ? move.to : day.city) || day.dayName || '';
+  return day.description || (move ? move.from : day.city) || day.dayName || '';
 }
 // The hotel without a trailing city the title already names:
 // "Hyatt Centric Victoria Harbour Hong Kong" → "Hyatt Centric Victoria Harbour"
@@ -6097,7 +6099,7 @@ function renderTripItinerary(trip) {
           <div class="day-vdivider"></div>
           <div class="day-info">
             <div class="day-title-row"><div class="day-name-text">${escHtml(_cardTitle(day, move))}</div><div class="day-chips-row"></div></div>
-            ${move ? `<div class="day-move-from">✈️ from ${escHtml(move.from)}</div>` : ''}
+            ${move ? `<div class="day-name-text day-move-to"><span class="day-move-arrow">→</span> ${escHtml(move.to)}</div>` : ''}
             ${day.hotel ? `<div class="day-city-text">${move ? 'Tonight: ' : ''}${escHtml(_cardHotel(day))}</div>` : ''}
           </div>
         </div>
