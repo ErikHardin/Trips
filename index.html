@@ -2638,7 +2638,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 415 };
+window.BUILD_INFO = { prNumber: 416 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -9014,7 +9014,7 @@ window.openEditTrip = function(tripId, origin = 'screen-admin') {
   const trip = allTrips[tripId];
   document.getElementById('editTripHeaderName').textContent = trip.name || 'Trip';
   document.getElementById('editTripName').value = trip.name || '';
-  const range = tripDateRange(trip);
+  const range = editTripDateRange(trip);
   document.getElementById('editTripStart').value = range.start;
   document.getElementById('editTripEnd').value = range.end;
   document.getElementById('editTripEnd').min = range.start || '';
@@ -9632,7 +9632,10 @@ function _sdGetISO(day, tripYear) { return dayISO(day, tripYear); }
 // The trip's start and end as 'YYYY-MM-DD' for the edit form's pickers:
 // startDateISO, else the itinerary's first day, else the Dates text; the end
 // from endDateISO, else the itinerary's last day, else the Dates text. '' when unknown.
-function tripDateRange(trip) {
+// Named apart from the Travel tracker's tripDateRange(t, year): with one name,
+// that later declaration replaced this one, and the pickers opened on the
+// Dates text read in the current year.
+function editTripDateRange(trip) {
   const isos = Object.values(trip.days || {}).map(d => dayISO(d, trip.year)).filter(Boolean).sort();
   const start = trip.startDateISO || isos[0] || parseTripStartISO(trip.dates, trip.year) || '';
   let end = trip.endDateISO || (isos.length ? isos[isos.length - 1] : parseTripEndISO(trip.dates, trip.year, start)) || '';
