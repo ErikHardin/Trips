@@ -407,6 +407,20 @@ body {
 .transit-meta { font-size: 11px; color: var(--muted); margin-top: 1px; line-height: 1.3; }
 .transit-conf { font-size: 10.5px; font-weight: 600; color: var(--gold); background: var(--warm-white); border: 1px solid var(--gold-border); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; align-self: flex-start; }
 
+/* Moving day: activities split at the flight */
+.move-leg { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin: 10px 2px 6px; }
+.move-leg:first-child, .daily-memories-row + .move-leg { margin-top: 4px; }
+.move-leg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.move-leg-when { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.move-flight { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 7px 10px; border-radius: 10px; background: var(--gold-light); border: 1px dashed var(--gold-border); }
+.move-flight-plane { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--warm-white); border: 1px solid var(--gold-border); font-size: 12px; flex-shrink: 0; }
+.move-flight-t { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.move-flight-m { font-size: 11px; color: var(--muted); }
+.move-empty { font-size: 12px; color: var(--muted); padding: 2px 4px 4px; }
+
+/* Edit sheet: fixed flight row on a moving day */
+.act-flight-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; background: var(--gold-light); border: 1px dashed var(--gold-border); }
+
 /* Day cards */
 .day-card {
   margin: 0 16px 10px;
@@ -4449,7 +4463,9 @@ window.openActivityDetail = function(dayId, idx) {
   const showBell = currentUser && !isShareView && a.time && (trip.status === 'active' || trip.status === 'upcoming');
   const muted = showBell && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
   const pin = a.coords && typeof a.coords.lat === 'number' ? a.coords : null;
-  const region = (day.region || '').trim();
+  // Ahead of a moving day's flight, the activity is in the previous day's city
+  const placeDay = _actPlaceDay(trip, dayId, idx) || day;
+  const region = (placeDay.region || '').trim();
   const meta = [_detailDateLabel(trip, day), a.time, status && status.emoji + ' ' + status.label, a.drive && '🚗 Driving']
     .filter(Boolean).join(' · ');
   const m = _bottomSheet(`
@@ -4471,7 +4487,7 @@ window.openActivityDetail = function(dayId, idx) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
-    if (act === 'search') window.open(activitySearchUrl(text, day), '_blank');
+    if (act === 'search') window.open(activitySearchUrl(text, placeDay), '_blank');
     else if (act === 'maps') { m.remove(); openMapsChoice(text + (region ? ', ' + region : ''), dayId, noteKey, idx); }
     else if (act === 'notes') { m.remove(); openNotes(dayId, noteKey, text); }
     else if (act === 'wine') { m.remove(); openWineSheet(dayId, idx); }
@@ -5356,6 +5372,87 @@ function _cfPlace(day) {
 }
 const _cfNorm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
+// ── Moving days ──────────────────────────────────────────────────────────────
+// A day whose city differs from the day before starts in that city and ends in
+// its own. Nothing extra is stored: the departure city comes from the previous
+// day, and when a flight is on the day its departure time splits the day's
+// activities. Timed activities fall on the side of the flight their time is on;
+// an untimed one follows the nearest timed activity above it (before the
+// flight when there is none).
+const _moveSortCache = new WeakMap();
+function _moveSortedIds(trip) {
+  let ids = _moveSortCache.get(trip);
+  if (!ids) {
+    ids = Object.entries(trip.days || {}).sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0)).map(([id]) => id);
+    _moveSortCache.set(trip, ids);
+  }
+  return ids;
+}
+
+function _moveFlight(day) {
+  const raw = day && day.flightInfo;
+  const infos = _sortFlightObjs((Array.isArray(raw) ? raw : [raw]).filter(fi => fi && fi.formatted));
+  const parse = fi => fi.formatted.match(/^(\S+)\s+([A-Z0-9]{3,4})\s*(?:→|->)\s*([A-Z0-9]{3,4})(?:\s*·\s*(.+?)\s*[–-]\s*(.+))?\s*$/);
+  const first = infos.map(parse).find(Boolean);
+  if (!first) return null;
+  const depMin = parseActivityStartMinutes(first[4] || '');
+  if (depMin == null) return null;
+  const last = parse(infos[infos.length - 1]) || first;
+  return { num: first[1], from: first[2], to: last[3], dep: first[4], arr: last[5] || '', depMin };
+}
+
+// null for an ordinary day. Otherwise { from, to, prevId, prevDay, flight, stayInOld }:
+// stayInOld when the flight leaves at noon or later, so most of the day is
+// spent in the old city and the day is listed under its region.
+function _moveInfo(trip, dayId) {
+  const day = trip && trip.days && trip.days[dayId];
+  if (!day) return null;
+  const ids = _moveSortedIds(trip);
+  const i = ids.indexOf(dayId);
+  const prevId = i > 0 ? ids[i - 1] : null;
+  const prevDay = prevId ? trip.days[prevId] : null;
+  // A city typed as "Lyon → Rome" names both ends itself
+  const typed = String(day.city || '').replace(/[🛬🚗✈️🏠]/g, '').split(/\s*(?:→|->|➝)\s*/).filter(Boolean);
+  const from = typed.length > 1 ? typed[0] : (prevDay ? _cfPlace(prevDay) : '');
+  const to = _cfPlace(day);
+  if (!from || !to || _cfNorm(from) === _cfNorm(to)) return null;
+  const flight = _moveFlight(day);
+  return { from, to, prevId, prevDay, flight, typed: typed.length > 1, stayInOld: !!(flight && prevDay && flight.depMin >= 12 * 60) };
+}
+
+// 'from' or 'to' for each activity; null when the day can't be split
+function _moveSides(move, acts) {
+  if (!move || !move.flight) return null;
+  let side = 'from';
+  return acts.map(a => {
+    const t = parseActivityStartMinutes(a && typeof a === 'object' ? a.time : '');
+    if (t != null) side = t < move.flight.depMin ? 'from' : 'to';
+    return side;
+  });
+}
+
+const _dayActs = day => day && day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
+
+// The day's title: its description, else "Hong Kong → Ho Chi Minh City" on a
+// moving day, else its city
+function _dayTitle(trip, dayId, day) {
+  if (day.description) return day.description;
+  const move = _moveInfo(trip, dayId);
+  if (move && !move.typed) return move.from + ' → ' + move.to;
+  return day.city || '';
+}
+
+// Which day's city/region an activity happened in: the day before for
+// activities ahead of a moving day's flight
+function _actPlaceDay(trip, dayId, idx) {
+  const day = trip && trip.days && trip.days[dayId];
+  const move = day && _moveInfo(trip, dayId);
+  const sides = _moveSides(move, _dayActs(day));
+  if (!sides || sides[Number(idx)] !== 'from') return day;
+  // Typed "A → B" days have no reliable previous day for the old city
+  return move.typed ? { ...day, city: move.from, region: '', hotel: '' } : move.prevDay;
+}
+
 function _cityLegs(trip) {
   const legs = [];
   let prev = null;
@@ -5804,6 +5901,24 @@ window.openCityFlightSheet = function(key, kind, i) {
   });
 };
 
+// A moving day's activities in two groups, old city then new, with the flight
+// between them; the hotel goes with the new city
+function _moveSplitHTML(move, day, items, sides, stayHTML) {
+  const color = d => escAttr((d && d.regionColor) || '#c06a3d');
+  const group = side => items.filter((_, i) => sides[i] === side).join('');
+  const label = (city, d, when) =>
+    `<div class="move-leg"><span class="move-leg-dot" style="background:${color(d)}"></span>${escHtml(city)}<span class="move-leg-when">${when}</span></div>`;
+  const f = move.flight;
+  const before = group('from'), after = group('to');
+  return `
+    ${label(move.from, move.typed ? day : move.prevDay, 'before the flight')}
+    ${before ? `<div class="activity-list">${before}</div>` : '<div class="move-empty">Nothing planned</div>'}
+    <div class="move-flight"><div class="move-flight-plane">✈️</div><div style="min-width:0;"><div class="move-flight-t">${escHtml(f.dep)} ${escHtml(f.from)} → ${f.arr ? escHtml(f.arr) + ' ' : ''}${escHtml(f.to)}</div><div class="move-flight-m">${escHtml(f.num)}</div></div></div>
+    ${label(move.to, day, 'after landing')}
+    ${stayHTML}
+    ${after ? `<div class="activity-list">${after}</div>` : (stayHTML ? '' : '<div class="move-empty">Nothing planned</div>')}`;
+}
+
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
@@ -5859,22 +5974,28 @@ function renderTripItinerary(trip) {
 
   let currentRegion = null;
   days.forEach(([dayId, day]) => {
-    if (day.region && day.region !== currentRegion) {
-      currentRegion = day.region;
-      const _rd = _regionDatesMap[day.region];
+    // A moving day with an afternoon flight is mostly spent in the old city:
+    // list it under that region, with the flight card after it
+    const move = _moveInfo(trip, dayId);
+    const hdrDay = move && move.stayInOld && move.prevDay.region ? move.prevDay : day;
+    if (hdrDay.region && hdrDay.region !== currentRegion) {
+      currentRegion = hdrDay.region;
+      const _rd = _regionDatesMap[hdrDay.region];
       const _rdStr = _rd ? _sdFormatRegionDates(_rd.first, _rd.last) : '';
       panel.innerHTML += `
-        <div class="region-header" data-tzkey="${regionSlug(day.region)}">
-          <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
-          <div class="region-name-text">${escHtml(day.region)}</div>
+        <div class="region-header" data-tzkey="${regionSlug(hdrDay.region)}">
+          <div class="region-dot" style="background:${hdrDay.regionColor||'#c06a3d'}"></div>
+          <div class="region-name-text">${escHtml(hdrDay.region)}</div>
           <div class="region-nights">${_rdStr}</div>
         </div>`;
     }
 
-    if (day.flightInfo) panel.innerHTML += _transitCardHTML(trip, day);
+    const transitAfter = !!(move && move.stayInOld);
+    if (day.flightInfo && !transitAfter) panel.innerHTML += _transitCardHTML(trip, day);
 
     const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
-    const activitiesHTML = acts.map((a,i) => {
+    const sides = _moveSides(move, acts);
+    const activityItems = acts.map((a,i) => {
       const noteKey = (typeof a === 'object' && a != null && a.key != null && a.key !== '') ? a.key : i;
       const text = typeof a==='object' ? (a.text||'') : a;
       const emoji = typeof a==='object' && a.emoji ? a.emoji : getEmoji(text);
@@ -5885,7 +6006,7 @@ function renderTripItinerary(trip) {
       const bookingInfo = BOOKING_STATUSES.find(s => s.key === bookingStatus);
       const actNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.[noteKey] || {}).length;
       const regionClean = (day.region||'').trim();
-      const searchUrl = activitySearchUrl(text, day);
+      const searchUrl = activitySearchUrl(text, sides && sides[i] === 'from' ? _actPlaceDay(trip, dayId, i) : day);
       const kind = _bookingKind(a);
       const muted = currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming')
         && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
@@ -5910,7 +6031,8 @@ function renderTripItinerary(trip) {
           </div>
           ${kind ? '' : '<button class="act-search-btn" title="Search Google">🔎</button>'}
         </div>`;
-    }).join('');
+    });
+    const activitiesHTML = activityItems.join('');
 
     const cardId = 'dc-'+dayId;
     const _canEdit = canEditCurrentTrip();
@@ -5931,6 +6053,12 @@ function renderTripItinerary(trip) {
     ) : '';
     // Derive day of week from the date if available, else fall back to stored dayName
     const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName ? day.dayName.slice(0,3) : '');
+    const stayHTML = (() => {
+      const st = day.hotel ? _stayFor(trip, dayId, _stays) : null;
+      if (!st) return '';
+      const conf = !isShareView && st.details.confirmation;
+      return `<div class="stay-card" onclick="openStaySheet('${dayId}')"><span style="font-size:18px;">🏨</span><div style="flex:1;min-width:0;"><div class="stay-card-name">${escHtml(st.name)}</div><div class="stay-card-sub">${escHtml(_staySubLabel(st))}</div></div>${conf ? `<span class="conf-pill">#${escHtml(conf)}</span>` : ''}</div>`;
+    })();
     panel.innerHTML += `
       <div class="day-card" id="${cardId}">
         <div class="day-header" onclick="toggleDay('${cardId}')">
@@ -5941,8 +6069,8 @@ function renderTripItinerary(trip) {
           </div>
           <div class="day-vdivider"></div>
           <div class="day-info">
-            <div class="day-name-text">${(day.description||day.city)||day.dayName||''}</div>
-            <div class="day-city-text">${day.hotel||''}</div>
+            <div class="day-name-text">${escHtml(_dayTitle(trip, dayId, day)||day.dayName||'')}</div>
+            <div class="day-city-text">${move && day.hotel ? 'Tonight: ' : ''}${day.hotel||''}</div>
           </div>
           <div class="day-right-col">
             ${day.city ? `<div class="day-city-label">${day.city}</div>` : ''}
@@ -5952,17 +6080,13 @@ function renderTripItinerary(trip) {
           <div class="day-chevron">›</div>
         </div>
         <div class="day-body">
-          ${(() => {
-            const st = day.hotel ? _stayFor(trip, dayId, _stays) : null;
-            if (!st) return '';
-            const conf = !isShareView && st.details.confirmation;
-            return `<div class="stay-card" onclick="openStaySheet('${dayId}')"><span style="font-size:18px;">🏨</span><div style="flex:1;min-width:0;"><div class="stay-card-name">${escHtml(st.name)}</div><div class="stay-card-sub">${escHtml(_staySubLabel(st))}</div></div>${conf ? `<span class="conf-pill">#${escHtml(conf)}</span>` : ''}</div>`;
-          })()}
-          ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (day.description||day.city ? ' — ' + (day.description||day.city) : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
-          <div class="activity-list">${activitiesHTML}</div>
+          ${sides ? '' : stayHTML}
+          ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const _t = _dayTitle(trip, dayId, day); const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (_t ? ' — ' + _t : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
+          ${sides ? _moveSplitHTML(move, day, activityItems, sides, stayHTML) : `<div class="activity-list">${activitiesHTML}</div>`}
           ${spendBadge}
         </div>
       </div>`;
+    if (day.flightInfo && transitAfter) panel.innerHTML += _transitCardHTML(trip, day);
 
   });
 
@@ -6233,7 +6357,7 @@ async function ensureDaySummaries(tripId) {
   const tenseById = {};
   const dayLines = missing.map(([id, day]) => {
     const acts = Object.values(day.activities || {}).map(a => a.text).filter(Boolean).join(', ');
-    const loc = day.description || day.city || '';
+    const loc = _dayTitle(trip, id, day);
     const iso = dayISO(day, trip.year);
     const isPast = !!iso && iso < _today;
     tenseById[id] = isPast ? 'past' : 'upcoming';
@@ -6388,7 +6512,9 @@ async function renderTripOverview(trip) {
       });
 
       const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName||'').slice(0,3);
-      const memCity = day.city || '';
+      const memMove = _moveInfo(trip, dayId);
+      const memSides = _moveSides(memMove, _dayActs(day));
+      const memCity = memMove && !memMove.typed ? memMove.from + ' → ' + memMove.to : (day.city || '');
       const memDesc = day.description || '';
       const memTitle = memCity || memDesc;
       const memSub = (memCity && memDesc && memDesc !== memCity) ? memDesc : '';
@@ -6418,7 +6544,7 @@ async function renderTripOverview(trip) {
                   : `<img src="${url}" class="mem-photo" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
               </div>` : '';
             var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
-            var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
+            var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (memSides && memSides[note.actIndex] ? '<span style="font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted);"> · ' + escHtml(memSides[note.actIndex] === 'from' ? memMove.from : memMove.to) + '</span>' : '') + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
             var noteTextHTML = note.text ? '<div style="padding:8px 14px 12px;font-size:15px;color:var(--ink);line-height:1.6;">' + escHtml(note.text) + '</div>' : '';
             return '<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
           }).join('')}
@@ -6502,7 +6628,7 @@ async function renderTripOverview(trip) {
               <div class="region-nights">${_srdStr}</div>
             </div>`;
           }
-          const loc = day.description || day.city || '';
+          const loc = _dayTitle(trip, dayId, day);
           const city = day.city && day.city !== loc ? day.city : '';
           const dayIso = dayISO(day, trip.year);
           // A day only switches to the AI recap once it's actually behind us, and only if
@@ -6513,14 +6639,14 @@ async function renderTripOverview(trip) {
           const shareActs = day.activities
             ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
             : [];
-          const actsHTML = shareActs.map(a => {
+          const actsHTML = shareActs.map((a, ai) => {
             const text = typeof a === 'object' && a !== null ? (a.text || '') : String(a || '');
             if (!text) return '';
             const emoji = (typeof a === 'object' && a !== null && a.emoji) ? a.emoji : getEmoji(text);
             const time = (typeof a === 'object' && a !== null && a.time) ? a.time : '';
             return `<div class="ov-act-item">
               <span class="ov-act-emoji">${emoji}</span>
-              <a class="ov-act-text act-search-link" href="${escAttr(activitySearchUrl(text, day))}" target="_blank" rel="noopener">${escHtml(text)}</a>
+              <a class="ov-act-text act-search-link" href="${escAttr(activitySearchUrl(text, _actPlaceDay(trip, dayId, ai) || day))}" target="_blank" rel="noopener">${escHtml(text)}</a>
               ${time ? `<span class="ov-act-time">${escHtml(time)}</span>` : ''}
             </div>`;
           }).filter(Boolean).join('');
@@ -6663,7 +6789,9 @@ function renderShareHighlights(trip) {
     });
 
     const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName||'').slice(0,3);
-    const memCity = day.city || '';
+    const memMove = _moveInfo(trip, dayId);
+      const memSides = _moveSides(memMove, _dayActs(day));
+      const memCity = memMove && !memMove.typed ? memMove.from + ' → ' + memMove.to : (day.city || '');
     const memDesc = day.description || '';
     const memTitle = memCity || memDesc;
     const memSub = (memCity && memDesc && memDesc !== memCity) ? memDesc : '';
@@ -6691,7 +6819,7 @@ function renderShareHighlights(trip) {
               ${photos.map((url,i)=>`<img src="${url}" class="mem-photo" onclick="openPhotoViewer('${url}','${JSON.stringify(photos).replace(/"/g,'&quot;')}',${i})">`).join('')}
             </div>` : '';
           var isRecommended = note.actKey && note.actKey !== '__daily__' && day.recommended && day.recommended[note.actKey];
-          var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
+          var actLabelHTML = note.actLabel ? '<div style="padding:10px 14px 4px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--terracotta);">' + escHtml(note.actLabel) + (memSides && memSides[note.actIndex] ? '<span style="font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted);"> · ' + escHtml(memSides[note.actIndex] === 'from' ? memMove.from : memMove.to) + '</span>' : '') + (isRecommended ? '<span class="recommended-badge">⭐ Recommended</span>' : '') + '</div>' : '';
           var noteTextHTML = note.text ? '<div style="padding:8px 14px 12px;font-size:15px;color:var(--ink);line-height:1.6;">' + escHtml(note.text) + '</div>' : '';
           return '<div style="margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">' + actLabelHTML + photosHTML + noteTextHTML + '</div>';
         }).join('')}
@@ -6720,7 +6848,7 @@ function _locActivity(dayId, actIdx) {
   if (!act) return null;
   const c = typeof act === 'object' && act.coords;
   return {
-    day, path: `trips/${currentTripId}/days/${dayId}/activities/${k}/coords`,
+    day: _actPlaceDay(allTrips[currentTripId], dayId, actIdx) || day, path: `trips/${currentTripId}/days/${dayId}/activities/${k}/coords`,
     text: typeof act === 'object' ? (act.text || '') : String(act),
     coords: (c && typeof c.lat === 'number' && typeof c.lng === 'number') ? c : null,
   };
@@ -8020,7 +8148,7 @@ window.generateTripPDF = async function(tripId) {
       </div>`;
     }
 
-    const loc = day.description || day.city || '';
+    const loc = _dayTitle(trip, dayId, day);
     const city = day.city && day.city !== loc ? day.city : '';
     const summary = daySummaries[dayId] || '';
     const dowFull = weekdayFromISO(dayISO(day, trip.year), 'short') || (day.dayName||'').slice(0,3);
@@ -10085,7 +10213,7 @@ window.openQuickActivityEditor = function(dayId) {
   const trip = allTrips[currentTripId];
   const day  = trip.days[dayId];
 
-  const label = (day.description || day.city || day.dayName || '')
+  const label = (_dayTitle(trip, dayId, day) || day.dayName || '')
     + (day.dateNum ? ' · ' + day.dateNum + ' ' + (day.dateMonth || '') : '');
   document.getElementById('quickActivityModalTitle').textContent = label || 'Edit Activities';
   document.getElementById('quickDayDescription').value = day.description || '';
@@ -10102,18 +10230,42 @@ window.openQuickActivityEditor = function(dayId) {
   const acts = day.activities
     ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities))
     : [];
+  // On a moving day with a flight, a fixed flight row shows where the day splits
+  _quickMove = _moveInfo(trip, dayId);
+  if (_quickMove && !_quickMove.flight) _quickMove = null;
   if (acts.length) {
     acts.forEach(a => addQuickActivityRow(typeof a === 'object' ? a : { text: String(a) }));
   } else {
     addQuickActivityRow();
   }
+  _quickPlaceFlightRow();
   document.getElementById('quickActivityModal').classList.add('open');
   _quickActBaseline = _quickActSnapshot();
 };
 
+let _quickMove = null;
+// Puts the flight row just above the first activity that falls after the
+// flight, by the same rule the itinerary splits the day with
+function _quickPlaceFlightRow() {
+  const container = document.getElementById('quickActivityRows');
+  let el = container.querySelector('.act-flight-row');
+  if (!_quickMove) { if (el) el.remove(); return; }
+  if (!el) {
+    const f = _quickMove.flight;
+    el = document.createElement('div');
+    el.className = 'act-flight-row';
+    el.innerHTML = `<span class="move-flight-plane">✈️</span><div style="min-width:0;"><div class="move-flight-t">${escHtml(f.dep)} ${escHtml(f.num)} ${escHtml(f.from)} → ${escHtml(f.to)}</div>`
+      + `<div class="move-flight-m">Above: ${escHtml(_quickMove.from)} · Below: ${escHtml(_quickMove.to)} · Times decide the side</div></div>`;
+  }
+  const rows = [...container.querySelectorAll('.act-row')];
+  const sides = _moveSides(_quickMove, rows.map(r => ({ time: r.querySelector('.act-time-input').value })));
+  const firstTo = rows.find((_, i) => sides[i] === 'to');
+  container.insertBefore(el, firstTo || null);
+}
+
 window.addQuickActivityRow = function(act) {
   const container = document.getElementById('quickActivityRows');
-  const idx       = container.children.length;
+  const idx       = container.querySelectorAll('.act-row').length;
   const emoji     = act?.emoji         ?? '📍';
   const text      = act?.text          ?? '';
   const time      = act?.time          ?? '';
@@ -10171,8 +10323,10 @@ window.addQuickActivityRow = function(act) {
   }
   timeInput.addEventListener('blur',  validateQuickTime);
   timeInput.addEventListener('input', validateQuickTime);
+  timeInput.addEventListener('input', _quickPlaceFlightRow);
 
   container.appendChild(row);
+  _quickPlaceFlightRow();
 };
 
 function reindexQuickRows() {
@@ -10191,11 +10345,12 @@ window.moveQuickActivityRow = function(btn, dir) {
     container.insertBefore(row.nextElementSibling, row);
   }
   reindexQuickRows();
+  _quickPlaceFlightRow();
   btn.blur();
 };
 
 window.removeQuickActivityRow = async function(btn) {
-  if (await _confirmRemoveActivityRow(btn.closest('.act-row'), quickEditingTripId)) reindexQuickRows();
+  if (await _confirmRemoveActivityRow(btn.closest('.act-row'), quickEditingTripId)) { reindexQuickRows(); _quickPlaceFlightRow(); }
 };
 
 window.openQuickEmojiPicker = function(idx) {
