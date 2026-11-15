@@ -10934,17 +10934,42 @@ window.closeTranslationModal = function(e) {
   });
 })();
 
-window.speakPhrase = function(text, bcp47) {
+// The device's voices; the list can arrive a moment after the first ask
+function _speechVoices() {
+  const now = speechSynthesis.getVoices();
+  if (now.length) return Promise.resolve(now);
+  return new Promise(resolve => {
+    const done = () => resolve(speechSynthesis.getVoices());
+    speechSynthesis.addEventListener('voiceschanged', done, { once: true });
+    setTimeout(done, 400);
+  });
+}
+
+// Speaks a phrase in its language. A phone with no voice for it (iPhones have
+// no Khmer voice) reads the pronunciation guide in English instead and says so.
+window.speakPhrase = function(text, bcp47, phonetic, langName) {
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
+  const lang = String(bcp47 || '').split('-')[0].toLowerCase();
   // iOS Safari silently drops speak() if called immediately after cancel()
-  setTimeout(() => {
+  setTimeout(async () => {
+    const voices = await _speechVoices();
+    const match = voices.find(v => v.lang.toLowerCase().replace('_', '-').startsWith(lang));
     const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = bcp47;
     utt.rate = 0.7;
-    const voices = speechSynthesis.getVoices();
-    const match = voices.find(v => v.lang.startsWith(bcp47.split('-')[0]));
-    if (match) utt.voice = match;
+    // An empty list means the browser won't say what it has, so just try
+    if (match || !voices.length) {
+      utt.lang = bcp47;
+      if (match) utt.voice = match;
+    } else {
+      const name = langName || 'this language';
+      if (!phonetic) { showToast('No ' + name + ' voice on this phone'); return; }
+      showToast('No ' + name + ' voice on this phone. Reading the pronunciation guide.');
+      utt.text = phonetic;
+      utt.lang = 'en-US';
+      const en = voices.find(v => /^en[-_]US/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang));
+      if (en) utt.voice = en;
+    }
     speechSynthesis.speak(utt);
   }, 100);
 };
@@ -11023,7 +11048,7 @@ function renderTranslationPhrases(container, data, bcp47, expandActivities) {
         <div class="translation-phonetic">${phoneticSafe}</div>
         <div class="translation-english">${englishSafe}</div>
       </div>
-      <button class="translation-speak-btn" data-native="${nativeSafe}" title="Hear pronunciation">🔊</button>
+      <button class="translation-speak-btn" data-native="${nativeSafe}" data-phonetic="${phoneticSafe}" title="Hear pronunciation">🔊</button>
     </div>`;
   }).join('');
 
@@ -11052,7 +11077,8 @@ function renderTranslationPhrases(container, data, bcp47, expandActivities) {
   container._txBcp47 = bcp47;
   // Attach speak listeners after innerHTML so apostrophes/quotes never break onclick
   container.querySelectorAll('.translation-speak-btn').forEach(btn => {
-    btn.addEventListener('click', () => speakPhrase(btn.dataset.native, bcp47));
+    btn.addEventListener('click', () => speakPhrase(btn.dataset.native, bcp47, btn.dataset.phonetic,
+      (Object.values(TRANSLATION_LANG_MAP).find(l => l.bcp47 === bcp47) || {}).name));
   });
 }
 
