@@ -391,6 +391,21 @@ body {
    in width as the digits change each minute. */
 .region-clock { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--gold); background: var(--gold-light); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .region-clock .rc-off { color: var(--muted); font-size: 10px; }
+/* Between-city flight: its own card under the region header, outside the day it lands on */
+.transit-card { margin: 0 16px 10px; background: var(--gold-light); border: 1px solid var(--gold-border); border-radius: 14px; padding: 7px 12px; position: relative; }
+.transit-card::after { content: ""; position: absolute; left: 25px; bottom: -11px; height: 10px; border-left: 2px dotted var(--gold-border); }
+.transit-eyebrow { font-size: 9.5px; font-weight: 600; letter-spacing: 1.8px; text-transform: uppercase; color: var(--gold); }
+.transit-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 0; margin: 0; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.transit-row + .transit-row { margin-top: 6px; }
+.transit-plane { width: 28px; height: 28px; border-radius: 50%; background: var(--warm-white); border: 1px solid var(--gold-border); display: grid; place-items: center; flex-shrink: 0; font-size: 13px; }
+.transit-row + .transit-row .transit-plane { visibility: hidden; }
+.transit-body { flex: 1; min-width: 0; }
+.transit-route { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-top: 1px; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.transit-t { font-size: 14px; font-weight: 500; }
+.transit-ap { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .5px; }
+.transit-arrow { color: var(--gold); }
+.transit-meta { font-size: 11px; color: var(--muted); margin-top: 1px; line-height: 1.3; }
+.transit-conf { font-size: 10.5px; font-weight: 600; color: var(--gold); background: var(--warm-white); border: 1px solid var(--gold-border); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; align-self: flex-start; }
 
 /* Day cards */
 .day-card {
@@ -2609,7 +2624,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 412 };
+window.BUILD_INFO = { prNumber: 413 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5856,6 +5871,8 @@ function renderTripItinerary(trip) {
         </div>`;
     }
 
+    if (day.flightInfo) panel.innerHTML += _transitCardHTML(trip, day);
+
     const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
     const activitiesHTML = acts.map((a,i) => {
       const noteKey = (typeof a === 'object' && a != null && a.key != null && a.key !== '') ? a.key : i;
@@ -5941,7 +5958,6 @@ function renderTripItinerary(trip) {
             const conf = !isShareView && st.details.confirmation;
             return `<div class="stay-card" onclick="openStaySheet('${dayId}')"><span style="font-size:18px;">🏨</span><div style="flex:1;min-width:0;"><div class="stay-card-name">${escHtml(st.name)}</div><div class="stay-card-sub">${escHtml(_staySubLabel(st))}</div></div>${conf ? `<span class="conf-pill">#${escHtml(conf)}</span>` : ''}</div>`;
           })()}
-          ${day.flightInfo ? `<div class="flight-banner" style="margin:8px 0 6px;"><div class="flight-icon" style="font-size:16px;">✈️</div><div><div class="flight-label">Flight${Array.isArray(day.flightInfo) && day.flightInfo.length > 1 ? 's' : ''}</div>${(Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).map(fi=>`<div class="flight-row"><span class="flight-code">${fi.formatted.split(' ')[0]}</span> ${fi.formatted.split(' ').slice(1).join(' ')}</div>`).join('')}</div></div>` : ''}
           ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (day.description||day.city ? ' — ' + (day.description||day.city) : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
           <div class="activity-list">${activitiesHTML}</div>
           ${spendBadge}
@@ -10986,6 +11002,38 @@ function _buildFlightRows(flightStr, names, offsets) {
   return groups.map(g =>
     `<div class="flight-traveler-group">${g.name ? `<div class="flight-traveler-group-name">${g.name}</div>` : ''}${g.flights.map(x => fRow(x.f, x.i)).join('')}</div>`
   ).join('');
+}
+
+// A flight between cities, shown under the region header ahead of the day it
+// lands on. Each row opens the flight sheet. Lines are "AF1404 LYS → FCO · 7:10am – 8:45am".
+function _transitCardHTML(trip, day) {
+  const infos = _sortFlightObjs((Array.isArray(day.flightInfo) ? day.flightInfo : [day.flightInfo]).filter(fi => fi && fi.formatted));
+  if (!infos.length) return '';
+  const byLine = new Map();
+  infos.forEach(fi => {
+    const g = byLine.get(fi.formatted) || { fi, names: [] };
+    if (fi.travelerName && !g.names.includes(fi.travelerName)) g.names.push(fi.travelerName);
+    byLine.set(fi.formatted, g);
+  });
+  const iso = dayISO(day, trip.year);
+  const place = _cfPlace(day);
+  const eyebrow = [place ? 'Fly to ' + place : 'Flight', iso ? _cfDate(iso) : (infos[0].date || '')].filter(Boolean).join(' · ');
+  const rows = [...byLine.values()].map(({ fi, names }, k) => {
+    const line = fi.formatted;
+    const m = line.match(/^(\S+)\s+([A-Z0-9]{3,4})\s*(?:→|->)\s*([A-Z0-9]{3,4})(?:\s*·\s*(.+?)\s*[–-]\s*(.+))?\s*$/);
+    const conf = !isShareView && _flightConf(trip, line);
+    const route = m
+      ? (m[4] ? `<span class="transit-t">${escHtml(m[4])}</span>` : '') + `<span class="transit-ap">${escHtml(m[2])}</span><span class="transit-arrow">→</span>` +
+        (m[5] ? `<span class="transit-t">${escHtml(m[5])}</span>${_dayOffsetBadge(line, fi.dayOffset)}` : '') + `<span class="transit-ap">${escHtml(m[3])}</span>`
+      : `<span class="transit-t">${escHtml(line)}</span>`;
+    const meta = [m ? m[1] : '', names.join(', ')].filter(Boolean).join(' · ');
+    return `<button type="button" class="transit-row" data-line="${escAttr(line)}" onclick="openFlightSheet(this.dataset.line)">
+      <span class="transit-plane" aria-hidden="true">✈️</span>
+      <span class="transit-body">${k ? '' : `<span class="transit-eyebrow" style="display:block;">${escHtml(eyebrow)}</span>`}<span class="transit-route">${route}</span>${meta ? `<span class="transit-meta" style="display:block;">${escHtml(meta)}</span>` : ''}</span>
+      ${conf ? `<span class="transit-conf">#${escHtml(conf)}</span>` : ''}
+    </button>`;
+  }).join('');
+  return `<div class="transit-card">${rows}</div>`;
 }
 
 function _buildFlightRowsFromInfos(flightInfos) {
