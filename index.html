@@ -441,6 +441,17 @@ body {
 .day-month { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); text-align: center; }
 .day-vdivider { width: 1px; height: 32px; background: var(--border); flex-shrink: 0; }
 .day-info { flex: 1; min-width: 0; }
+.day-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.day-title-row .day-name-text { flex: 1; min-width: 0; }
+.day-title-row .day-chips-row { flex-wrap: nowrap; flex-shrink: 0; }
+.day-info .day-name-text, .day-info .day-city-text, .day-move-from { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.day-move-from { font-size: 11.5px; color: var(--gold); }
+.day-card.open { border-color: color-mix(in srgb, var(--terracotta) 45%, var(--border)); }
+.day-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.day-actions:empty { display: none; }
+.day-action-btn { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--cream); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+.day-action-btn.edit { color: var(--terracotta); }
+.day-action-btn.translation-chip { color: var(--sage); background: var(--sage-light); border-color: transparent; font-size: 12px; padding: 4px 11px; }
 .day-name-text { font-size: 14px; font-weight: 500; }
 .day-city-text { font-size: 12px; color: var(--muted); }
 .day-chevron { font-size: 18px; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
@@ -2638,7 +2649,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 416 };
+window.BUILD_INFO = { prNumber: 417 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5901,6 +5912,22 @@ window.openCityFlightSheet = function(key, kind, i) {
   });
 };
 
+// Day card header: one line for the title and one for the hotel, never wrapped.
+// A moving day is titled with the city you sleep in; "✈️ from …" sits under it.
+function _cardTitle(day, move) {
+  return day.description || (move ? move.to : day.city) || day.dayName || '';
+}
+// The hotel without a trailing city the title already names:
+// "Hyatt Centric Victoria Harbour Hong Kong" → "Hyatt Centric Victoria Harbour"
+function _cardHotel(day) {
+  const hotel = String(day.hotel || '').trim();
+  const city = _cfPlace(day);
+  if (city && hotel.length > city.length + 1 && hotel.toLowerCase().endsWith(' ' + city.toLowerCase())) {
+    return hotel.slice(0, -city.length - 1).replace(/[\s,·–-]+$/, '');
+  }
+  return hotel;
+}
+
 // A moving day's activities in two groups, old city then new, with the flight
 // between them; the hotel goes with the new city
 function _moveSplitHTML(move, day, items, sides, stayHTML) {
@@ -6069,17 +6096,13 @@ function renderTripItinerary(trip) {
           </div>
           <div class="day-vdivider"></div>
           <div class="day-info">
-            <div class="day-name-text">${escHtml(_dayTitle(trip, dayId, day)||day.dayName||'')}</div>
-            <div class="day-city-text">${move && day.hotel ? 'Tonight: ' : ''}${day.hotel||''}</div>
+            <div class="day-title-row"><div class="day-name-text">${escHtml(_cardTitle(day, move))}</div><div class="day-chips-row"></div></div>
+            ${move ? `<div class="day-move-from">✈️ from ${escHtml(move.from)}</div>` : ''}
+            ${day.hotel ? `<div class="day-city-text">${move ? 'Tonight: ' : ''}${escHtml(_cardHotel(day))}</div>` : ''}
           </div>
-          <div class="day-right-col">
-            ${day.city ? `<div class="day-city-label">${day.city}</div>` : ''}
-            <div class="day-chips-row"></div>
-          </div>
-          ${_canEdit && can('editItinerary') ? `<button class="quick-act-pencil-btn" onclick="event.stopPropagation();openQuickActivityEditor('${dayId}')" title="Edit activities">✏️</button>` : ''}
-          <div class="day-chevron">›</div>
         </div>
         <div class="day-body">
+          <div class="day-actions">${_canEdit && can('editItinerary') ? `<button class="day-action-btn edit" onclick="openQuickActivityEditor('${dayId}')">✏️ Edit day</button>` : ''}</div>
           ${sides ? '' : stayHTML}
           ${(() => { const dailyNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.['__daily__'] || {}).length; const _t = _dayTitle(trip, dayId, day); const dailyLabel = escAttr((day.dateNum||'') + ' ' + (day.dateMonth||'') + (_t ? ' — ' + _t : '')); return `<div class="daily-memories-row" onclick="openNotes('${dayId}','__daily__','${dailyLabel}')"><div class="activity-emoji">📝</div><div style="flex:1;min-width:0;"><div class="daily-memories-label">Day Memories</div>${dailyNoteCount > 0 ? `<div class="activity-notes-count">${dailyNoteCount} entr${dailyNoteCount===1?'y':'ies'}</div>` : ''}</div><span class="daily-memories-chevron">›</span></div>`; })()}
           ${sides ? _moveSplitHTML(move, day, activityItems, sides, stayHTML) : `<div class="activity-list">${activitiesHTML}</div>`}
@@ -14072,26 +14095,20 @@ function injectTranslationChip(cardId, city, countryCode, activityTexts) {
   if (TRANSLATION_SKIP.has(countryCode) || !TRANSLATION_LANG_MAP[countryCode]) return;
   const card = document.getElementById(cardId);
   if (!card) return;
-  const header = card.querySelector('.day-header');
-  if (!header) return;
-  const old = header.querySelector('.translation-chip');
+  // Lives in the opened card's action row, beside Edit day
+  const actions = card.querySelector('.day-actions');
+  if (!actions) return;
+  const old = actions.querySelector('.translation-chip');
   if (old) old.remove();
-  const chip = document.createElement('div');
-  chip.className = 'translation-chip';
-  chip.title = 'Local phrases';
-  chip.textContent = '🗣';
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'day-action-btn translation-chip';
+  chip.textContent = '🗣 ' + TRANSLATION_LANG_MAP[countryCode].name + ' phrases';
   chip.addEventListener('click', function(e) {
     e.stopPropagation();
     openTranslationModal(city, countryCode, activityTexts);
   });
-  const chipsRow = header.querySelector('.day-chips-row');
-  if (chipsRow) {
-    chipsRow.appendChild(chip);
-  } else {
-    const rightCol = header.querySelector('.day-right-col');
-    if (rightCol) rightCol.appendChild(chip);
-    else { const chevron = header.querySelector('.day-chevron'); header.insertBefore(chip, chevron); }
-  }
+  actions.appendChild(chip);
 }
 
 function injectWeatherChip(cardId, wx, coords, city) {
@@ -14418,9 +14435,9 @@ function injectOverviewTranslationChip(dayId, city, countryCode, activityTexts) 
 function injectDriveChip(cardId, seconds, legDetails, notFound) {
   const card = document.getElementById(cardId);
   if (!card) return;
-  const header = card.querySelector('.day-header');
-  if (!header) return;
-  const old = header.querySelector('.drive-chip');
+  const actions = card.querySelector('.day-actions');
+  if (!actions) return;
+  const old = actions.querySelector('.drive-chip');
   if (old) old.remove();
   const fmtSecs = s => { const lh=Math.floor(s/3600),lm=Math.round((s%3600)/60); return lh>0?lh+'h '+lm+'m':lm+'m'; };
   const h = Math.floor(seconds / 3600);
@@ -14430,8 +14447,7 @@ function injectDriveChip(cardId, seconds, legDetails, notFound) {
   const chip = document.createElement('div');
   chip.className = 'drive-chip';
   chip.textContent = '🚗 ' + label;
-  const rightCol = header.querySelector('.day-right-col');
-  if (rightCol) rightCol.appendChild(chip);
+  actions.appendChild(chip);
   // Leg breakdown in body, before activity list
   const hasLegs = legDetails && legDetails.length > 0;
   const hasMissing = notFound && notFound.length > 0;
@@ -14446,7 +14462,7 @@ function injectDriveChip(cardId, seconds, legDetails, notFound) {
       if (hasLegs) html += legDetails.map(l => '<div class="drive-leg-row">🚗 ' + escHtml(l.from || '') + ' → ' + escHtml(l.to || '') + ': ' + fmtSecs(l.seconds) + '</div>').join('');
       if (hasMissing) html += notFound.map(n => '<div class="drive-leg-row drive-leg-unknown">⚠️ ' + escHtml(n) + ' — location not found</div>').join('');
       legsDiv.innerHTML = html;
-      body.insertBefore(legsDiv, body.firstChild);
+      body.insertBefore(legsDiv, actions.nextSibling);
     }
   }
 }
