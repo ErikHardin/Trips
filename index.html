@@ -14113,7 +14113,8 @@ function injectTranslationChip(cardId, city, countryCode, activityTexts) {
   chip.type = 'button';
   chip.className = 'day-action-btn translation-chip';
   chip.dataset.cc = countryCode;
-  chip.textContent = '🗣 ' + TRANSLATION_LANG_MAP[countryCode].name + ' phrases';
+  chip.textContent = '🗣 ' + TRANSLATION_LANG_MAP[countryCode].name;
+  chip.title = TRANSLATION_LANG_MAP[countryCode].name + ' phrases';
   chip.addEventListener('click', function(e) {
     e.stopPropagation();
     openTranslationModal(city, countryCode, activityTexts);
