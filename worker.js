@@ -931,14 +931,14 @@ function wTripStartISO(t) {
 
 // Last day of the trip: the latest day on the itinerary, else the start date
 function wTripEndISO(t) {
-  if (t.days) {
-    const dates = Object.values(t.days)
-      .map(d => d.dateISO || dayDateISO(d, t.year))
-      .filter(Boolean)
-      .sort();
-    if (dates.length) return dates[dates.length - 1];
-  }
-  return wTripStartISO(t);
+  const dates = Object.values(t.days || {})
+    .map(d => d.dateISO || dayDateISO(d, t.year))
+    .filter(Boolean)
+    .sort();
+  // The edit form's end date, when it runs past the itinerary's last day
+  const last = dates.length ? dates[dates.length - 1] : '';
+  if (t.endDateISO && t.endDateISO > last) return t.endDateISO;
+  return last || wTripStartISO(t);
 }
 
 // Widgets are anonymous, so they show only the shared family trips. A trip
