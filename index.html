@@ -2650,7 +2650,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 419 };
+window.BUILD_INFO = { prNumber: 420 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5413,9 +5413,8 @@ function _moveFlight(day) {
   return { num: first[1], from: first[2], to: last[3], dep: first[4], arr: last[5] || '', depMin };
 }
 
-// null for an ordinary day. Otherwise { from, to, prevId, prevDay, flight, stayInOld }:
-// stayInOld when the flight leaves at noon or later, so most of the day is
-// spent in the old city and the day is listed under its region.
+// null for an ordinary day. Otherwise { from, to, prevId, prevDay, flight, typed }.
+// The day stays in its own region (where you sleep); the flight card leads into it.
 function _moveInfo(trip, dayId) {
   const day = trip && trip.days && trip.days[dayId];
   if (!day) return null;
@@ -5429,7 +5428,7 @@ function _moveInfo(trip, dayId) {
   const to = _cfPlace(day);
   if (!from || !to || _cfNorm(from) === _cfNorm(to)) return null;
   const flight = _moveFlight(day);
-  return { from, to, prevId, prevDay, flight, typed: typed.length > 1, stayInOld: !!(flight && prevDay && flight.depMin >= 12 * 60) };
+  return { from, to, prevId, prevDay, flight, typed: typed.length > 1 };
 }
 
 // 'from' or 'to' for each activity; null when the day can't be split
@@ -6003,24 +6002,20 @@ function renderTripItinerary(trip) {
 
   let currentRegion = null;
   days.forEach(([dayId, day]) => {
-    // A moving day with an afternoon flight is mostly spent in the old city:
-    // list it under that region, with the flight card after it
     const move = _moveInfo(trip, dayId);
-    const hdrDay = move && move.stayInOld && move.prevDay.region ? move.prevDay : day;
-    if (hdrDay.region && hdrDay.region !== currentRegion) {
-      currentRegion = hdrDay.region;
-      const _rd = _regionDatesMap[hdrDay.region];
+    if (day.region && day.region !== currentRegion) {
+      currentRegion = day.region;
+      const _rd = _regionDatesMap[day.region];
       const _rdStr = _rd ? _sdFormatRegionDates(_rd.first, _rd.last) : '';
       panel.innerHTML += `
-        <div class="region-header" data-tzkey="${regionSlug(hdrDay.region)}">
-          <div class="region-dot" style="background:${hdrDay.regionColor||'#c06a3d'}"></div>
-          <div class="region-name-text">${escHtml(hdrDay.region)}</div>
+        <div class="region-header" data-tzkey="${regionSlug(day.region)}">
+          <div class="region-dot" style="background:${day.regionColor||'#c06a3d'}"></div>
+          <div class="region-name-text">${escHtml(day.region)}</div>
           <div class="region-nights">${_rdStr}</div>
         </div>`;
     }
 
-    const transitAfter = !!(move && move.stayInOld);
-    if (day.flightInfo && !transitAfter) panel.innerHTML += _transitCardHTML(trip, day);
+    if (day.flightInfo) panel.innerHTML += _transitCardHTML(trip, day);
 
     const acts = day.activities ? (Array.isArray(day.activities) ? day.activities : Object.values(day.activities)) : [];
     const sides = _moveSides(move, acts);
@@ -6111,7 +6106,6 @@ function renderTripItinerary(trip) {
           ${spendBadge}
         </div>
       </div>`;
-    if (day.flightInfo && transitAfter) panel.innerHTML += _transitCardHTML(trip, day);
 
   });
 
