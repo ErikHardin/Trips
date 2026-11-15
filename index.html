@@ -2650,7 +2650,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 418 };
+window.BUILD_INFO = { prNumber: 419 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -6123,14 +6123,25 @@ function renderTripItinerary(trip) {
     days.forEach(([dayId, day]) => {
       const _iso = _dayISO(day);
       if (trip.status === 'active' && _iso && _iso < _todayISO) return;
-      const txCC = getCityCountryCode(day.city) || getCityCountryCode(day.region) || '';
+      // A moving day gets phrases for both cities when their languages differ:
+      // the city you leave first, with the activities before the flight
+      const move = _moveInfo(trip, dayId);
+      const allActs = _dayActs(day);
+      const sides = _moveSides(move, allActs);
+      const places = move
+        ? [[move.typed ? { city: move.from, region: '' } : move.prevDay, 'from'], [day, 'to']]
+        : [[day, null]];
+      const seen = new Set();
+      places.forEach(([place, side]) => {
+      const txCC = getCityCountryCode(place.city) || getCityCountryCode(place.region) || '';
+      if (seen.has(txCC)) return;
+      seen.add(txCC);
       if (txCC && !TRANSLATION_SKIP.has(txCC) && TRANSLATION_LANG_MAP[txCC]) {
-        const txCity = day.city || day.region || '';
+        const txCity = place.city || place.region || '';
         const txCityLow = txCity.toLowerCase();
-        const txRegionLow = (day.region || '').toLowerCase();
-        const txActs = (Array.isArray(day.activities)
-          ? day.activities
-          : Object.values(day.activities || {}))
+        const txRegionLow = (place.region || '').toLowerCase();
+        const txActs = allActs
+          .filter((_, i) => !sides || !side || sides[i] === side)
           .map(a => (typeof a === 'object' ? (a.text || '') : String(a)))
           .filter(text => {
             const t = text.trim().toLowerCase();
@@ -6140,7 +6151,7 @@ function renderTripItinerary(trip) {
           })
           .map(text => {
             let t = text;
-            [...new Set([txCity, day.region].filter(Boolean))].forEach(loc => {
+            [...new Set([txCity, place.region].filter(Boolean))].forEach(loc => {
               const esc = loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
               t = t.replace(new RegExp(esc + "'s\\b", 'gi'), '');
               t = t.replace(new RegExp('\\b' + esc + ',?\\b', 'gi'), '');
@@ -6150,6 +6161,7 @@ function renderTripItinerary(trip) {
           .filter(Boolean);
         injectTranslationChip('dc-' + dayId, txCity, txCC, txActs);
       }
+      });
     });
   }, 50);
 
@@ -14100,11 +14112,13 @@ function injectTranslationChip(cardId, city, countryCode, activityTexts) {
   // Lives in the opened card's action row, beside Edit day
   const actions = card.querySelector('.day-actions');
   if (!actions) return;
-  const old = actions.querySelector('.translation-chip');
+  // One button per language: a moving day can have two
+  const old = actions.querySelector(`.translation-chip[data-cc="${countryCode}"]`);
   if (old) old.remove();
   const chip = document.createElement('button');
   chip.type = 'button';
   chip.className = 'day-action-btn translation-chip';
+  chip.dataset.cc = countryCode;
   chip.textContent = '🗣 ' + TRANSLATION_LANG_MAP[countryCode].name + ' phrases';
   chip.addEventListener('click', function(e) {
     e.stopPropagation();
