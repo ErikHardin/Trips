@@ -13373,6 +13373,13 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
   const out = legList(trip.flightOut, trip.flightOutNames, trip.flightOutDayOffsets, trip.flightOutDate);
   const ret = legList(trip.flightReturn, trip.flightReturnNames, trip.flightReturnDayOffsets, trip.flightReturnDate);
   const dayFlights = {};
+  const dayTouched = new Set();
+  const dayInfos = (dayId, day) => dayFlights[dayId] || (dayFlights[dayId] =
+    (Array.isArray(day.flightInfo) ? day.flightInfo.slice() : (day.flightInfo ? [day.flightInfo] : [])).filter(Boolean));
+  const tripDays = Object.entries(trip.days || {});
+  const flightNum = line => String(line || '').split(' ')[0].toUpperCase();
+  const timesOf = line => { const x = String(line || '').split(' · ')[1]; return x ? x.trim() : ''; };
+  const dayDiff = (a, b) => Math.abs(Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 864e5;
   (p.flights || []).forEach(f => {
     if (!f.flightNumber || !/^\d{4}-\d{2}-\d{2}$/.test(f.dateISO || '')) { problems.push('a flight with no number or date'); return; }
     const formatted = _formatInboxFlight(f);
@@ -13386,23 +13393,71 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
       return;
     }
     const leg = (!range.start || f.dateISO <= range.start) ? out : (f.dateISO >= range.end ? ret : null);
-    if (leg) {
-      const dup = leg.lines.some((l, i) => l.split(' ')[0] === num && (leg.names[i] || '') === traveler);
-      if (!dup) {
+    let dest = null;
+    if (!leg) {
+      const match = _findTripDay(trip, f.dateISO);
+      if (!match) { problems.push('no trip day for the ' + num + ' flight on ' + humanDate); return; }
+      dest = { dayId: match[0], day: match[1] };
+    }
+
+    // The same flight already on the trip (number and traveler): in this leg,
+    // or on a trip day within two days, since a schedule change can move it.
+    // A re-sent or schedule-change email then updates it instead of being
+    // skipped as a duplicate (or, when the date moved, added a second time).
+    const nf = _bkParseFlight(formatted);
+    const cands = [];
+    if (leg) leg.lines.forEach((l, i) => {
+      if (flightNum(l) === num && (leg.names[i] || '') === traveler) cands.push({ leg, i, line: l });
+    });
+    tripDays.forEach(([dayId, day]) => {
+      const iso = dayISO(day, trip.year);
+      if (!iso || dayDiff(iso, f.dateISO) > 2) return;
+      dayInfos(dayId, day).forEach((fi, i) => {
+        if (flightNum(fi.formatted) === num && (fi.travelerName || '') === traveler) cands.push({ dayId, day, iso, i, line: fi.formatted || '' });
+      });
+    });
+    const sameRoute = c => { const o = _bkParseFlight(c.line); return o.from === nf.from && o.to === nf.to; };
+    const here = c => (leg && c.leg === leg) || (dest && c.dayId === dest.dayId);
+    // A flight number can cover two segments (SFO → HNL → GUM): match the
+    // route when it can; an unmatched route counts only for a lone candidate
+    const routed = cands.filter(sameRoute);
+    const found = routed.find(here) || routed[0] || (cands.length === 1 ? cands[0] : null);
+    const changed = found && nf.depMin != null &&
+      (timesOf(found.line) !== timesOf(formatted) || !sameRoute(found));
+
+    if (found && here(found)) {
+      if (changed) {
+        if (found.leg) {
+          found.leg.lines[found.i] = formatted; found.leg.offs[found.i] = offset; found.leg.touched = true;
+        } else {
+          const infos = dayInfos(found.dayId, found.day);
+          infos[found.i] = Object.assign({}, infos[found.i], { formatted, dayOffset: offset });
+          dayTouched.add(found.dayId);
+        }
+        log.push(['Flight time changed from email', found.line + ' → ' + (timesOf(formatted) || formatted) + (traveler ? ' (' + traveler + ')' : '')]);
+      }
+    } else {
+      let kept = null;
+      if (found) {
+        // Moved to another day: off its old day, and its checklist line follows
+        if (!found.leg) kept = dayInfos(found.dayId, found.day)[found.i];
+        dayInfos(found.dayId, found.day).splice(found.i, 1);
+        dayTouched.add(found.dayId);
+        const oldDate = _inboxShortDate(found.iso);
+        const bare = formatted.split(' · ')[0] + (traveler ? ' (' + traveler + ')' : '');
+        const sub = subItems.flightsBooked.find(s => s && String(s.label || '').replace(confRe, '') === oldDate + ' — ' + bare);
+        if (sub) { sub.label = sub.label.replace(oldDate + ' — ', humanDate + ' — '); subTouched.flightsBooked = true; }
+        log.push(['Flight moved from email', num + (traveler ? ' (' + traveler + ')' : '') + ' · ' + oldDate + ' → ' + humanDate + (timesOf(formatted) ? ' · ' + timesOf(formatted) : '')]);
+      }
+      if (leg) {
         leg.lines.push(formatted); leg.names.push(traveler); leg.offs.push(offset);
         if (!leg.date) leg.date = humanDate;
         leg.touched = true;
-        log.push([(leg === out ? 'Outbound' : 'Return') + ' flight added from email', formatted + confTag(f)]);
-      }
-    } else {
-      const match = _findTripDay(trip, f.dateISO);
-      if (!match) { problems.push('no trip day for the ' + num + ' flight on ' + humanDate); return; }
-      const [dayId, day] = match;
-      const infos = dayFlights[dayId] || (dayFlights[dayId] =
-        Array.isArray(day.flightInfo) ? day.flightInfo.slice() : (day.flightInfo ? [day.flightInfo] : []));
-      if (!infos.some(fi => (fi.formatted || '').split(' ')[0] === num && (fi.travelerName || '') === traveler)) {
-        infos.push({ formatted, date: humanDate, travelerName: traveler, dayOffset: offset });
-        log.push(['Flight added from email', formatted + confTag(f)]);
+        if (!found) log.push([(leg === out ? 'Outbound' : 'Return') + ' flight added from email', formatted + confTag(f)]);
+      } else {
+        dayInfos(dest.dayId, dest.day).push(Object.assign({}, kept, { formatted, date: humanDate, travelerName: traveler, dayOffset: offset }));
+        dayTouched.add(dest.dayId);
+        if (!found) log.push(['Flight added from email', formatted + confTag(f)]);
       }
     }
     const fSub = addSub('flightsBooked', f.dateISO, formatted.split(' · ')[0] + (traveler ? ' (' + traveler + ')' : '') + confTag(f));
@@ -13418,7 +13473,7 @@ async function _planInboxAssignment(itemId, it, tripId, trip) {
     updates[base + '/' + field + 'DayOffsets'] = leg.offs;
     updates[base + '/' + field + 'Date'] = leg.date;
   });
-  Object.entries(dayFlights).forEach(([dayId, infos]) => { updates[base + '/days/' + dayId + '/flightInfo'] = _sortFlightObjs(infos); });
+  Object.entries(dayFlights).filter(([dayId]) => dayTouched.has(dayId)).forEach(([dayId, infos]) => { updates[base + '/days/' + dayId + '/flightInfo'] = _sortFlightObjs(infos); });
 
   // ── Hotels: the name on every night from check-in up to check-out
   for (const h of (p.hotels || [])) {
@@ -13564,7 +13619,8 @@ window.assignInboxItem = async function(itemId) {
     await window._update(window._ref(window._db), plan.updates);
   } catch(e) { showToast('Couldn’t add booking: ' + e.message); console.error(e); return; }
   plan.log.forEach(([action, detail]) => logChange(tripId, action, detail));
-  showToast(plan.log.length ? 'Added to ' + (trip.name || 'trip') + ' ✓' : 'Already on ' + (trip.name || 'trip') + ' ✓');
+  const verb = plan.log.some(([a]) => / added /.test(a)) ? 'Added to ' : plan.log.length ? 'Updated on ' : 'Already on ';
+  showToast(verb + (trip.name || 'trip') + ' ✓');
 };
 
 function refreshPackingPct(packingList) {
