@@ -1305,8 +1305,6 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   cursor: pointer; transition: background 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.booking-group { border-bottom: 1px solid var(--border); }
-.booking-group:last-child { border-bottom: none; }
 .logistics-item:active { background: var(--cream); }
 .logistics-checkbox {
   width: 22px; height: 22px; border-radius: 6px;
@@ -1325,16 +1323,6 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
 .logistics-item-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
 .logistics-checkbox.sm { width: 18px; height: 18px; border-radius: 5px; }
 .logistics-checkbox.sm.checked::after { font-size: 11px; }
-.booking-sub-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 14px 9px 44px;
-  border-top: 1px solid var(--border); cursor: pointer;
-  transition: background 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-.booking-sub-item:active { background: var(--cream); }
-.logistics-item-label.sub { font-size: 13px; font-weight: 400; }
-.booking-add-toggle { opacity: 0.55; font-size: 20px; padding: 2px 8px; }
 .booking-add-row {
   display: none; align-items: center; gap: 8px;
   padding: 8px 14px 8px 44px; border-top: 1px solid var(--border);
@@ -1354,6 +1342,41 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
   position: absolute; inset: 0; width: 100%; height: 100%;
   opacity: 0; border: 0; padding: 0; margin: 0;
 }
+/* Booking checklist: grouped cards */
+.bkc-grp { background: var(--warm-white); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 10px; }
+.bkc-grp:last-child { margin-bottom: 0; }
+.bkc-grp.done { border-color: color-mix(in srgb, var(--sage) 45%, var(--border)); }
+.bkc-grp-h { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 13px; background: none; border: none; font-family: inherit; color: var(--ink); text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.bkc-ring { position: relative; width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; font-size: 15px; }
+.bkc-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.bkc-ring circle { fill: none; stroke-width: 3; }
+.bkc-ring .bg { stroke: var(--sand); }
+.bkc-ring .fg { stroke: var(--sage); stroke-linecap: round; transition: stroke-dashoffset .3s; }
+.bkc-grp-t { flex: 1; min-width: 0; }
+.bkc-grp-t b { display: block; font-size: 14.5px; font-weight: 500; }
+.bkc-grp-t small { font-size: 12px; color: var(--muted); }
+.bkc-grp-t small .todo { color: var(--terracotta); }
+.bkc-chev { flex-shrink: 0; color: var(--muted); transition: transform .2s; }
+.bkc-grp.open .bkc-chev { transform: rotate(180deg); }
+.bkc-grp-b { display: none; border-top: 1px solid var(--border); }
+.bkc-grp.open .bkc-grp-b { display: block; }
+.bkc-day { font-size: 10.5px; font-weight: 500; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted); background: var(--cream); padding: 9px 14px 5px; }
+.bkc-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px 10px 14px; border-top: 1px solid var(--border); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.bkc-grp-b > .bkc-row:first-child, .bkc-day + .bkc-row { border-top: none; }
+.bkc-row:active { background: var(--cream); }
+.bkc-row.ro { cursor: default; }
+.bkc-row.ro:active { background: none; }
+.bkc-row-t { flex: 1; min-width: 0; }
+.bkc-row-l { display: block; font-size: 13.5px; color: var(--ink); }
+.bkc-row.on .bkc-row-l { color: var(--muted); text-decoration: line-through; }
+.bkc-row-t small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.bkc-pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+.bkc-pill.need { background: var(--terracotta-light); color: var(--terracotta); }
+.bkc-pill.booked { background: var(--blue-light); color: var(--blue); }
+.bkc-pill.paid { background: var(--sage-light); color: var(--sage); }
+.bkc-add-link { display: block; width: 100%; text-align: left; font-family: inherit; font-size: 12.5px; color: var(--terracotta); background: none; border: none; border-top: 1px solid var(--border); padding: 9px 14px; cursor: pointer; }
+.bkc-grp .booking-add-row { padding: 8px 12px 10px 14px; }
+.bkc-empty { padding: 14px; font-size: 12.5px; color: var(--muted); text-align: center; line-height: 1.45; }
 .logistics-progress {
   margin: 0 16px 16px; padding: 10px 14px;
   background: var(--sage-light); border: 1px solid var(--sage-border);
@@ -5313,7 +5336,7 @@ function _logiOpenState(tripId) {
   return _logiOpenMem.st;
 }
 function _logiSaveState(tripId, st) { _logiOpenMem = { tripId, st }; }
-function _resetLogiSections() { _logiOpenMem = { tripId: null, st: {} }; }
+function _resetLogiSections() { _logiOpenMem = { tripId: null, st: {} }; _bkGrpMem = { tripId: null, st: {} }; }
 function _logiIsOpen(tripId, key) {
   const st = _logiOpenState(tripId);
   return key in st ? !!st[key] : !!LOGI_SECTION_DEFAULTS[key];
@@ -11816,9 +11839,9 @@ document.addEventListener('pointerdown', e => {
 //  LOGISTICS TAB
 // ════════════════════════════════════════
 const BOOKING_ITEMS = [
-  { key: 'flightsBooked',   label: 'Flights Booked',    icon: '✈️' },
-  { key: 'hotelsBooked',    label: 'Hotels Booked',     icon: '🏨' },
-  { key: 'carRentalBooked', label: 'Car Rental Booked', icon: '🚗' },
+  { key: 'flightsBooked',   label: 'Flights Booked',    icon: '✈️', title: 'Flights',    noun: 'flight' },
+  { key: 'hotelsBooked',    label: 'Hotels Booked',     icon: '🏨', title: 'Hotels',     noun: 'hotel' },
+  { key: 'carRentalBooked', label: 'Car Rental Booked', icon: '🚗', title: 'Car Rental', noun: 'car' },
 ];
 const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'KRW','A$':'AUD','C$':'CAD','CHF':'CHF','kr':'SEK','zł':'PLN','₺':'TRY','₹':'INR','R':'ZAR' };
 
@@ -11901,48 +11924,9 @@ async function _renderLogisticsInner(tripId, panel) {
       '</div>')
     : '';
 
-  // Booking checklist — sections with optional individual sub-items (flights/hotels/cars)
-  const subItems = normalizeBookingSubItems(logistics.bookingSubItems);
-  // Each section contributes an equal fraction: checked/total when it has sub-items, else its boolean 0/1
-  const sectionFrac = function(k) {
-    const s = subItems[k];
-    return s.length ? s.filter(function(i){ return i.checked; }).length / s.length : (logistics[k] ? 1 : 0);
-  };
-  const checkedCount = BOOKING_ITEMS.filter(function(i) { return sectionFrac(i.key) === 1; }).length;
-  const pct = Math.round(BOOKING_ITEMS.reduce(function(s, i) { return s + sectionFrac(i.key); }, 0) / BOOKING_ITEMS.length * 100);
-  var bookingHTML = BOOKING_ITEMS.map(function(item) {
-    var subs = subItems[item.key];
-    var chk = subs.length ? subs.every(function(i){ return i.checked; }) : !!logistics[item.key];
-    var doneBadge = subs.length
-      ? ' <span class="logistics-item-meta" style="display:inline;">' + subs.filter(function(i){ return i.checked; }).length + '/' + subs.length + '</span>'
-      : '';
-    var subRows = subs.map(function(si) {
-      return '<div class="booking-sub-item" onclick="toggleBookingSubItem(\'' + tripId + '\',\'' + item.key + '\',\'' + si.id + '\',' + (!si.checked) + ')">' +
-        '<div class="logistics-checkbox sm' + (si.checked ? ' checked' : '') + '"></div>' +
-        '<div class="logistics-item-label sub' + (si.checked ? ' checked' : '') + '">' + escHtml(si.label) + '</div>' +
-        '<button class="packing-delete-btn" onclick="event.stopPropagation();deleteBookingSubItem(\'' + tripId + '\',\'' + item.key + '\',\'' + si.id + '\')">×</button>' +
-        '</div>';
-    }).join('');
-    var dateInput = item.key === 'flightsBooked'
-      ? '<label class="booking-date-pill" id="badd-datepill-' + item.key + '">' +
-          '<span id="badd-datelabel-' + item.key + '">📅 Date</span>' +
-          '<input type="date" class="booking-date-input" id="badd-date-' + item.key + '" onchange="bookingDatePicked(\'' + item.key + '\')">' +
-        '</label>'
-      : '';
-    var placeholder = item.key === 'flightsBooked' ? 'DEN → SEA' : 'City…';
-    var addRow = '<div class="booking-add-row" id="baddrow-' + item.key + '">' +
-      dateInput +
-      '<input class="packing-add-input" placeholder="' + placeholder + '" id="badd-' + item.key + '" onkeydown="if(event.key===\'Enter\')addBookingSubItem(\'' + tripId + '\',\'' + item.key + '\')">' +
-      '<button class="packing-add-btn" onclick="addBookingSubItem(\'' + tripId + '\',\'' + item.key + '\')">+</button>' +
-      '</div>';
-    return '<div class="booking-group">' +
-      '<div class="logistics-item" onclick="toggleBookingItem(\'' + tripId + '\',\'' + item.key + '\',' + (!chk) + ')">' +
-      '<div class="logistics-checkbox' + (chk ? ' checked' : '') + '"></div>' +
-      '<div class="logistics-item-label' + (chk ? ' checked' : '') + '">' + item.icon + ' ' + item.label + doneBadge + '</div>' +
-      '<button class="packing-add-btn booking-add-toggle" onclick="event.stopPropagation();toggleBookingAddRow(\'' + item.key + '\')" title="Add item">+</button>' +
-      '</div>' + subRows + addRow +
-      '</div>';
-  }).join('');
+  // Booking checklist — grouped cards: the manual sections (flights/hotels/cars,
+  // each with optional sub-items) plus activities pulled from the itinerary
+  const checklist = _bookingChecklistHTML(tripId, allTrips[tripId] || {}, logistics);
 
   // Packing list
   var packingList  = normalizePackingList(logistics.packingList) || null;
@@ -11974,11 +11958,8 @@ async function _renderLogisticsInner(tripId, panel) {
 
     spendSummaryHTML +
 
-    _logiSection(tripId, 'checklist', 'Booking Checklist',
-      '<span>' + checkedCount + '/' + BOOKING_ITEMS.length + ' booked</span><span class="mini-bar"><i style="width:' + pct + '%"></i></span><span>' + pct + '%</span>',
-      '<div class="logistics-section" style="padding-top:0;">' +
-        '<div class="logistics-card" style="margin-bottom:0;">' + bookingHTML + '</div>' +
-      '</div>') +
+    _logiSection(tripId, 'checklist', 'Booking Checklist', checklist.summary,
+      '<div class="logistics-section" style="padding-top:0;">' + checklist.body + '</div>') +
 
     (legs.length ? _logiSection(tripId, 'cities', 'Getting between cities',
       escHtml(_cfSummary(_trip, legs, logistics.cityFlights)),
@@ -12371,6 +12352,161 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
     inputEl.value = '';
     inputEl.focus();
   } catch(e) { showToast('Add error: ' + e.message); console.error('addPackingItem error:', e); }
+};
+
+// ── Booking checklist: grouped cards ──
+// Activities appear once they're marked Not booked, and stay (ticked) once
+// Booked or Paid; ticking one here writes its status back to the itinerary.
+const CHECKLIST_ACT_STATUSES = ['not_booked', 'booked', 'paid'];
+// Which group cards are open, remembered while you stay on the Logistics tab.
+// A group nobody has touched starts open only while it still has something to book.
+let _bkGrpMem = { tripId: null, st: {} };
+function _bkGrpState(tripId) {
+  if (_bkGrpMem.tripId !== tripId) _bkGrpMem = { tripId, st: {} };
+  return _bkGrpMem.st;
+}
+window.toggleBookingGroup = function(key) {
+  const el = document.querySelector('#tripLogisticsPanel .bkc-grp[data-bk-grp="' + key + '"]');
+  if (!el || !currentTripId) return;
+  const open = !el.classList.contains('open');
+  el.classList.toggle('open', open);
+  const h = el.querySelector('.bkc-grp-h');
+  if (h) h.setAttribute('aria-expanded', String(open));
+  _bkGrpState(currentTripId)[key] = open;
+};
+
+// Itinerary activities that need (or needed) booking, in day order
+function _checklistActivities(trip) {
+  const out = [];
+  _tripDayEntries(trip).forEach(([dayId, day, iso]) => {
+    const raw = day && day.activities;
+    if (!raw) return;
+    Object.keys(raw).forEach(k => {
+      const a = raw[k];
+      if (!a || typeof a !== 'object' || !CHECKLIST_ACT_STATUSES.includes(a.bookingStatus)) return;
+      out.push({ dayId, day, iso, rawKey: k, act: a });
+    });
+  });
+  return out;
+}
+
+function _bkRing(done, total, icon) {
+  const r = 15, c = +(2 * Math.PI * r).toFixed(2), off = +(c * (1 - (total ? done / total : 0))).toFixed(2);
+  return '<span class="bkc-ring"><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="bg" cx="17" cy="17" r="' + r + '"></circle>' +
+    '<circle class="fg" cx="17" cy="17" r="' + r + '" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '"></circle></svg>' + icon + '</span>';
+}
+function _bkPill(status) {
+  if (status === 'paid') return '<span class="bkc-pill paid">Paid</span>';
+  if (status === 'booked') return '<span class="bkc-pill booked">Booked</span>';
+  return '<span class="bkc-pill need">To book</span>';
+}
+function _bkGroupHTML(tripId, key, title, icon, done, total, bodyHTML) {
+  const todo = total - done;
+  const st = _bkGrpState(tripId);
+  // Settle the default on first draw, so ticking the last item doesn't snap the card shut
+  if (!(key in st)) st[key] = todo > 0;
+  const open = !!st[key];
+  const sub = !total ? 'Nothing yet'
+    : todo ? '<span class="todo">' + todo + ' to book</span> · ' + done + '/' + total
+    : (total === 1 ? 'Booked' : 'All ' + total + ' booked');
+  return '<div class="bkc-grp' + (open ? ' open' : '') + (total && !todo ? ' done' : '') + '" data-bk-grp="' + key + '">' +
+    '<button type="button" class="bkc-grp-h" aria-expanded="' + open + '" onclick="toggleBookingGroup(\'' + key + '\')">' +
+      _bkRing(done, total, icon) +
+      '<span class="bkc-grp-t"><b>' + title + '</b><small>' + sub + '</small></span>' +
+      '<svg class="bkc-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>' +
+    '</button>' +
+    '<div class="bkc-grp-b">' + bodyHTML + '</div>' +
+  '</div>';
+}
+// One checklist row; onclick is null for a row this viewer can't change
+function _bkRowHTML(checked, labelHTML, metaHTML, pillHTML, onclick, trailingHTML) {
+  return '<div class="bkc-row' + (checked ? ' on' : '') + (onclick ? '' : ' ro') + '"' +
+    (onclick ? ' role="checkbox" tabindex="0" aria-checked="' + checked + '" onclick="' + onclick + '" onkeydown="if(event.key===\' \'||event.key===\'Enter\'){event.preventDefault();this.click();}"' : '') + '>' +
+    '<span class="logistics-checkbox sm' + (checked ? ' checked' : '') + '"></span>' +
+    '<span class="bkc-row-t"><span class="bkc-row-l">' + labelHTML + '</span>' + (metaHTML ? '<small>' + metaHTML + '</small>' : '') + '</span>' +
+    pillHTML + (trailingHTML || '') +
+  '</div>';
+}
+
+function _bookingChecklistHTML(tripId, trip, logistics) {
+  const subItems = normalizeBookingSubItems(logistics.bookingSubItems);
+  let allDone = 0, allTotal = 0;
+  let html = '';
+
+  BOOKING_ITEMS.forEach(item => {
+    const subs = subItems[item.key].filter(Boolean);
+    const whole = subs.length ? subs.every(i => i.checked) : !!logistics[item.key];
+    const done = subs.length ? subs.filter(i => i.checked).length : (whole ? 1 : 0);
+    const total = subs.length || 1;
+    allDone += done; allTotal += total;
+    let body = subs.map(si => _bkRowHTML(!!si.checked, escHtml(si.label), '', _bkPill(si.checked ? 'booked' : ''),
+      'toggleBookingSubItem(\'' + tripId + '\',\'' + item.key + '\',\'' + si.id + '\',' + (!si.checked) + ')',
+      '<button class="packing-delete-btn" onclick="event.stopPropagation();deleteBookingSubItem(\'' + tripId + '\',\'' + item.key + '\',\'' + si.id + '\')" aria-label="Remove">×</button>')).join('');
+    // No individual items: the section itself is the one thing to tick
+    body += _bkRowHTML(whole, subs.length ? 'Mark all booked' : item.label, '', subs.length ? '' : _bkPill(whole ? 'booked' : ''),
+      'toggleBookingItem(\'' + tripId + '\',\'' + item.key + '\',' + (!whole) + ')');
+    const dateInput = item.key === 'flightsBooked'
+      ? '<label class="booking-date-pill" id="badd-datepill-' + item.key + '">' +
+          '<span id="badd-datelabel-' + item.key + '">📅 Date</span>' +
+          '<input type="date" class="booking-date-input" id="badd-date-' + item.key + '" onchange="bookingDatePicked(\'' + item.key + '\')">' +
+        '</label>'
+      : '';
+    const placeholder = item.key === 'flightsBooked' ? 'DEN → SEA' : 'City…';
+    body += '<button type="button" class="bkc-add-link" onclick="toggleBookingAddRow(\'' + item.key + '\')">+ Add ' + item.noun + '</button>' +
+      '<div class="booking-add-row" id="baddrow-' + item.key + '">' + dateInput +
+        '<input class="packing-add-input" placeholder="' + placeholder + '" id="badd-' + item.key + '" onkeydown="if(event.key===\'Enter\')addBookingSubItem(\'' + tripId + '\',\'' + item.key + '\')">' +
+        '<button class="packing-add-btn" onclick="addBookingSubItem(\'' + tripId + '\',\'' + item.key + '\')">+</button>' +
+      '</div>';
+    html += _bkGroupHTML(tripId, item.key, item.title, item.icon, done, total, body);
+  });
+
+  // Activities from the itinerary, under a heading per day
+  const acts = _checklistActivities(trip);
+  const canEdit = canEditCurrentTrip() && can('editItinerary');
+  const actDone = acts.filter(x => x.act.bookingStatus !== 'not_booked').length;
+  allDone += actDone; allTotal += acts.length;
+  let actBody = '', lastDay = null;
+  acts.forEach(x => {
+    if (x.dayId !== lastDay) {
+      lastDay = x.dayId;
+      const date = x.iso ? isoToDate(x.iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+      const place = _cfPlace(x.day);
+      actBody += '<div class="bkc-day">' + escHtml([date, place].filter(Boolean).join(' · ') || 'Undated') + '</div>';
+    }
+    const a = x.act;
+    const checked = a.bookingStatus !== 'not_booked';
+    const emoji = a.emoji || getEmoji(a.text || '');
+    actBody += _bkRowHTML(checked, escHtml(emoji + ' ' + (a.text || '')), a.time ? escHtml(a.time) : '', _bkPill(a.bookingStatus),
+      canEdit ? 'toggleActivityBooking(\'' + tripId + '\',\'' + x.dayId + '\',\'' + x.rawKey + '\')' : null);
+  });
+  if (!acts.length) actBody = '<div class="bkc-empty">Set an activity to 🗓️ Not booked on the itinerary and it shows up here.</div>';
+  html += _bkGroupHTML(tripId, 'activities', 'Activities &amp; Reservations', '🎟️', actDone, acts.length, actBody);
+
+  const pct = allTotal ? Math.round(allDone / allTotal * 100) : 0;
+  return {
+    summary: '<span>' + allDone + ' of ' + allTotal + ' booked</span><span class="mini-bar"><i style="width:' + pct + '%"></i></span><span>' + pct + '%</span>',
+    body: html,
+  };
+}
+
+// ── Tick/untick an itinerary activity from the checklist: Not booked ⇄ Booked ──
+window.toggleActivityBooking = async function(tripId, dayId, rawKey) {
+  if (!canEditCurrentTrip() || !can('editItinerary')) return;
+  const day = allTrips[tripId] && allTrips[tripId].days && allTrips[tripId].days[dayId];
+  const a = day && day.activities && day.activities[rawKey];
+  if (!a || typeof a !== 'object' || !CHECKLIST_ACT_STATUSES.includes(a.bookingStatus)) return;
+  const next = a.bookingStatus === 'not_booked' ? 'booked' : 'not_booked';
+  const prev = a.bookingStatus;
+  a.bookingStatus = next;
+  renderLogisticsPanel(tripId);
+  try {
+    await window._update(window._ref(window._db, 'trips/' + tripId + '/days/' + dayId + '/activities/' + rawKey), { bookingStatus: next });
+    logChange(tripId, 'Activity updated', (a.emoji ? a.emoji + ' ' : '') + (a.text || '') + (next === 'booked' ? ' · booked' : ' · not booked'));
+  } catch (e) {
+    a.bookingStatus = prev;
+    renderLogisticsPanel(tripId);
+    showToast('Save failed — check connection');
+  }
 };
 
 // ── Toggle booking checklist item (cascades to sub-items when present) ──
