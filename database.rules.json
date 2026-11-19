@@ -14,6 +14,10 @@
       ".read": "auth != null && auth.token.email_verified == true",
       ".write": "auth != null && auth.token.email_verified == true"
     },
+    "packingLists": {
+      ".read": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'",
+      ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
+    },
     "geocache": {
       ".read": "auth != null && auth.token.email_verified == true",
       ".write": "auth != null && auth.token.email_verified == true && root.child('access').child(auth.token.email.replace('.', ',')).child('role').val() == 'admin'"
