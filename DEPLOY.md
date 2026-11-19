@@ -299,3 +299,11 @@ identifiable by more than its route list.
 A `cloudflare/wrangler-action` GitHub Actions workflow is the alternative to
 Workers Builds. Don't add one alongside this — both connected means every push
 deploys the Worker twice.
+
+## Packing lists (no trip needed)
+
+The 🧳 button on the home screen (admins) creates packing lists that aren't
+tied to a trip or dates. Each one starts as a copy of the master packing list
+and is stored under `packingLists/` in the database. Deploy
+`database.rules.json` once — it adds the admin-only `packingLists` rule.
+Until then, creating a list fails with a permission error.

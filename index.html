@@ -1708,6 +1708,7 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       </div>
     </div>
     <button class="header-action" onclick="showWorldMap()" title="World Map" style="font-size:22px;">🌏</button>
+    <button class="header-action" id="packingNavBtn" onclick="openPackingLists()" style="display:none;font-size:20px;" title="Packing Lists">🧳</button>
     <button class="header-action" id="adminNavBtn" onclick="showScreen('screen-admin')" style="display:none;" title="Admin">⚙️<span class="inbox-nav-badge" id="adminNavInboxBadge" style="display:none;"></span></button>
     <button class="header-action" id="lockBtn" onclick="openAccountSheet()" style="display:none;font-size:15px;color:var(--muted);" title="Account">🔒</button>
   </div>
@@ -1799,6 +1800,20 @@ input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper { padding: 0
       <button class="save-note-btn" id="saveNoteBtn" onclick="saveNote()">Save Memory</button>
       <button class="cancel-note-btn" id="cancelNoteEditBtn" onclick="cancelNoteEdit()" style="display:none;">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ PACKING LISTS SCREEN (date-free lists copied from the master list) ══ -->
+<div id="screen-packing" class="screen">
+  <div class="app-header">
+    <button class="back-btn" onclick="packingScreenBack()">‹</button>
+    <div class="header-titles">
+      <div class="header-eyebrow" id="packingScreenEyebrow">From the Master List</div>
+      <div class="header-main" id="packingScreenTitle">Packing Lists</div>
+    </div>
+  </div>
+  <div class="scroll-content">
+    <div id="packingScreenBody"></div>
   </div>
 </div>
 
@@ -2673,7 +2688,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 424 };
+window.BUILD_INFO = { prNumber: 425 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -2910,6 +2925,7 @@ async function handleSignedInUser(user) {
     // Users get the same ⚙️ button, opening a Settings view with just their
     // booking inbox, trip creation and the AI assistant (see showScreen)
     document.getElementById('adminNavBtn').style.display = (userRole === 'admin' || userRole === 'user') ? '' : 'none';
+    document.getElementById('packingNavBtn').style.display = userRole === 'admin' ? '' : 'none';
     if (userRole === 'admin') checkOutstandingBookings();
     if (userRole === 'admin' || (userRole === 'user' && can('bookingInbox'))) startBookingInboxListener();
     if (userRole === 'admin') announcePendingAccessRequests();
@@ -3823,6 +3839,7 @@ window.lockApp = async function(toastMsg) {
   lastOutstandingPopupAt = null;
   stopBookingInboxListener();
   document.getElementById('adminNavBtn').style.display = 'none';
+  document.getElementById('packingNavBtn').style.display = 'none';
   document.getElementById('lockBtn').style.display = 'none';
   document.getElementById('tripRefreshBtn').style.display = 'none';
   document.getElementById('tripAdminBtn').style.display = 'none';
@@ -11848,6 +11865,9 @@ const CURRENCY_CODE_MAP = { '€':'EUR','$':'USD','£':'GBP','¥':'JPY','₩':'K
 // ── Render the full logistics panel ──
 async function renderLogisticsPanel(tripId) {
   const panel = document.getElementById('tripLogisticsPanel');
+  // A standalone packing list uses the same element ids — drop it first
+  const qpBody = document.getElementById('packingScreenBody');
+  if (qpBody && qpBody.querySelector('.packing-person-block')) qpBody.innerHTML = '';
   // Capture which person blocks are open, and the scroll position, before tearing down the panel
   const openBlocks = new Set([...panel.querySelectorAll('.packing-person-body.open')].map(el => el.id));
   const openAddRows = new Set([...panel.querySelectorAll('.booking-add-row.open')].map(el => el.id));
@@ -12042,27 +12062,27 @@ window.clearPackingList = async function(tripId) {
   const confirmed = await showConfirmDialog('Clear packing list?', 'This will delete the entire packing list so you can regenerate it.');
   if (!confirmed) return;
   try {
-    await window._remove(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    await window._remove(window._ref(window._db, packingListPath(tripId)));
     if (allTrips[tripId] && allTrips[tripId].logistics) delete allTrips[tripId].logistics.packingList;
-    renderLogisticsPanel(tripId);
+    rerenderPacking(tripId);
     showToast('Packing list cleared');
   } catch(e) { showToast('Clear failed'); console.error(e); }
 };
 
 window.removePackingPerson = async function(tripId, person) {
-  const confirmed = await showConfirmDialog('Remove ' + person + '?', 'This will remove ' + person + '’s entire packing section from this trip.');
+  const confirmed = await showConfirmDialog('Remove ' + person + '?', 'This will remove ' + person + '’s entire packing section from this ' + (isQuickPackId(tripId) ? 'list' : 'trip') + '.');
   if (confirmed) window.deletePackingPerson(tripId, person);
 };
 
 window.deletePackingPerson = async function(tripId, person) {
   try {
-    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    const snap = await window._get(window._ref(window._db, packingListPath(tripId)));
     const list = normalizePackingList(snap.val());
     if (!list) return;
     const updated = list.filter(p => p.person !== person);
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), updated);
+    await window._set(window._ref(window._db, packingListPath(tripId)), updated);
     if (allTrips[tripId] && allTrips[tripId].logistics) allTrips[tripId].logistics.packingList = updated;
-    renderLogisticsPanel(tripId);
+    rerenderPacking(tripId);
   } catch(e) { showToast('Remove failed'); console.error(e); }
 };
 
@@ -12129,20 +12149,9 @@ window.generatePackingList = async function(tripId) {
       return;
     }
 
-    let idCounter = Date.now();
-    const packingList = masterPackingList.map(p => ({
-      person: p.person,
-      sections: (p.sections || []).map(s => ({
-        title: s.title,
-        items: (s.items || []).filter(Boolean).map(item => ({
-          id: 'pi' + (idCounter++),
-          label: item.label,
-          checked: false
-        }))
-      }))
-    }));
+    const packingList = packingListFromMaster();
 
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+    await window._set(window._ref(window._db, packingListPath(tripId)), packingList);
     if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
     allTrips[tripId].logistics.packingList = packingList;
 
@@ -12162,7 +12171,7 @@ window.startBlankPackingList = async function(tripId) {
 
   try {
     const packingList = [{ person: 'General', sections: [{ title: 'Items', items: [] }] }];
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+    await window._set(window._ref(window._db, packingListPath(tripId)), packingList);
     if (!allTrips[tripId].logistics) allTrips[tripId].logistics = {};
     allTrips[tripId].logistics.packingList = packingList;
 
@@ -12198,7 +12207,7 @@ document.addEventListener('click', function(e) {
     async function saveEdit() {
       const newLabel = input.value.trim() || currentText;
       try {
-        const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+        const snap = await window._get(window._ref(window._db, packingListPath(tripId)));
         const packingList = normalizePackingList(snap.val());
         if (packingList) {
           for (const personObj of packingList) {
@@ -12208,7 +12217,7 @@ document.addEventListener('click', function(e) {
               if (item) { item.label = newLabel; break; }
             }
           }
-          await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+          await window._set(window._ref(window._db, packingListPath(tripId)), packingList);
         }
       } catch(err) { console.error(err); }
       const isChecked = row.querySelector('.packing-checkbox.checked');
@@ -12273,7 +12282,7 @@ document.addEventListener('click', function(e) {
 // ── Toggle a packing item checked state ──
 window.togglePackingItem = async function(tripId, itemId, newChecked) {
   try {
-    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    const snap = await window._get(window._ref(window._db, packingListPath(tripId)));
     const rawVal = snap.val();
     const packingList = normalizePackingList(rawVal);
     if (!packingList) { showToast('No packing list found'); return; }
@@ -12285,7 +12294,7 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
         if (item) { item.checked = newChecked; break; }
       }
     }
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+    await window._set(window._ref(window._db, packingListPath(tripId)), packingList);
     // Update DOM directly (avoid full re-render for speed)
     const row = document.getElementById('pitem-' + itemId);
     if (row) {
@@ -12302,7 +12311,7 @@ window.togglePackingItem = async function(tripId, itemId, newChecked) {
 // ── Delete a packing item ──
 window.deletePackingItem = async function(tripId, itemId) {
   try {
-    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    const snap = await window._get(window._ref(window._db, packingListPath(tripId)));
     const packingList = normalizePackingList(snap.val());
     if (!packingList) return;
     for (const personObj of packingList) {
@@ -12311,7 +12320,7 @@ window.deletePackingItem = async function(tripId, itemId) {
         sec.items = sec.items.filter(i => i && i.id !== itemId);
       }
     }
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+    await window._set(window._ref(window._db, packingListPath(tripId)), packingList);
     const row = document.getElementById('pitem-' + itemId);
     if (row) row.remove();
   } catch(e) { showToast('Delete error: ' + e.message); console.error('deletePackingItem error:', e); }
@@ -12323,7 +12332,7 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
   if (!label) return;
   const newItem = { id: 'pi' + Date.now(), label, checked: false };
   try {
-    const snap = await window._get(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'));
+    const snap = await window._get(window._ref(window._db, packingListPath(tripId)));
     const packingList = normalizePackingList(snap.val());
     if (!packingList) return;
     const personObj = packingList.find(p => p.person === person);
@@ -12331,7 +12340,7 @@ window.addPackingItem = async function(tripId, person, sectionTitle, inputEl) {
     const sec = personObj.sections.find(s => s.title === sectionTitle);
     if (!sec) return;
     sec.items.push(newItem);
-    await window._set(window._ref(window._db, 'trips/' + tripId + '/logistics/packingList'), packingList);
+    await window._set(window._ref(window._db, packingListPath(tripId)), packingList);
     // Insert item into DOM before the add row
     const secKey = person + '-' + sectionTitle.replace(/\s+/g,'_');
     const secEl = document.getElementById('psec-' + secKey);
@@ -13632,6 +13641,233 @@ function refreshPackingPct(packingList) {
     if (el) el.textContent = pct + '% packed';
   }
 }
+
+// ════════════════════════════════════════
+//  PACKING LISTS (standalone — no trip or dates)
+// ════════════════════════════════════════
+// Lists live at packingLists/<key> = { name, createdAt, createdBy, packingList }.
+// They're addressed as 'qp_<key>' so the trip packing handlers (toggle, add,
+// edit, delete) work on them unchanged via packingListPath()/rerenderPacking().
+const QUICK_PACK_PREFIX = 'qp_';
+let currentQuickPackId = null;
+
+function isQuickPackId(id) { return typeof id === 'string' && id.indexOf(QUICK_PACK_PREFIX) === 0; }
+function packingListPath(id) {
+  return isQuickPackId(id)
+    ? 'packingLists/' + id.slice(QUICK_PACK_PREFIX.length) + '/packingList'
+    : 'trips/' + id + '/logistics/packingList';
+}
+function rerenderPacking(id) {
+  if (isQuickPackId(id)) renderQuickPackDetail(id);
+  else renderLogisticsPanel(id);
+}
+
+// Fresh, unchecked copy of the master list — optionally just some people
+function packingListFromMaster(persons) {
+  let idCounter = Date.now();
+  return (masterPackingList || [])
+    .filter(p => !persons || persons.includes(p.person))
+    .map(p => ({
+      person: p.person,
+      sections: (p.sections || []).map(s => ({
+        title: s.title,
+        items: (s.items || []).filter(Boolean).map(item => ({
+          id: 'pi' + (idCounter++),
+          label: item.label,
+          checked: false
+        }))
+      }))
+    }));
+}
+
+async function ensureMasterPackingList() {
+  if (!masterPackingList || !masterPackingList.length) {
+    const snap = await window._get(window._ref(window._db, 'avatarUrls/masterPackingList'));
+    masterPackingList = snap.val() ? normalizePackingList(snap.val()) : null;
+  }
+  return masterPackingList;
+}
+
+async function loadPackingAvatars() {
+  try {
+    const snap = await window._get(window._ref(window._db, 'avatarUrls'));
+    const out = {};
+    Object.entries(snap.val() || {}).forEach(([k, v]) => { if (typeof v === 'string') out[k] = v; });
+    return out;
+  } catch (e) { return {}; }
+}
+
+function _packCounts(list) {
+  const items = (list || []).flatMap(p => (p.sections || []).flatMap(s => (s.items || []).filter(Boolean)));
+  return { total: items.length, packed: items.filter(i => i.checked).length };
+}
+
+window.openPackingLists = function() {
+  // The trip logistics panel shares element ids with this screen
+  const lp = document.getElementById('tripLogisticsPanel');
+  if (lp) lp.innerHTML = '';
+  showScreen('screen-packing');
+  renderQuickPackIndex();
+};
+
+window.packingScreenBack = function() {
+  if (currentQuickPackId) { renderQuickPackIndex(); return; }
+  document.getElementById('packingScreenBody').innerHTML = '';
+  goHome();
+};
+
+async function renderQuickPackIndex() {
+  currentQuickPackId = null;
+  document.getElementById('packingScreenEyebrow').textContent = 'From the Master List';
+  document.getElementById('packingScreenTitle').textContent = 'Packing Lists';
+  const body = document.getElementById('packingScreenBody');
+  body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
+  try {
+    const [snap, master] = await Promise.all([
+      window._get(window._ref(window._db, 'packingLists')),
+      ensureMasterPackingList()
+    ]);
+    const lists = Object.entries(snap.val() || {})
+      .map(([key, v]) => Object.assign({ key }, v))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const people = (master || []).map(p => p.person);
+
+    const chips = people.map(p =>
+      '<label style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 8px 0;font-size:14px;color:var(--ink);">' +
+        '<input type="checkbox" class="qp-person" value="' + escAttr(p) + '" checked> ' + escHtml(p) +
+      '</label>').join('');
+
+    const newCard =
+      '<div style="margin:16px;padding:14px 16px;background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);">' +
+        '<div style="font-family:\'Cormorant Garamond\',serif;font-size:20px;font-style:italic;margin-bottom:4px;">New packing list</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">No trip or dates needed — it starts as a copy of the master list from Settings.</div>' +
+        '<label class="form-label">Name</label>' +
+        '<input class="form-input" id="qpNameInput" placeholder="e.g. Weekend in Napa" onkeydown="if(event.key===\'Enter\')createQuickPackList()">' +
+        (people.length
+          ? '<label class="form-label">Who’s packing</label><div style="margin-bottom:6px;">' + chips + '</div>' +
+            '<button class="form-btn" id="qpCreateBtn" onclick="createQuickPackList()">Create from Master List</button>'
+          : '<div style="font-size:13px;color:var(--terracotta);">No master packing list yet — add items under Settings → Logistics Packing List first.</div>') +
+      '</div>';
+
+    const rows = lists.map(l => {
+      const c = _packCounts(normalizePackingList(l.packingList));
+      const who = (normalizePackingList(l.packingList) || []).map(p => p.person).join(', ');
+      const date = l.createdAt ? new Date(l.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      return '<div onclick="openQuickPackList(\'' + QUICK_PACK_PREFIX + l.key + '\')" style="display:flex;align-items:center;gap:12px;margin:0 16px 10px;padding:12px 14px;background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;">' +
+          '<div style="font-size:22px;">🧳</div>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:15px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(l.name || 'Untitled list') + '</div>' +
+            '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + escHtml([who, date].filter(Boolean).join(' · ')) + '</div>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--sage);white-space:nowrap;">' + c.packed + ' / ' + c.total + ' packed</div>' +
+          '<span style="color:var(--muted);font-size:18px;">›</span>' +
+        '</div>';
+    }).join('');
+
+    body.innerHTML = newCard +
+      (lists.length ? '<div class="trips-section-label">Your Lists</div>' + rows : '');
+  } catch (e) {
+    console.error('renderQuickPackIndex error', e);
+    body.innerHTML = '<div style="padding:16px;color:var(--terracotta);font-size:13px;">Couldn’t load packing lists: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+window.createQuickPackList = async function() {
+  const nameEl = document.getElementById('qpNameInput');
+  const name = (nameEl.value || '').trim();
+  if (!name) { showToast('Give the list a name'); nameEl.focus(); return; }
+  const persons = [...document.querySelectorAll('#packingScreenBody .qp-person:checked')].map(el => el.value);
+  if (!persons.length) { showToast('Pick at least one person'); return; }
+  const btn = document.getElementById('qpCreateBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Creating…'; }
+  try {
+    // Re-read so the copy reflects the latest master edits
+    masterPackingList = null;
+    await ensureMasterPackingList();
+    const packingList = packingListFromMaster(persons);
+    const r = window._push(window._ref(window._db, 'packingLists'));
+    await window._set(r, {
+      name,
+      createdAt: Date.now(),
+      createdBy: ((currentUser && currentUser.email) || '').toLowerCase(),
+      packingList
+    });
+    showToast('Packing list created ✓');
+    openQuickPackList(QUICK_PACK_PREFIX + r.key);
+  } catch (e) {
+    console.error('createQuickPackList error', e);
+    showToast('Failed — check connection');
+    if (btn) { btn.disabled = false; btn.textContent = 'Create from Master List'; }
+  }
+};
+
+window.openQuickPackList = function(id) {
+  currentQuickPackId = id;
+  document.getElementById('packingScreenBody').innerHTML = '';
+  renderQuickPackDetail(id);
+};
+
+async function renderQuickPackDetail(id) {
+  const body = document.getElementById('packingScreenBody');
+  const scroller = body.closest('.scroll-content');
+  const scrollTop = scroller ? scroller.scrollTop : 0;
+  const openBlocks = new Set([...body.querySelectorAll('.packing-person-body.open')].map(el => el.id));
+  if (!body.innerHTML.trim()) body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">Loading…</div>';
+  try {
+    const key = id.slice(QUICK_PACK_PREFIX.length);
+    const [snap, avatars] = await Promise.all([
+      window._get(window._ref(window._db, 'packingLists/' + key)),
+      loadPackingAvatars()
+    ]);
+    if (currentQuickPackId !== id) return; // navigated away meanwhile
+    const data = snap.val();
+    if (!data) { showToast('That list no longer exists'); renderQuickPackIndex(); return; }
+    const list = normalizePackingList(data.packingList) || [];
+    document.getElementById('packingScreenEyebrow').textContent = 'Packing List';
+    document.getElementById('packingScreenTitle').textContent = data.name || 'Untitled list';
+
+    const footer =
+      '<div style="margin:20px 16px 0;display:flex;flex-direction:column;gap:8px;">' +
+        '<button class="form-btn secondary" onclick="renameQuickPackList(\'' + id + '\')">Rename list</button>' +
+        '<button class="form-btn secondary" style="color:var(--terracotta);" onclick="deleteQuickPackList(\'' + id + '\')">Delete list</button>' +
+      '</div>';
+    body.innerHTML = '<div style="height:12px;"></div>' +
+      (list.length ? buildPackingListHTML(id, list, avatars)
+                   : '<div style="padding:24px 16px;text-align:center;color:var(--muted);font-size:13px;">This list is empty.</div>') +
+      footer;
+    // Open the first person on first view; keep whatever was open on re-render
+    const toOpen = openBlocks.size ? [...openBlocks]
+      : [...body.querySelectorAll('.packing-person-body')].slice(0, 1).map(el => el.id);
+    toOpen.forEach(bid => {
+      const b = document.getElementById(bid), c = document.getElementById('chev-' + bid);
+      if (b) { b.classList.add('open'); if (c) c.classList.add('open'); }
+    });
+    if (scroller) scroller.scrollTop = scrollTop;
+  } catch (e) {
+    console.error('renderQuickPackDetail error', e);
+    body.innerHTML = '<div style="padding:16px;color:var(--terracotta);font-size:13px;">Couldn’t load list: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+window.renameQuickPackList = async function(id) {
+  const current = document.getElementById('packingScreenTitle').textContent;
+  const name = (prompt('Rename packing list', current) || '').trim();
+  if (!name || name === current) return;
+  try {
+    await window._set(window._ref(window._db, 'packingLists/' + id.slice(QUICK_PACK_PREFIX.length) + '/name'), name);
+    document.getElementById('packingScreenTitle').textContent = name;
+  } catch (e) { showToast('Rename failed'); console.error(e); }
+};
+
+window.deleteQuickPackList = async function(id) {
+  const ok = await showConfirmDialog('Delete this packing list?', 'The list and everything ticked off on it will be removed. The master list isn’t affected.');
+  if (!ok) return;
+  try {
+    await window._remove(window._ref(window._db, 'packingLists/' + id.slice(QUICK_PACK_PREFIX.length)));
+    showToast('Packing list deleted');
+    renderQuickPackIndex();
+  } catch (e) { showToast('Delete failed'); console.error(e); }
+};
 
 // ════════════════════════════════════════
 //  MASTER PACKING LIST (settings template)
