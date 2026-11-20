@@ -487,9 +487,11 @@ struct DashboardWidgetView: View {
         .widgetURL(appURL)
     }
 
-    // The bookings column is the taller one once it's full; a fourth trip only
-    // fits beside a shorter one
-    private var tripLimit: Int { entry.outstanding.count >= dashBookCount ? 3 : dashTripCount }
+    // The bookings column is the taller one once it's full, and three weather
+    // rows take the height a fourth trip would need
+    private var tripLimit: Int {
+        entry.outstanding.count >= dashBookCount || entry.weather.count > 2 ? 3 : dashTripCount
+    }
 
     @ViewBuilder private var topColumns: some View {
         if entry.tripsFailed {
@@ -597,7 +599,7 @@ private struct DashTripRow: View {
 }
 
 // One full-width row per city. Three cities can't hold five days at a readable
-// size, so the away layout drops to a tighter row and three days.
+// size, so the away layout drops to a shorter row and three days.
 private struct WeatherSection: View {
     let weather: [DashCityWeather]
 
@@ -681,63 +683,73 @@ private struct CityRow: View {
     }
 }
 
-// The away row: today on one line, then three two-line chips
+// The away row: three of these share the room two CityRows get, so each is
+// shorter — the city and sun times over today's sky, temperature and range on
+// the left, three days on the right — but kept at sizes that read at a glance.
+//
+// "📍 MIAMI SPRINGS ↑6:41 ↓5:30      FRI      SAT      SUN"
+// "☀️ 82°  79/73                    ☁️ 77/71 ☁️ 79/68 ☀️ 86/72"
 private struct CityLine: View {
     let wx: DashCityWeather
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(wx.label)
-                    .font(.system(size: 9, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                if !wx.sun.isEmpty {
-                    Text(wx.sun)
-                        .font(.system(size: 8))
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text(wx.label)
+                        .font(.system(size: 10, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
+                    if !wx.sun.isEmpty {
+                        Text(wx.sun)
+                            .font(.system(size: 8))
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                }
+                .foregroundStyle(Palette.muted)
+                // Fixed size throughout: with room short, a Text that may
+                // shrink or truncate is the one that loses — which is how
+                // today's temperature ended up as "…"
+                HStack(spacing: 5) {
+                    Text(wx.ok ? wx.sky : "—").font(.system(size: 17)).fixedSize()
+                    if wx.ok {
+                        Text("\(wx.now)°")
+                            .font(.system(size: 21, weight: .bold))
+                            .foregroundStyle(Palette.ink)
+                            .fixedSize()
+                        Text("\(wx.hi)°/\(wx.lo)°")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Palette.muted)
+                            .fixedSize()
+                    }
                 }
             }
-            .foregroundStyle(Palette.muted)
-            .frame(width: 78, alignment: .leading)
+            .frame(width: 140, alignment: .leading)
             Spacer(minLength: 4)
-            Text(wx.ok ? wx.sky : "—").font(.system(size: 15))
-            if wx.ok {
-                Text("\(wx.now)°")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Palette.ink)
-                    .padding(.leading, 4)
-                Text("\(wx.hi)/\(wx.lo)")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Palette.muted)
-                    .fixedSize()
-                    .padding(.leading, 5)
-            }
-            Spacer(minLength: 4)
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(Array(forecastSlots(wx, forecastDaysTight).enumerated()), id: \.offset) { _, d in
-                    VStack(spacing: 0) {
+                    VStack(spacing: 2) {
                         Text(d?.dow ?? " ")
-                            .font(.system(size: 8, weight: .semibold))
+                            .font(.system(size: 9.5, weight: .semibold))
                             .foregroundStyle(Palette.muted)
                         HStack(spacing: 3) {
-                            Text(d?.sky ?? "—").font(.system(size: 10))
+                            Text(d?.sky ?? "—").font(.system(size: 13))
                             Text(d.map { "\($0.hi)/\($0.lo)" } ?? " ")
-                                .font(.system(size: 9))
+                                .font(.system(size: 11))
                                 .foregroundStyle(Palette.ink)
-                                .fixedSize()
                         }
                     }
                     .lineLimit(1)
-                    .frame(width: 44)
+                    .fixedSize()
+                    .frame(width: 50)
                 }
             }
         }
-        .lineLimit(1)
         .padding(.vertical, 7)
         .padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.sand))
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.sand))
     }
 }
 
