@@ -428,19 +428,29 @@ body {
 .day-rail::before { content: ""; position: absolute; left: 6px; top: 8px; bottom: 8px; border-left: 2px solid var(--border); }
 .rail-stop { position: relative; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
 .rail-stop::before { content: ""; position: absolute; left: -19px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--dot, var(--muted)); box-shadow: 0 0 0 3px var(--warm-white); }
-.rail-flight { position: relative; z-index: 1; align-self: flex-start; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 5px; max-width: calc(100% + 20px); margin: 0 0 0 -20px; padding: 3px 10px 3px 0; background: var(--gold-light); border: 1px solid var(--gold-border); border-radius: 14px; text-align: left; font: inherit; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--gold); font-variant-numeric: tabular-nums; cursor: pointer; }
-.rail-flight-plane { width: 14px; text-align: center; font-size: 11px; }
-.rail-flight small { font-size: 9.5px; font-weight: 700; letter-spacing: .8px; }
-.rail-flight-m { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+.rail-flight { position: relative; z-index: 1; align-self: flex-start; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 5px; max-width: calc(100% + 20px); margin: 0 0 0 -20px; padding: 1px 7px 1px 0; background: var(--gold-light); border: 1px solid var(--gold-border); border-radius: 11px; text-align: left; font: inherit; font-size: 11px; font-weight: 500; line-height: 1.4; color: var(--gold); font-variant-numeric: tabular-nums; cursor: pointer; }
+.rail-flight-plane { width: 14px; text-align: center; font-size: 10px; }
+.rail-flight small { font-size: 8px; font-weight: 700; letter-spacing: .6px; }
+.rail-flight-m { color: var(--muted); font-weight: 400; font-size: 10px; }
 
 /* Activity times: a pill on the day's line, the activity card under it */
 .act-seg { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .act-seg > .activity-item { align-self: stretch; }
-.act-pill { position: relative; z-index: 1; margin-left: -20px; max-width: calc(100% + 20px); display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 5px; background: var(--cream); border: 1px solid var(--border); border-radius: 14px; padding: 2px 9px 2px 2px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--ink); font-variant-numeric: tabular-nums; }
-.act-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-.act-pill small { font-size: 9.5px; font-weight: 700; letter-spacing: .8px; color: var(--muted); }
+.act-time-row { position: relative; z-index: 1; margin-left: -20px; max-width: calc(100% + 20px); display: flex; align-items: center; gap: 6px; }
+.act-pill { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; gap: 0 4px; background: var(--cream); border: 1px solid var(--border); border-radius: 11px; overflow: hidden; padding: 1px 7px 1px 3px; font-size: 11px; font-weight: 500; line-height: 1.4; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.act-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.act-pill small { font-size: 8px; font-weight: 700; letter-spacing: .6px; color: var(--muted); }
 .act-pill-to { color: var(--muted); font-weight: 400; }
-.act-pill-dur { color: var(--muted); font-weight: 400; font-size: 11px; border-left: 1px solid var(--border); padding-left: 6px; margin-left: 1px; }
+.act-pill-dur { color: var(--muted); font-weight: 400; font-size: 9.5px; border-left: 1px solid var(--border); padding-left: 5px; margin-left: 1px; }
+/* Booking status: the pill's tinted end (or a chip on the meta line when there's no time) */
+.act-pill-st, .act-st { display: inline-flex; align-items: center; gap: 3px; font-size: 8.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--st, var(--muted)); background: var(--st-bg, var(--sand)); }
+.act-pill-st { align-self: stretch; margin: -1px -7px -1px 2px; padding: 0 7px 0 6px; }
+.act-st { padding: 1px 6px; border-radius: 5px; }
+.act-pill-st .e, .act-st .e { font-size: 9.5px; letter-spacing: 0; }
+.st-booked { --st: var(--sage); --st-bg: var(--sage-light); }
+.st-paid { --st: var(--blue); --st-bg: var(--blue-light); }
+.st-not_booked { --st: var(--terracotta); --st-bg: var(--terracotta-light); }
+.st-walking_in { --st: var(--gold); --st-bg: var(--gold-light); }
 .act-seg.untimed > .activity-item::before { content: ""; position: absolute; left: -16px; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--sand-dark); box-shadow: 0 0 0 3px var(--warm-white); }
 
 /* Edit sheet: fixed flight row on a moving day */
@@ -2722,7 +2732,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 434 };
+window.BUILD_INFO = { prNumber: 435 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -6035,7 +6045,12 @@ function _fmtDur(min) {
 }
 
 // "5:00 PM" · "2:00 – 3:30 PM | 1h 30m" · "11:30 AM – 1:00 PM | 1h 30m"
-function _actTimePillHTML(time) {
+// Booking status words short enough for the time pill
+function _stShort(status) {
+  return { no_reservations: 'No res', walking_in: 'Walk-in' }[status.key] || status.label;
+}
+
+function _actTimePillHTML(time, status) {
   const r = _actTimeRange(time);
   let inner;
   if (!r) inner = escHtml(time);
@@ -6044,7 +6059,8 @@ function _actTimePillHTML(time) {
     const startAp = r.start.ap === r.end.ap ? '' : ` <small>${r.start.ap}</small>`;
     inner = `${r.start.label}${startAp} <span class="act-pill-to">–</span> ${r.end.label} <small>${r.end.ap}</small><span class="act-pill-dur">${_fmtDur(r.dur)}</span>`;
   }
-  return `<span class="act-pill"><span class="act-pill-dot"></span>${inner}</span>`;
+  const st = status ? `<span class="act-pill-st st-${status.key}" title="${escAttr(status.label)}"><span class="e">${status.emoji}</span>${escHtml(_stShort(status))}</span>` : '';
+  return `<div class="act-time-row"><span class="act-pill"><span class="act-pill-dot"></span>${inner}${st}</span></div>`;
 }
 
 // A flight's "10:05am" as "10:05 AM" in the rail's flight pill
@@ -6168,7 +6184,7 @@ function renderTripItinerary(trip) {
       const muted = currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming')
         && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
       const meta = [];
-      if (bookingInfo) meta.push(`<span>${bookingInfo.emoji}</span>`);
+      if (bookingInfo && !time) meta.push(`<span class="act-st st-${bookingInfo.key}" title="${escAttr(bookingInfo.label)}"><span class="e">${bookingInfo.emoji}</span>${escHtml(_stShort(bookingInfo))}</span>`);   // timed: it's the end of the time pill
       if (kind) {
         const conf = isShareView ? '' : (kind === 'car' ? _carBooking(trip, dayId, i)?.confirmation : _stayFor(trip, dayId, _stays)?.details.confirmation);
         meta.push(`<span class="act-chip${kind === 'hotel' ? ' hotel' : ''}">${kind === 'car' ? 'Car' : 'Hotel'}</span>`);
@@ -6181,7 +6197,7 @@ function renderTripItinerary(trip) {
       if (muted) meta.push('<span title="Reminder off">🔕</span>');
       return `
         <div class="act-seg${time ? '' : ' untimed'}">
-          ${time ? _actTimePillHTML(time) : ''}
+          ${time ? _actTimePillHTML(time, bookingInfo) : ''}
           <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-idx="${i}">
             <div class="activity-emoji">${emoji}</div>
             <div style="flex:1;min-width:0;">
