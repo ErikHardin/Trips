@@ -918,15 +918,22 @@ async function handleWidgetCurrency(env, request) {
         .filter(x => x.startISO && x.endISO >= todayISO)
         .sort((a, b) => a.startISO.localeCompare(b.startISO))
         .slice(0, 6);
-      // At most 4 cities a trip, 6 trips: stays well inside the Worker's
+      // At most 6 cities a trip, 6 trips: stays inside the Worker's 50
       // subrequest limit, and cached lookups are cheap
       await Promise.all(upcoming.map(async x => {
         const codes = [];
+        const places = {};   // currency → the first of the trip's cities that spends it
         const add = c => { if (c && c !== 'USD' && !codes.includes(c)) codes.push(c); };
         add(wSymbolCurrency(x.t.currency));
-        const countries = await Promise.all(wTripCities(x.t, 4).map(wCityCountry));
-        countries.forEach(cc => add(W_COUNTRY_CURRENCY[cc] || ''));
+        const cities = wTripCities(x.t, 6);
+        const countries = await Promise.all(cities.map(wCityCountry));
+        countries.forEach((cc, i) => {
+          const code = W_COUNTRY_CURRENCY[cc] || '';
+          add(code);
+          if (code && !places[code]) places[code] = cities[i];
+        });
         x.codes = codes.filter(c => rates.rates[c] != null);
+        x.places = Object.fromEntries(x.codes.filter(c => places[c]).map(c => [c, places[c]]));
       }));
       upcoming.forEach(x => {
         if (!x.codes.length) return;
@@ -936,6 +943,7 @@ async function handleWidgetCurrency(env, request) {
           emoji: x.t.emoji || '✈️',
           daysUntil: Math.max(0, Math.round((Date.parse(x.startISO + 'T00:00:00Z') - todayMs) / 86400000)),
           currencies: x.codes,
+          places: x.places,
         });
       });
     } catch (e) {}
@@ -954,7 +962,7 @@ async function handleWidgetCurrency(env, request) {
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-26.1';
+const WORKER_VERSION = '2026-11-26.2';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.

@@ -1,6 +1,7 @@
 // The Currency widget (large, iOS 17): a USD converter that works without
-// opening the app. Eight currency buttons across the top, the currencies of
-// the next few trips first (outlined, with a plane), then the common ones; the
+// opening the app. Eight currency buttons across the top, each with a place
+// under its code: every currency the next few trips use first (outlined, with
+// a plane, under the trip city that spends it), then the common ones; the
 // amount typed on the keypad, converted below it; Swap flips between
 // USD → currency and currency → USD.
 //
@@ -21,10 +22,14 @@ import AppIntents
 private let currencyEndpoint = "https://hardin-trips-ai.erikchardin.workers.dev/widget-currency"
 private let currencyFallback = "https://open.er-api.com/v6/latest/USD"
 
-// The common currencies, after any the trips suggest
+// The common currencies, after any the trips suggest, with where they're spent
 private let commonCurrencies = ["EUR", "GBP", "CAD", "HKD", "MXN", "JPY", "CHF", "AUD"]
+private let commonPlaces: [String: String] = [
+    "EUR": "Eurozone", "GBP": "UK", "CAD": "Canada", "HKD": "Hong Kong",
+    "MXN": "Mexico", "JPY": "Japan", "CHF": "Switzerland", "AUD": "Australia",
+]
+// Two rows of four: there's no room for a third
 private let chipCount = 8
-private let maxTripChips = 4
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +39,7 @@ struct CurrencyTrip: Codable, Hashable {
     var emoji: String? = nil
     var daysUntil: Int? = nil
     let currencies: [String]
+    var places: [String: String]? = nil   // currency → the trip city that spends it
 }
 
 struct CurrencyPayload: Codable {
@@ -129,8 +135,10 @@ struct CurrencyEntry: TimelineEntry {
             source: "ExchangeRate-API",
             rates: ["USD": 1, "EUR": 0.92, "GBP": 0.79, "CAD": 1.39, "HKD": 7.78, "MXN": 18.3,
                     "JPY": 152, "CHF": 0.88, "AUD": 1.52, "THB": 34.5],
-            trips: [CurrencyTrip(id: "a", name: "Amsterdam + Madrid", daysUntil: 33, currencies: ["EUR"]),
-                    CurrencyTrip(id: "b", name: "Southeast Asia", daysUntil: 90, currencies: ["THB"])]
+            trips: [CurrencyTrip(id: "a", name: "Amsterdam + Madrid", daysUntil: 33, currencies: ["EUR"],
+                                 places: ["EUR": "Amsterdam"]),
+                    CurrencyTrip(id: "b", name: "Southeast Asia", daysUntil: 90, currencies: ["THB"],
+                                 places: ["THB": "Bangkok"])]
         ),
         storedCode: "EUR",
         toUSD: false,
@@ -139,12 +147,13 @@ struct CurrencyEntry: TimelineEntry {
 
     private var rates: [String: Double] { payload?.rates ?? [:] }
 
-    // Trip currencies first (soonest trip first), then the common ones, eight
-    // in all, each with a rate. The selected one always shows.
+    // Every trip currency first (soonest trip first), then the common ones
+    // in whatever buttons are left, eight in all, each with a rate. The
+    // selected one always shows.
     var chips: [String] {
         var out: [String] = []
         for trip in payload?.trips ?? [] {
-            for c in trip.currencies where rates[c] != nil && !out.contains(c) && out.count < maxTripChips {
+            for c in trip.currencies where rates[c] != nil && !out.contains(c) && out.count < chipCount {
                 out.append(c)
             }
         }
@@ -172,6 +181,16 @@ struct CurrencyEntry: TimelineEntry {
 
     // The first trip that uses the selected currency
     var trip: CurrencyTrip? { payload?.trips?.first { $0.currencies.contains(code) } }
+
+    // The small line under a button's code: the city on the first trip that
+    // spends it, else where it's spent
+    func place(_ code: String) -> String? {
+        if let trip = payload?.trips?.first(where: { $0.currencies.contains(code) }),
+           let city = trip.places?[code] {
+            return city
+        }
+        return commonPlaces[code]
+    }
 }
 
 struct CurrencyProvider: TimelineProvider {
@@ -410,20 +429,31 @@ struct CurrencyWidgetView: View {
     }
 
     private func chip(_ code: String, selected: Bool, trip: Bool) -> some View {
-        Button(intent: CurrencyPickIntent(code: code)) {
-            HStack(spacing: 3) {
-                if trip {
-                    Image(systemName: "airplane")
-                        .font(.system(size: 8, weight: .bold))
+        let place = entry.place(code)
+        return Button(intent: CurrencyPickIntent(code: code)) {
+            VStack(spacing: 3) {
+                HStack(spacing: 3) {
+                    if trip {
+                        Image(systemName: "airplane")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    Text(code)
+                        .font(.system(size: 12, weight: .heavy))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
-                Text(code)
-                    .font(.system(size: 12, weight: .heavy))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                .foregroundStyle(selected ? Palette.background : (trip ? Palette.terracotta : Palette.ink))
+                if let place = place {
+                    Text(place)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(selected ? Palette.background : Palette.muted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
-            .foregroundStyle(selected ? Palette.background : (trip ? Palette.terracotta : Palette.ink))
+            .padding(.horizontal, 3)
             .frame(maxWidth: .infinity)
-            .frame(height: 27)
+            .frame(height: 36)
             .background(RoundedRectangle(cornerRadius: 9).fill(selected ? Palette.terracotta : keyFill))
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
@@ -431,7 +461,7 @@ struct CurrencyWidgetView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(currencyName(code) + (trip ? ", on an upcoming trip" : ""))
+        .accessibilityLabel(currencyName(code) + (place.map { ", " + $0 } ?? "") + (trip ? ", on an upcoming trip" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -444,6 +474,7 @@ struct CurrencyWidgetView: View {
         var caption = from + " → " + to + " · "
         if let trip = entry.trip {
             let days = trip.daysUntil ?? 0
+            if let city = trip.places?[code] { caption += city + " · " }
             caption += trip.name + (days > 0 ? " · in \(days) day\(days == 1 ? "" : "s")" : " · now")
         } else {
             caption += currencyName(code)
@@ -459,14 +490,14 @@ struct CurrencyWidgetView: View {
                 .lineLimit(1)
                 .padding(.top, 2)
             Text(money(to, result))
-                .font(.system(size: 30, weight: .heavy))
+                .font(.system(size: 28, weight: .heavy))
                 .foregroundStyle(Palette.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 14).fill(keyFill))
     }
 
