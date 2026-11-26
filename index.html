@@ -5998,6 +5998,10 @@ function _moveSplitHTML(trip, move, day, items, sides) {
   </div>`;
 }
 
+// Daily spend chip on each itinerary day. Hidden for now; set to true to bring
+// it back. The saved amounts and the spend code are kept.
+const SHOW_DAILY_SPEND = false;
+
 function renderTripItinerary(trip) {
   const panel = document.getElementById('tripItineraryPanel');
   const _savedScroll = panel.scrollTop;
@@ -6113,7 +6117,7 @@ function renderTripItinerary(trip) {
     const cardId = 'dc-'+dayId;
     const _canEdit = canEditCurrentTrip();
     const isErik = currentUser?.email === 'erikchardin@gmail.com';
-    const spendBadge = isErik && (_canEdit || day.dailySpend != null) ? (
+    const spendBadge = SHOW_DAILY_SPEND && isErik && (_canEdit || day.dailySpend != null) ? (
       '<div class="spend-badge" id="spend-' + dayId + '">' +
       '<span>💰</span>' +
       '<span class="spend-badge-label">Spend</span>' +
