@@ -509,8 +509,6 @@ body {
 .wine-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
 .wine-field input { font-family: inherit; height: 42px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; background: var(--cream); font-size: 14px; color: var(--ink); padding: 0 10px; text-transform: none; letter-spacing: 0; width: 100%; }
 .conf-pill { font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--sand); color: var(--ink); white-space: nowrap; }
-.act-search-btn { font-family: inherit; background: none; border: none; font-size: 14px; padding: 4px; opacity: 0.45; flex-shrink: 0; cursor: pointer; line-height: 1; }
-.act-search-btn:hover { opacity: 0.9; }
 .stay-card { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 10px 12px; background: var(--sage-light); border: 1px solid color-mix(in srgb, var(--sage) 40%, transparent); border-radius: 10px; cursor: pointer; }
 .stay-card-name { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .stay-card-sub { font-size: 11.5px; color: var(--sage); margin-top: 1px; }
@@ -6086,7 +6084,6 @@ function renderTripItinerary(trip) {
       const bookingInfo = BOOKING_STATUSES.find(s => s.key === bookingStatus);
       const actNoteCount = Object.keys(allTrips[currentTripId]?.days?.[dayId]?.notes?.[noteKey] || {}).length;
       const regionClean = (day.region||'').trim();
-      const searchUrl = activitySearchUrl(text, sides && sides[i] === 'from' ? _actPlaceDay(trip, dayId, i) : day);
       const kind = _bookingKind(a);
       const muted = currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming')
         && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
@@ -6103,13 +6100,12 @@ function renderTripItinerary(trip) {
       if (drive) meta.push('<span>🚗 driving</span>');
       if (muted) meta.push('<span title="Reminder off">🔕</span>');
       return `
-        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-idx="${i}" data-search="${escAttr(searchUrl)}">
+        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-idx="${i}">
           <div class="activity-emoji">${emoji}</div>
           <div style="flex:1;min-width:0;">
             <div class="activity-text">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
             ${meta.length ? `<div class="act-meta">${meta.join('')}</div>` : ''}
           </div>
-          ${kind ? '' : '<button class="act-search-btn" title="Search Google">🔎</button>'}
         </div>`;
     });
     const activitiesHTML = activityItems.join('');
@@ -11359,11 +11355,7 @@ document.addEventListener('change', function(e) {
 document.addEventListener('click', function(e) {
   const item = e.target.closest('#tripItineraryPanel .activity-item');
   if (!item) return;
-  // 🔎 → Google search; anywhere else on the row opens its detail sheet
-  if (e.target.closest('.act-search-btn')) {
-    if (item.dataset.search) window.open(item.dataset.search, '_blank');
-    return;
-  }
+  // The row opens its detail sheet, which has the Google search
   openActivityDetail(item.dataset.day, Number(item.dataset.idx));
 });
 
