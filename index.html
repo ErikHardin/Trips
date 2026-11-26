@@ -12487,7 +12487,9 @@ function _bookingChecklistHTML(tripId, trip, logistics) {
     if (x.dayId !== lastDay) {
       lastDay = x.dayId;
       const date = x.iso ? isoToDate(x.iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
-      const place = _cfPlace(x.day);
+      // A moving day names both cities, as on the itinerary
+      const move = _moveInfo(trip, x.dayId);
+      const place = move ? move.from + ' → ' + move.to : _cfPlace(x.day);
       actBody += '<div class="bkc-day">' + escHtml([date, place].filter(Boolean).join(' · ') || 'Undated') + '</div>';
     }
     const a = x.act;
