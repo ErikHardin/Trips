@@ -424,13 +424,24 @@ body {
 
 /* Day timeline: activities hang off a thin rail; on a moving day each city is
    a coloured stop on it and the flight is one line between them */
-.day-rail { position: relative; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.day-rail { position: relative; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
 .day-rail::before { content: ""; position: absolute; left: 6px; top: 8px; bottom: 8px; border-left: 2px solid var(--border); }
 .rail-stop { position: relative; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
 .rail-stop::before { content: ""; position: absolute; left: -19px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--dot, var(--muted)); box-shadow: 0 0 0 3px var(--warm-white); }
-.rail-flight { position: relative; display: block; width: 100%; background: none; border: none; padding: 2px 0; margin: 0; text-align: left; font: inherit; font-size: 12px; color: var(--gold); font-variant-numeric: tabular-nums; cursor: pointer; }
-.rail-flight::before { content: "✈"; position: absolute; left: -22px; top: 1px; width: 16px; text-align: center; background: var(--warm-white); font-size: 12px; line-height: 1.4; }
-.rail-flight-m { color: var(--muted); }
+.rail-flight { position: relative; z-index: 1; align-self: flex-start; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 5px; max-width: calc(100% + 20px); margin: 0 0 0 -20px; padding: 3px 10px 3px 0; background: var(--gold-light); border: 1px solid var(--gold-border); border-radius: 14px; text-align: left; font: inherit; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--gold); font-variant-numeric: tabular-nums; cursor: pointer; }
+.rail-flight-plane { width: 14px; text-align: center; font-size: 11px; }
+.rail-flight small { font-size: 9.5px; font-weight: 700; letter-spacing: .8px; }
+.rail-flight-m { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+
+/* Activity times: a pill on the day's line, the activity card under it */
+.act-seg { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.act-seg > .activity-item { align-self: stretch; }
+.act-pill { position: relative; z-index: 1; margin-left: -20px; max-width: calc(100% + 20px); display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 5px; background: var(--cream); border: 1px solid var(--border); border-radius: 14px; padding: 2px 9px 2px 2px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: var(--ink); font-variant-numeric: tabular-nums; }
+.act-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.act-pill small { font-size: 9.5px; font-weight: 700; letter-spacing: .8px; color: var(--muted); }
+.act-pill-to { color: var(--muted); font-weight: 400; }
+.act-pill-dur { color: var(--muted); font-weight: 400; font-size: 11px; border-left: 1px solid var(--border); padding-left: 6px; margin-left: 1px; }
+.act-seg.untimed > .activity-item::before { content: ""; position: absolute; left: -16px; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--sand-dark); box-shadow: 0 0 0 3px var(--warm-white); }
 
 /* Edit sheet: fixed flight row on a moving day */
 .act-flight-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; background: var(--gold-light); border: 1px dashed var(--gold-border); }
@@ -497,7 +508,7 @@ body {
 .quick-act-pencil-btn:hover { opacity: 0.9; }
 
 /* Activities */
-.activity-list { display: flex; flex-direction: column; gap: 6px; }
+.activity-list { display: flex; flex-direction: column; gap: 10px; }
 .activity-item {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 9px 11px; border-radius: 10px;
@@ -2711,7 +2722,7 @@ function setupOfflineDetection() {
 </script>
 
 <script>
-window.BUILD_INFO = { prNumber: 433 };
+window.BUILD_INFO = { prNumber: 434 };
 // CARTO now requires a key on basemap tile requests; domain-restricted to this app's hosts in the CARTO dashboard.
 const CARTO_API_KEY = 'cb1_2v4s_1_3be512d8ae28ce0b156016b3';
 const CARTO_TILE_URL = `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`;
@@ -5992,6 +6003,56 @@ function _cardHotel(day) {
   return hotel;
 }
 
+// An activity's time string ("5pm", "10–11am", "11:30am-1pm") read as clock
+// times for its pill. null when it isn't a plain time or range ("~8pm",
+// "morning", "5pm (30 min)"): the pill then shows the text as typed.
+function _actTimeRange(time) {
+  const T = '(\\d{1,2})(?::([0-5]\\d))?\\s*([ap])?\\.?(?:m\\.?)?';
+  const m = String(time || '').trim().match(new RegExp('^' + T + '(?:\\s*(?:[-–—]|to)\\s*' + T + ')?$', 'i'));
+  if (!m) return null;
+  const hasEnd = m[4] != null;
+  let ap1 = m[3] && m[3].toLowerCase(), ap2 = m[6] && m[6].toLowerCase();
+  if (!ap1 && !ap2) return null;
+  const h1 = +m[1], h2 = hasEnd ? +m[4] : 0;
+  if (h1 < 1 || h1 > 12 || (hasEnd && (h2 < 1 || h2 > 12))) return null;
+  const mins = (h, mm, ap) => (h % 12 + (ap === 'p' ? 12 : 0)) * 60 + (+mm || 0);
+  if (hasEnd && !ap2) ap2 = ap1;
+  if (!ap1) {   // "10–11am" shares the end's am/pm, unless that puts it after the end ("11–1pm")
+    ap1 = ap2;
+    if (mins(h1, m[2], ap1) > mins(h2, m[5], ap2)) ap1 = ap1 === 'a' ? 'p' : 'a';
+  }
+  const start = { label: h1 + ':' + (m[2] || '00'), ap: ap1 === 'p' ? 'PM' : 'AM', min: mins(h1, m[2], ap1) };
+  if (!hasEnd) return { start };
+  const end = { label: h2 + ':' + (m[5] || '00'), ap: ap2 === 'p' ? 'PM' : 'AM', min: mins(h2, m[5], ap2) };
+  let dur = end.min - start.min;
+  if (dur <= 0) dur += 1440;
+  return { start, end, dur };
+}
+
+function _fmtDur(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  return h && m ? h + 'h ' + m + 'm' : h ? h + 'h' : m + 'm';
+}
+
+// "5:00 PM" · "2:00 – 3:30 PM | 1h 30m" · "11:30 AM – 1:00 PM | 1h 30m"
+function _actTimePillHTML(time) {
+  const r = _actTimeRange(time);
+  let inner;
+  if (!r) inner = escHtml(time);
+  else if (!r.end) inner = `${r.start.label} <small>${r.start.ap}</small>`;
+  else {
+    const startAp = r.start.ap === r.end.ap ? '' : ` <small>${r.start.ap}</small>`;
+    inner = `${r.start.label}${startAp} <span class="act-pill-to">–</span> ${r.end.label} <small>${r.end.ap}</small><span class="act-pill-dur">${_fmtDur(r.dur)}</span>`;
+  }
+  return `<span class="act-pill"><span class="act-pill-dot"></span>${inner}</span>`;
+}
+
+// A flight's "10:05am" as "10:05 AM" in the rail's flight pill
+function _clockHTML(t) {
+  const r = _actTimeRange(t);
+  return r && !r.end ? `${r.start.label} <small>${r.start.ap}</small>` : escHtml(t);
+}
+
 // A moving day on the rail: the city you leave and its activities, the flight
 // as one tappable line, then the city you sleep in and its activities
 function _moveSplitHTML(trip, move, day, items, sides) {
@@ -6006,7 +6067,7 @@ function _moveSplitHTML(trip, move, day, items, sides) {
   return `<div class="day-rail">
     ${stop(move.from, move.typed ? day : move.prevDay)}
     ${group('from')}
-    <button type="button" class="rail-flight"${line ? ` data-line="${escAttr(line)}" onclick="openFlightSheet(this.dataset.line)"` : ''}>${escHtml(f.dep)} ${escHtml(f.from)} → ${f.arr ? escHtml(f.arr) + ' ' : ''}${escHtml(f.to)}${meta ? ` <span class="rail-flight-m">· ${escHtml(meta)}</span>` : ''}</button>
+    <button type="button" class="rail-flight"${line ? ` data-line="${escAttr(line)}" onclick="openFlightSheet(this.dataset.line)"` : ''}><span class="rail-flight-plane">✈</span>${_clockHTML(f.dep)} ${escHtml(f.from)} → ${f.arr ? _clockHTML(f.arr) + ' ' : ''}${escHtml(f.to)}${meta ? ` <span class="rail-flight-m">· ${escHtml(meta)}</span>` : ''}</button>
     ${stop(move.to, day)}
     ${group('to')}
   </div>`;
@@ -6107,7 +6168,7 @@ function renderTripItinerary(trip) {
       const muted = currentUser && !isShareView && time && (trip.status === 'active' || trip.status === 'upcoming')
         && !!_activityMutes[pushActId(currentTripId, day.dateISO || dayISO(day, trip.year) || '', a)];
       const meta = [];
-      if (time || bookingInfo) meta.push(`<span>${time ? escHtml(time) : ''}${bookingInfo ? (time ? ' · ' : '') + bookingInfo.emoji : ''}</span>`);
+      if (bookingInfo) meta.push(`<span>${bookingInfo.emoji}</span>`);
       if (kind) {
         const conf = isShareView ? '' : (kind === 'car' ? _carBooking(trip, dayId, i)?.confirmation : _stayFor(trip, dayId, _stays)?.details.confirmation);
         meta.push(`<span class="act-chip${kind === 'hotel' ? ' hotel' : ''}">${kind === 'car' ? 'Car' : 'Hotel'}</span>`);
@@ -6119,11 +6180,14 @@ function renderTripItinerary(trip) {
       if (drive) meta.push('<span>🚗 driving</span>');
       if (muted) meta.push('<span title="Reminder off">🔕</span>');
       return `
-        <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-idx="${i}">
-          <div class="activity-emoji">${emoji}</div>
-          <div style="flex:1;min-width:0;">
-            <div class="activity-text">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
-            ${meta.length ? `<div class="act-meta">${meta.join('')}</div>` : ''}
+        <div class="act-seg${time ? '' : ' untimed'}">
+          ${time ? _actTimePillHTML(time) : ''}
+          <div class="activity-item" data-day="${dayId}" data-key="${noteKey}" data-idx="${i}">
+            <div class="activity-emoji">${emoji}</div>
+            <div style="flex:1;min-width:0;">
+              <div class="activity-text">${escHtml(text)}${michelin?'<span class="michelin">★ Michelin</span>':''}</div>
+              ${meta.length ? `<div class="act-meta">${meta.join('')}</div>` : ''}
+            </div>
           </div>
         </div>`;
     });
