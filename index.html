@@ -14282,6 +14282,9 @@ async function fetchTripWeather(days, tripYear) {
         // an entry predates the city being recorded) — past and far-future
         // entries are never refreshed otherwise, so drop it and refetch.
         if (day && wx.city !== city) { delete storedWeather[dayId]; continue; }
+        // Entry saved from a forecast day with no data yet (null code/temps
+        // were stored as 0°/0°) — drop it and refetch.
+        if (wx.code == null || wx.hi == null || wx.lo == null) { delete storedWeather[dayId]; continue; }
         const dateISO = day ? dateISOForDay(day) : null;
         if (dateISO) {
           const d = new Date(dateISO + 'T00:00:00');
@@ -14354,14 +14357,14 @@ async function fetchTripWeather(days, tripYear) {
       data.daily.time.forEach((date, i) => {
         wxByDate[date] = {
           code: data.daily.weathercode[i],
-          hi:   Math.round(data.daily.temperature_2m_max[i]),
-          lo:   Math.round(data.daily.temperature_2m_min[i]),
+          hi:   data.daily.temperature_2m_max[i] == null ? null : Math.round(data.daily.temperature_2m_max[i]),
+          lo:   data.daily.temperature_2m_min[i] == null ? null : Math.round(data.daily.temperature_2m_min[i]),
           avg:  false
         };
       });
       for (const { dayId, dateISO, cardId } of entries) {
         const wx = wxByDate[dateISO];
-        if (!wx || wx.code === null || wx.hi === null) continue;
+        if (!wx || wx.code === null || wx.hi === null || wx.lo === null) continue;
         injectWeatherChip(cardId, wx, [lat, lon], city);
         tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
         injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
@@ -14388,14 +14391,21 @@ async function fetchTripWeather(days, tripYear) {
       data.daily.time.forEach((date, i) => {
         wxByDate[date] = {
           code: data.daily.weathercode[i],
-          hi:   Math.round(data.daily.temperature_2m_max[i]),
-          lo:   Math.round(data.daily.temperature_2m_min[i]),
+          hi:   data.daily.temperature_2m_max[i] == null ? null : Math.round(data.daily.temperature_2m_max[i]),
+          lo:   data.daily.temperature_2m_min[i] == null ? null : Math.round(data.daily.temperature_2m_min[i]),
           avg:  false
         };
       });
-      for (const { dayId, dateISO, cardId } of entries) {
+      for (const entry of entries) {
+        const { dayId, dateISO, cardId } = entry;
         const wx = wxByDate[dateISO];
-        if (!wx) continue;
+        // The last day(s) of the 16-day forecast horizon often come back as
+        // nulls (Math.round(null) → 0°/0°). Fall back to the climate average.
+        if (!wx || wx.code === null || wx.hi === null || wx.lo === null) {
+          if (!climateCityDays[city]) climateCityDays[city] = [];
+          climateCityDays[city].push({ ...entry, month: new Date(dateISO + 'T00:00:00').getMonth() + 1 });
+          continue;
+        }
         injectWeatherChip(cardId, wx, [lat, lon], city);
         tripWeatherByDay[dayId] = { wx, coords: [lat, lon], city };
         injectOverviewWeatherChip(dayId, wx, [lat, lon], city);
