@@ -243,14 +243,18 @@ the home screen → **+** → Hardin Trips.
   without it the strip just shows the two cities.
 
 - **Currency** (`CurrencyWidget.swift`, large): a USD converter. Eight
-  currency buttons across the top: the currencies of the next few trips
-  first (outlined, with a plane), then EUR, GBP, CAD, HKD, MXN, JPY, CHF,
-  AUD. The amount typed on the keypad shows converted below it, with the
+  currency buttons across the top, two rows of four: every currency the next
+  few trips use first (outlined, with a plane), then EUR, GBP, CAD, HKD, MXN,
+  JPY, CHF, AUD in the buttons left over. Under each code, in small type, the
+  trip city that spends it, or for a common one where it's spent
+  ("Eurozone", "UK"). Nothing is filtered out, even where dollars are taken.
+  The amount typed on the keypad shows converted below it, with the
   trip that currency is for; **Swap** flips between USD → currency and
   currency → USD (iOS 17 interactive buttons, so each tap redraws in about
   half a second). Reads `/widget-currency`: USD rates (ExchangeRate-API,
   else the ECB via Frankfurter) and each upcoming shared trip's currencies,
-  from its currency symbol and the countries of its day cities. The reply is
+  from its currency symbol and the countries of its day cities (up to six),
+  with the first city that spends each one. The reply is
   kept on the phone, refetched at most every 30 minutes, so it converts with
   no signal; if the Worker is out of reach it gets rates straight from
   ExchangeRate-API, without trip suggestions.
