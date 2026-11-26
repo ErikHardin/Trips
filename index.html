@@ -34,7 +34,7 @@
     if (p === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', p);
     var dark = p === 'dark' || (p === 'auto' && mq.matches);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = dark ? '#2c2c2e' : '#c06a3d';
+    if (meta) meta.content = dark ? '#1a1d1b' : '#c06a3d';
     // iOS app: recolor the native status-bar and home-indicator strips (SceneDelegate.swift)
     try { window.webkit.messageHandlers.theme.postMessage(p); } catch (e) {}
     if (window.isDarkTheme !== dark) {
@@ -101,71 +101,71 @@ if ('serviceWorker' in navigator) {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --wine-ink: #e8909c;
-    --cream: #2c2c2e;
-    --warm-white: #3a3a3c;
-    --sand: #48484b;
-    --sand-dark: #5c5c60;
+    --cream: #1a1d1b;
+    --warm-white: #242826;
+    --sand: #2f3431;
+    --sand-dark: #3d443f;
     --terracotta: #d07a54;
-    --terracotta-light: #4a3b35;
+    --terracotta-light: #382a23;
     --gold: #d6b25f;
-    --gold-light: #46412f;
+    --gold-light: #2f2d22;
     --sage: #8fc093;
-    --sage-light: #334237;
+    --sage-light: #253226;
     --blue: #80aedc;
-    --blue-light: #323f4e;
-    --ink: #f2f2f3;
-    --muted: #a9a9ae;
-    --border: #4c4c50;
+    --blue-light: #202b33;
+    --ink: #ebeee9;
+    --muted: #9aa39c;
+    --border: #373d39;
     --shadow-sm: 0 1px 4px rgba(0,0,0,0.30);
     --shadow-md: 0 4px 16px rgba(0,0,0,0.40);
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.50);
-    --surface: #3a3a3c;
-    --gold-border: #6b5c35;
+    --surface: #242826;
+    --gold-border: #55502f;
     --sage-border: #48634d;
     --sage-dark: #8fc093;
-    --sage-tint: #353f37;
-    --terracotta-tint: #4a3b35;
+    --sage-tint: #28332a;
+    --terracotta-tint: #382a23;
     --terracotta-border: #7a4d38;
     --terracotta-border-soft: #7a4d38;
-    --sand-hover: #5c5c60;
-    --faint: #76767b;
+    --sand-hover: #3d443f;
+    --faint: #6c756e;
     --glass: rgba(255,255,255,0.04);
-    --cover-bg: linear-gradient(135deg, #48484b, #3f3f42);
+    --cover-bg: linear-gradient(135deg, #2f3431, #272c29);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --wine-ink: #e8909c;
-  --cream: #2c2c2e;
-  --warm-white: #3a3a3c;
-  --sand: #48484b;
-  --sand-dark: #5c5c60;
+  --cream: #1a1d1b;
+  --warm-white: #242826;
+  --sand: #2f3431;
+  --sand-dark: #3d443f;
   --terracotta: #d07a54;
-  --terracotta-light: #4a3b35;
+  --terracotta-light: #382a23;
   --gold: #d6b25f;
-  --gold-light: #46412f;
+  --gold-light: #2f2d22;
   --sage: #8fc093;
-  --sage-light: #334237;
+  --sage-light: #253226;
   --blue: #80aedc;
-  --blue-light: #323f4e;
-  --ink: #f2f2f3;
-  --muted: #a9a9ae;
-  --border: #4c4c50;
+  --blue-light: #202b33;
+  --ink: #ebeee9;
+  --muted: #9aa39c;
+  --border: #373d39;
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.30);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.40);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.50);
-  --surface: #3a3a3c;
-  --gold-border: #6b5c35;
+  --surface: #242826;
+  --gold-border: #55502f;
   --sage-border: #48634d;
   --sage-dark: #8fc093;
-  --sage-tint: #353f37;
-  --terracotta-tint: #4a3b35;
+  --sage-tint: #28332a;
+  --terracotta-tint: #382a23;
   --terracotta-border: #7a4d38;
   --terracotta-border-soft: #7a4d38;
-  --sand-hover: #5c5c60;
-  --faint: #76767b;
+  --sand-hover: #3d443f;
+  --faint: #6c756e;
   --glass: rgba(255,255,255,0.04);
-  --cover-bg: linear-gradient(135deg, #48484b, #3f3f42);
+  --cover-bg: linear-gradient(135deg, #2f3431, #272c29);
   color-scheme: dark;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -462,7 +462,14 @@ body {
 .day-actions:empty { display: none; }
 .day-action-btn { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--cream); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
 .day-action-btn.edit { color: var(--terracotta); }
-.day-action-btn.translation-chip { color: var(--sage); background: var(--sage-light); border-color: transparent; font-size: 12px; padding: 4px 11px; }
+.day-action-btn.translation-chip { color: var(--sage); background: var(--sage-light); border-color: transparent; font-size: 13px; padding: 3px 11px; }
+/* Language picker on a two-language day: opens as a row under the chips */
+.phrase-pick { flex-basis: 100%; background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; padding: 2px 4px; box-shadow: var(--shadow-sm); }
+.phrase-pick button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; border-radius: 10px; font: inherit; font-size: 13px; color: var(--ink); text-align: left; cursor: pointer; }
+.phrase-pick button + button { border-top: 1px solid var(--border); border-radius: 0; }
+.phrase-pick button:active { background: var(--cream); }
+.phrase-pick i { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.phrase-pick small { margin-left: auto; font-size: 11px; color: var(--muted); }
 .day-name-text { font-size: 14px; font-weight: 500; }
 .day-city-text { font-size: 12px; color: var(--muted); }
 .day-chevron { font-size: 18px; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
@@ -6169,6 +6176,7 @@ function renderTripItinerary(trip) {
         ? [[move.typed ? { city: move.from, region: '' } : move.prevDay, 'from'], [day, 'to']]
         : [[day, null]];
       const seen = new Set();
+      const langs = [];
       places.forEach(([place, side]) => {
       const txCC = getCityCountryCode(place.city) || getCityCountryCode(place.region) || '';
       if (seen.has(txCC)) return;
@@ -6196,9 +6204,10 @@ function renderTripItinerary(trip) {
             return t.replace(/\s+/g, ' ').trim();
           })
           .filter(Boolean);
-        injectTranslationChip('dc-' + dayId, txCity, txCC, txActs);
+        langs.push({ city: txCity, cc: txCC, acts: txActs, color: (place && place.regionColor) || '' });
       }
       });
+      if (langs.length) injectTranslationChip('dc-' + dayId, langs);
     });
   }, 50);
 
@@ -14552,25 +14561,45 @@ window.deleteTranslationLocation = async function(id) {
   catch(e) { alert('Failed to remove: ' + e.message); }
 };
 
-function injectTranslationChip(cardId, city, countryCode, activityTexts) {
-  if (TRANSLATION_SKIP.has(countryCode) || !TRANSLATION_LANG_MAP[countryCode]) return;
+// One 🗣 chip in the opened day's action row. A day with one language opens
+// its phrases straight away; a moving day with two lists them to pick from,
+// in the order of the day.
+function injectTranslationChip(cardId, langs) {
+  langs = langs.filter(l => !TRANSLATION_SKIP.has(l.cc) && TRANSLATION_LANG_MAP[l.cc]);
+  if (!langs.length) return;
   const card = document.getElementById(cardId);
   if (!card) return;
-  // Lives in the opened card's action row, beside Edit day
   const actions = card.querySelector('.day-actions');
   if (!actions) return;
-  // One button per language: a moving day can have two
-  const old = actions.querySelector(`.translation-chip[data-cc="${countryCode}"]`);
-  if (old) old.remove();
+  actions.querySelectorAll('.translation-chip, .phrase-pick').forEach(el => el.remove());
+  const names = langs.map(l => TRANSLATION_LANG_MAP[l.cc].name);
   const chip = document.createElement('button');
   chip.type = 'button';
   chip.className = 'day-action-btn translation-chip';
-  chip.dataset.cc = countryCode;
-  chip.textContent = '🗣 ' + TRANSLATION_LANG_MAP[countryCode].name;
-  chip.title = TRANSLATION_LANG_MAP[countryCode].name + ' phrases';
+  chip.textContent = '🗣';
+  chip.title = names.join(' / ') + ' phrases';
+  chip.setAttribute('aria-label', chip.title);
   chip.addEventListener('click', function(e) {
     e.stopPropagation();
-    openTranslationModal(city, countryCode, activityTexts);
+    if (langs.length === 1) { openTranslationModal(langs[0].city, langs[0].cc, langs[0].acts); return; }
+    const open = actions.querySelector('.phrase-pick');
+    if (open) { open.remove(); return; }
+    const pick = document.createElement('div');
+    pick.className = 'phrase-pick';
+    langs.forEach((l, i) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.innerHTML = `<i style="background:${escAttr(l.color || 'var(--sage)')}"></i>${escHtml(names[i])}<small>${escHtml(l.city)}</small>`;
+      row.addEventListener('click', ev => {
+        ev.stopPropagation();
+        pick.remove();
+        openTranslationModal(l.city, l.cc, l.acts);
+      });
+      pick.appendChild(row);
+    });
+    actions.appendChild(pick);
+    const close = ev => { if (!pick.contains(ev.target)) { pick.remove(); document.removeEventListener('click', close, true); } };
+    setTimeout(() => document.addEventListener('click', close, true), 0);
   });
   actions.appendChild(chip);
 }
