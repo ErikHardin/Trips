@@ -11,5 +11,6 @@ struct HardinTripsWidgets: WidgetBundle {
         WineWidget()
         MemoriesWidget()
         DashboardWidget()
+        CurrencyWidget()
     }
 }
