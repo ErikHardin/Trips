@@ -456,6 +456,11 @@ body {
 .day-title-row .day-chips-row { flex-wrap: nowrap; flex-shrink: 0; }
 .day-info .day-name-text, .day-info .day-city-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .day-info .day-name-text { font-size: 13.5px; }
+/* Long day titles wrap to two lines when closed and show in full when open */
+.day-title-row { align-items: flex-start; }
+.day-title-row .day-chips-row { margin-top: -1px; }
+.day-info .day-title-row .day-name-text { white-space: normal; line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.day-card.open .day-title-row .day-name-text { display: block; }
 .day-move-arrow { color: var(--gold); }
 .day-card.open { border-color: color-mix(in srgb, var(--terracotta) 45%, var(--border)); }
 .day-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
