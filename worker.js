@@ -20,6 +20,11 @@ export default {
       return handleWidgetUpcoming(env, request);
     }
 
+    // Currency widget — GET: USD exchange rates + the currencies upcoming trips use
+    if (url.pathname === '/widget-currency') {
+      return handleWidgetCurrency(env, request);
+    }
+
     // Memories widget — GET: photos from a trip day this time last year
     if (url.pathname === '/widget-memories') {
       return handleWidgetMemories(env, request);
@@ -776,11 +781,180 @@ async function handleWidgetUpcoming(env, request) {
   }), { headers: CORS });
 }
 
+// ── Currency widget ──────────────────────────────────────────────────────────
+// GET /widget-currency?date=YYYY-MM-DD → today's USD exchange rates plus the
+// currencies the next few shared trips use, soonest first, so the iOS Currency
+// widget can put them ahead of its common ones. A trip's currency comes from
+// its currency symbol when that names one (€, £, HK$…) and from the countries
+// its day cities are in. USD is never suggested: it's the widget's home side.
+
+// Symbols a trip's currency field may hold. A bare "$", "¥" or "kr" is shared
+// by several currencies and is left to the trip's cities instead.
+const W_CURRENCY_SYMBOLS = {
+  '€': 'EUR', '£': 'GBP', '₩': 'KRW', '₹': 'INR', '฿': 'THB', '₫': 'VND', '₱': 'PHP',
+  '₺': 'TRY', '₪': 'ILS', 'zł': 'PLN', 'kč': 'CZK', 'ft': 'HUF', 'r$': 'BRL',
+  'c$': 'CAD', 'ca$': 'CAD', 'cad$': 'CAD', 'a$': 'AUD', 'au$': 'AUD', 'nz$': 'NZD',
+  'hk$': 'HKD', 's$': 'SGD', 'mx$': 'MXN', 'chf': 'CHF',
+};
+
+// Country (ISO 3166-1 alpha-2) → currency. US territories and dollarized
+// countries (PR, EC, PA…) are left out: they spend USD.
+const W_EURO_COUNTRIES = 'AT BE BG HR CY EE FI FR DE GR IE IT LV LT LU MT NL PT SK SI ES MC SM VA AD ME XK';
+const W_COUNTRY_CURRENCY = Object.assign(
+  Object.fromEntries(W_EURO_COUNTRIES.split(' ').map(c => [c, 'EUR'])),
+  {
+    GB: 'GBP', GG: 'GBP', JE: 'GBP', IM: 'GBP', GI: 'GIP', CA: 'CAD', MX: 'MXN', JP: 'JPY',
+    HK: 'HKD', MO: 'MOP', CN: 'CNY', TW: 'TWD', KR: 'KRW', SG: 'SGD', TH: 'THB', VN: 'VND',
+    MY: 'MYR', ID: 'IDR', PH: 'PHP', KH: 'KHR', LA: 'LAK', MM: 'MMK', IN: 'INR', LK: 'LKR',
+    NP: 'NPR', MV: 'MVR', BT: 'BTN', AE: 'AED', QA: 'QAR', SA: 'SAR', OM: 'OMR', BH: 'BHD',
+    KW: 'KWD', JO: 'JOD', IL: 'ILS', EG: 'EGP', MA: 'MAD', TN: 'TND', TR: 'TRY', ZA: 'ZAR',
+    KE: 'KES', TZ: 'TZS', UG: 'UGX', RW: 'RWF', NA: 'NAD', BW: 'BWP', MU: 'MUR', SC: 'SCR',
+    AU: 'AUD', NZ: 'NZD', FJ: 'FJD', PF: 'XPF', NC: 'XPF', CH: 'CHF', LI: 'CHF', NO: 'NOK',
+    SE: 'SEK', DK: 'DKK', FO: 'DKK', GL: 'DKK', IS: 'ISK', PL: 'PLN', CZ: 'CZK', HU: 'HUF',
+    RO: 'RON', RS: 'RSD', BA: 'BAM', AL: 'ALL', MK: 'MKD', GE: 'GEL', AM: 'AMD', AZ: 'AZN',
+    UA: 'UAH', MD: 'MDL', BR: 'BRL', AR: 'ARS', CL: 'CLP', CO: 'COP', PE: 'PEN', UY: 'UYU',
+    PY: 'PYG', BO: 'BOB', CR: 'CRC', BZ: 'BZD', GT: 'GTQ', HN: 'HNL', NI: 'NIO', DO: 'DOP',
+    JM: 'JMD', BS: 'BSD', BB: 'BBD', TT: 'TTD', KY: 'KYD', AW: 'AWG', BM: 'BMD',
+    AG: 'XCD', DM: 'XCD', GD: 'XCD', KN: 'XCD', LC: 'XCD', VC: 'XCD', AI: 'XCD', MS: 'XCD',
+  }
+);
+
+function wSymbolCurrency(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^[A-Za-z]{3}$/.test(s)) return s.toUpperCase();
+  return W_CURRENCY_SYMBOLS[s.toLowerCase().replace(/\s+/g, '')] || '';
+}
+
+// fetch() through Cloudflare's cache: rates change daily and a city's country
+// never, so neither needs fetching on every widget refresh
+async function wFetchJsonCached(url, ttl) {
+  const r = await fetch(url, { cf: { cacheTtl: ttl, cacheEverything: true } });
+  if (!r.ok) throw new Error('status ' + r.status);
+  return r.json();
+}
+
+// The country a city is in, from Open-Meteo's geocoder (same exact-name
+// preference as wCityCoords). '' when it can't tell.
+async function wCityCountry(city) {
+  try {
+    const r = await wFetchJsonCached(
+      'https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=' + encodeURIComponent(city),
+      30 * 86400
+    );
+    const results = r.results || [];
+    const hit = results.find(x => String(x.name || '').toLowerCase() === city.toLowerCase()) || results[0];
+    return hit && hit.country_code ? String(hit.country_code).toUpperCase() : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+// Each distinct real place a trip's days name, in itinerary order
+function wTripCities(t, max) {
+  if (!t.days) return [];
+  const days = Object.values(t.days).filter(Boolean).sort((a, b) => {
+    const ai = a.dateISO || dayDateISO(a, t.year) || '';
+    const bi = b.dateISO || dayDateISO(b, t.year) || '';
+    if (ai && bi) return ai.localeCompare(bi);
+    return (a.sortOrder || 0) - (b.sortOrder || 0);
+  });
+  const seen = new Set();
+  const out = [];
+  for (const d of days) {
+    const city = wCleanCity(d.city);
+    if (!city || wIsNonPlace(city) || seen.has(city.toLowerCase())) continue;
+    seen.add(city.toLowerCase());
+    out.push(city);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+// USD-based rates: open.er-api.com (160+ currencies), else Frankfurter (ECB,
+// ~30). Rates are units of the currency per 1 USD.
+async function wUsdRates() {
+  try {
+    const r = await wFetchJsonCached('https://open.er-api.com/v6/latest/USD', 3600);
+    if (r && r.result === 'success' && r.rates) {
+      return { rates: r.rates, updated: r.time_last_update_unix || null, source: 'ExchangeRate-API' };
+    }
+  } catch (e) {}
+  const f = await wFetchJsonCached('https://api.frankfurter.dev/v1/latest?base=USD', 3600);
+  const updated = f.date ? Math.floor(Date.parse(f.date + 'T16:00:00Z') / 1000) : null;
+  return { rates: Object.assign({ USD: 1 }, f.rates || {}), updated, source: 'ECB' };
+}
+
+async function handleWidgetCurrency(env, request) {
+  const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  const params = new URL(request.url).searchParams;
+
+  let rates;
+  try {
+    rates = await wUsdRates();
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Rates fetch failed: ' + e.message }), { status: 502, headers: CORS });
+  }
+
+  // Trip suggestions are a bonus: without them the widget still converts
+  const trips = [];
+  if (env.FIREBASE_URL) {
+    try {
+      const auth = env.FIREBASE_SECRET ? '?auth=' + env.FIREBASE_SECRET : '';
+      const [all, access] = await Promise.all([
+        wFetchJson(env.FIREBASE_URL + '/trips.json'  + auth),
+        wFetchJson(env.FIREBASE_URL + '/access.json' + auth),
+      ]);
+      const now = new Date();
+      const dateParam = params.get('date');
+      const todayMs = (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam))
+        ? Date.parse(dateParam + 'T00:00:00Z')
+        : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      const todayISO = new Date(todayMs).toISOString().slice(0, 10);
+      const isShared = wSharedTripTest(access);
+      const upcoming = Object.entries(all || {})
+        .filter(([, t]) => t && isShared(t) && (t.status === 'upcoming' || t.status === 'active'))
+        .map(([id, t]) => ({ id, t, startISO: wTripStartISO(t), endISO: wTripEndISO(t) }))
+        .filter(x => x.startISO && x.endISO >= todayISO)
+        .sort((a, b) => a.startISO.localeCompare(b.startISO))
+        .slice(0, 6);
+      // At most 4 cities a trip, 6 trips: stays well inside the Worker's
+      // subrequest limit, and cached lookups are cheap
+      await Promise.all(upcoming.map(async x => {
+        const codes = [];
+        const add = c => { if (c && c !== 'USD' && !codes.includes(c)) codes.push(c); };
+        add(wSymbolCurrency(x.t.currency));
+        const countries = await Promise.all(wTripCities(x.t, 4).map(wCityCountry));
+        countries.forEach(cc => add(W_COUNTRY_CURRENCY[cc] || ''));
+        x.codes = codes.filter(c => rates.rates[c] != null);
+      }));
+      upcoming.forEach(x => {
+        if (!x.codes.length) return;
+        trips.push({
+          id: x.id,
+          name: x.t.name || 'Untitled trip',
+          emoji: x.t.emoji || '✈️',
+          daysUntil: Math.max(0, Math.round((Date.parse(x.startISO + 'T00:00:00Z') - todayMs) / 86400000)),
+          currencies: x.codes,
+        });
+      });
+    } catch (e) {}
+  }
+
+  return new Response(JSON.stringify({
+    base: 'USD',
+    updated: rates.updated,
+    source: rates.source,
+    rates: rates.rates,
+    trips,
+  }), { headers: CORS });
+}
+
 // Bump this whenever worker.js changes, so a deployed build can be identified
 // from outside Cloudflare. GET /version reports it alongside the routes this
 // build serves — if the list is missing a route you expect, the deployed Worker
 // is stale and needs re-pasting.
-const WORKER_VERSION = '2026-11-12.1';
+const WORKER_VERSION = '2026-11-26.1';
 
 // Presence of these is reported by /version. Names only, never values — and
 // they are already visible in this file, so nothing is disclosed by listing them.
@@ -805,6 +979,7 @@ const WORKER_ROUTES = [
   '/t/<tripId>',
   '/widget-data',
   '/widget-upcoming',
+  '/widget-currency',
   '/widget-memories',
   '/verify-pin',
   '/flight-lookup',
